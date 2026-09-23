@@ -36,7 +36,7 @@ jobs:
         env:
           PYTHON_VERSION: ${{ matrix.python }}
       - run: uv run --frozen --extra dev ruff check src/ tests/ .github/scripts/
-      - run: uv run --frozen --extra dev pytest tests/ -q
+      - run: uv run --frozen --extra dev pytest tests/ .github/scripts/test_guarddog_scan.py -q
   windows:
     name: Windows portability
     runs-on: windows-latest
@@ -74,6 +74,8 @@ jobs:
       - name: Export all locked platform variants
         run: |
           mkdir -p reports
+          # The container has no DAC_OVERRIDE capability; allow report writes across UIDs.
+          chmod a+w reports
           uv lock --check
           uv export --frozen --extra dev --group build --no-emit-project \
             --no-hashes --no-header --no-annotate --output-file reports/marked.txt
@@ -84,11 +86,13 @@ jobs:
           uvx --from pip-audit==2.10.1 pip-audit
           --requirement reports/dependencies.txt --no-deps --disable-pip
           --format json --output reports/pip-audit.json
+      # The image updates package-popularity caches inside site-packages.
+      # Use its default container user; keep capabilities dropped and source read-only.
       - name: Scan for malicious packages
         if: ${{ !cancelled() && hashFiles('reports/dependencies.txt') != '' }}
         run: |
           docker run --rm --cap-drop=ALL --security-opt=no-new-privileges \
-            --user "$(id -u):$(id -g)" --env HOME=/tmp \
+            --env HOME=/tmp \
             --mount "type=bind,src=$PWD,dst=/work,readonly" \
             --mount "type=bind,src=$PWD/reports,dst=/work/reports" \
             --workdir /work --entrypoint python \
