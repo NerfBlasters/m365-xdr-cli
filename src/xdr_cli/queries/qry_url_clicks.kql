@@ -1,0 +1,20 @@
+-- name: qry_url_clicks
+-- description: Safe Links click activity — by NetworkMessageId, user UPN, or URL domain. Shows whether users clicked through warnings.
+-- tier: pivot
+-- params: account_upn, start, end, mode=detail
+let DetailRows =
+    UrlClickEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where AccountUpn =~ '{account_upn}'
+    | project Timestamp, Url, ActionType, IsClickedThrough, NetworkMessageId, IPAddress;
+let SummaryRow =
+    DetailRows
+    | summarize
+        ClickCount    = count(),
+        DistinctUrls  = dcount(Url),
+        ClickedThrough = countif(ActionType has 'Clicked'),
+        Blocked        = countif(ActionType has 'Block')
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp asc)

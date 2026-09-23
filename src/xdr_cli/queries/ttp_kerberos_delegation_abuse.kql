@@ -1,0 +1,100 @@
+-- name: ttp_kerberos_delegation_abuse
+-- description: (beta) Kerberos delegation abuse — RBCD self-grant, S4U2Self/S4U2Proxy chains, sensitive-SPN TGS by low-priv accounts
+-- tier: beta
+-- params: hours=72, account_upn=, mode=summary
+-- lists: KnownServiceAccounts
+let _xdr_KnownServiceAccounts = dynamic([]);
+let Window = {hours}h;
+let RbcdCandidates = IdentityDirectoryEvents
+    | where Timestamp > ago(Window)
+    | where ActionType has_any ("Account modified", "Account attribute modified", "DelegationChanged")
+    | where tostring(AdditionalFields) has "msDS-AllowedToActOnBehalfOfOtherIdentity"
+       or tostring(AdditionalFields) has_any ("AllowedToActOnBehalfOfOtherIdentity", "RBCD")
+    | where '{account_upn}' == '' or AccountUpn =~ '{account_upn}' or TargetAccountUpn =~ '{account_upn}'
+    | extend SelfGrant = AccountUpn =~ TargetAccountUpn or AccountName =~ TargetAccountDisplayName
+    | project Timestamp, AccountUpn, AccountName, TargetAccountUpn, DeviceName,
+              ActionType, Detail = substring(tostring(AdditionalFields), 0, 400),
+              SelfGrant, Leg = "rbcd";
+let RbcdLeg = RbcdCandidates
+    | where not(AccountName in~ (_xdr_KnownServiceAccounts))
+    | project-away AccountName;
+let S4uCandidates = IdentityLogonEvents
+    | where Timestamp > ago(Window)
+    | where Protocol == "Kerberos"
+    | where ActionType has_any ("S4U2Self", "S4U2Proxy", "ConstrainedDelegation", "Service ticket")
+    | where '{account_upn}' == '' or AccountUpn =~ '{account_upn}'
+    | project Timestamp, AccountUpn, AccountName, TargetAccountUpn = "",
+              DeviceName, ActionType,
+              Detail = strcat(LogonType, " -> ", DestinationDeviceName, " (", Application, ")"),
+              SelfGrant = false, Leg = "s4u-flow";
+let S4uLeg = S4uCandidates
+    | where not(AccountName in~ (_xdr_KnownServiceAccounts))
+    | project-away AccountName;
+let SensitiveTgsCandidates = IdentityQueryEvents
+    | where Timestamp > ago(Window)
+    | where ActionType has "Service ticket"
+    | where '{account_upn}' == '' or AccountUpn =~ '{account_upn}'
+    | extend QueryLower = tolower(tostring(QueryTarget))
+    | where QueryLower has_any ("cifs/", "host/", "ldap/", "rpcss/", "krbtgt", "exchangeab/")
+    | project Timestamp, AccountUpn, AccountName, TargetAccountUpn = tostring(QueryTarget),
+              DeviceName, ActionType,
+              Detail = strcat("TGS for ", QueryTarget),
+              SelfGrant = false, Leg = "sensitive-tgs";
+let SensitiveTgsLeg = SensitiveTgsCandidates
+    | where not(AccountName in~ (_xdr_KnownServiceAccounts))
+    | project-away AccountName;
+let SuppressedPerAccount = union
+    (RbcdCandidates | where AccountName in~ (_xdr_KnownServiceAccounts)),
+    (S4uCandidates  | where AccountName in~ (_xdr_KnownServiceAccounts)),
+    (SensitiveTgsCandidates | where AccountName in~ (_xdr_KnownServiceAccounts))
+    | summarize SuppressedCount = count() by AccountUpn;
+let Hits = union RbcdLeg, S4uLeg, SensitiveTgsLeg;
+let Scored = Hits
+    | extend LegScore = case(
+        Leg == "rbcd" and SelfGrant, 7,
+        Leg == "rbcd",               5,
+        Leg == "s4u-flow",           3,
+        Leg == "sensitive-tgs",      3,
+        2);
+let RankedDetail = Scored | order by LegScore desc, Timestamp desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp",  Timestamp,
+            "Account",    AccountUpn,
+            "Target",     TargetAccountUpn,
+            "Leg",        Leg,
+            "ActionType", ActionType,
+            "Detail",     Detail,
+            "LegScore",   LegScore
+            ), 5)
+        by AccountUpn;
+let Agg = Scored
+    | summarize
+        Score        = sum(LegScore),
+        EventCount   = count(),
+        EvidenceTotal = count(),
+        DistinctLegs = make_set(Leg, 8),
+        AnySelfGrant = max(toint(SelfGrant)),
+        FirstSeen    = min(Timestamp),
+        LastSeen     = max(Timestamp)
+        by AccountUpn
+    | extend Score = min_of(Score, 12)
+    | extend Indicators = strcat_array(DistinctLegs, " ")
+    | where Score >= 3;
+let Correlated = Agg
+    | join kind=leftouter TopEv on AccountUpn
+    | join kind=leftouter SuppressedPerAccount on AccountUpn
+    | extend SuppressedCount = coalesce(SuppressedCount, 0)
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project AccountUpn, Score, EventCount, DistinctLegs, AnySelfGrant,
+              FirstSeen, LastSeen, Indicators, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Scored
+    | project Timestamp, AccountUpn, TargetAccountUpn, DeviceName,
+              Leg, LegScore, ActionType, Detail;
+union
+    (Correlated | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Timestamp desc)

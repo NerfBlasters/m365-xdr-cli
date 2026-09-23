@@ -1,0 +1,8 @@
+# IPv4 internal subnets: RFC1918 + CGNAT. The library's CIDR operator is
+# ipv4_is_in_any_range; IPv6 ranges placed here would be silently ignored
+# (no IPv6 CIDR predicate exists in the current library).
+# fetched: <fill on xdr lists init>
+10.0.0.0/8
+172.16.0.0/12
+192.168.0.0/16
+100.64.0.0/10

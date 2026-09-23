@@ -1,0 +1,22 @@
+-- name: qry_email_blast_radius
+-- description: Other recipients of the same email by sender and subject — assesses campaign scope and ZAP success rate
+-- tier: pivot
+-- params: sender, subject, start, end, mode=detail
+// Hoist raw rows so SummaryRow can count distinct RecipientEmailAddress and
+// access DeliveryAction — both are projected away by DetailRows' rollup.
+let RawHits =
+    EmailEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where SenderFromAddress == '{sender}'
+    | where Subject == '{subject}';
+let DetailRows = RawHits
+    | summarize Recipients=make_set(RecipientEmailAddress), Count=count() by LatestDeliveryAction, LatestDeliveryLocation;
+let SummaryRow = RawHits
+    | summarize
+        RecipientCount  = dcount(RecipientEmailAddress),
+        DeliveredCount  = countif(DeliveryAction == 'Delivered'),
+        ZapCount        = countif(LatestDeliveryAction has 'Zap')
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail')

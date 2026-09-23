@@ -1,0 +1,38 @@
+-- name: identity_brute_force_summary
+-- description: On-prem brute-force summary by source IP — Severity-banded, attempt/success/target counts
+-- tier: r2
+-- params: ip, start, end, account_upn=, mode=summary
+-- lists: InternalSubnets
+let _xdr_InternalSubnets = dynamic([]);
+let ScoredEvents = IdentityLogonEvents
+| where Timestamp between(datetime({start}) .. datetime({end}))
+| where IPAddress == '{ip}'
+| where '{account_upn}' == '' or AccountUpn =~ '{account_upn}';
+let SummaryRow = ScoredEvents
+    | summarize
+        TotalAttempts      = count(),
+        EvidenceTotal      = count(),
+        FirstSeen          = min(Timestamp),
+        LastSeen           = max(Timestamp),
+        Failures           = countif(FailureReason != ''),
+        Successes          = countif(FailureReason == ''),
+        TargetAccounts     = dcount(AccountUpn),
+        SuccessfulAccounts = make_set_if(AccountUpn, FailureReason == ''),
+        Protocols          = make_set(Protocol)
+        by IPAddress
+    | extend IsExternal = not(ipv4_is_in_any_range(IPAddress, _xdr_InternalSubnets))
+    | extend Score = case(
+        Successes > 0, 10,
+        Failures > 100, 5,
+        1)
+    // SuppressedCount = 0: this query has no tenant-curated row-drop filter.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = 0
+    | extend ListHealth = _xdr_ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Successes > 0, 'high', Failures > 100, 'medium', 'low');
+let DetailRows = ScoredEvents
+    | project Timestamp, AccountUpn, IPAddress, Protocol, FailureReason, DeviceName;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Timestamp desc)

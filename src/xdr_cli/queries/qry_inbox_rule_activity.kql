@@ -1,0 +1,167 @@
+-- name: qry_inbox_rule_activity
+-- description: Exchange rule changes (inbox + transport + mailbox forwarding) with extracted predicates, forwarding-destination classification, and BEC-specific scoring
+-- tier: r1
+-- params: hours=168, account_upn=, mode=summary
+-- lists: TenantDomains, AiTMInfrastructure, AnonymizingIPRanges, RiskyKeywords
+-- agent_hint: Filters on tostring(RawEventData.UserId) — AccountObjectId on the outer
+--   row is unreliable for Exchange operations. NetworkLocationDetails.ipCategory regex
+--   was removed in round 4 — that JSON column does not contain ipCategory per the
+--   documented schema. Hosting/anon IPs come from _xdr_AnonymizingIPRanges (operator
+--   curated). When the optional `account_upn` scope is provided, the HostingIPs
+--   subquery is scoped to the same user to avoid materialising tenant-wide IP sets.
+--   Keyword handling: `_xdr_FinanceKeywords` is the universal BEC default (inlined
+--   here, NOT a list block — see spec line 539); it is not tenant-tunable and only
+--   changes via spec revision. `_xdr_RiskyKeywords` is the tenant-extensible list
+--   block (spec line 120) where operators add per-tenant BEC vocabulary (project
+--   codenames, partner-finance terms, etc.); ships empty. Both sets feed
+--   `HasFinanceKeyword` — the annotation contract is "BEC keyword present in
+--   subject/body trigger predicates", and which set the match came from is
+--   operationally indifferent (review the rule body to disambiguate).
+let _xdr_TenantDomains      = dynamic([]);
+let _xdr_AiTMInfrastructure   = dynamic([]);
+let _xdr_AnonymizingIPRanges  = dynamic([]);
+let _xdr_RiskyKeywords        = dynamic([]);
+let _xdr_FinanceKeywords      = dynamic(["wire","ach","payment","invoice","iban","swift","routing",
+                                         "beneficiary","vendor change","bank","remittance","deposit","transfer"]);
+let _xdr_HiddenFolders        = dynamic(["RSS Subscriptions","RSS Feeds","Conversation History",
+                                         "Junk Email","Deleted Items","Archive"]);
+let Window = {hours}h;
+let HostingIPs = EntraIdSignInEvents
+    | where Timestamp between (ago(Window + 10m) .. now())
+    | where '{account_upn}' == '' or AccountUpn =~ '{account_upn}'
+    | where isnotempty(IPAddress)
+        and (IPAddress in (_xdr_AnonymizingIPRanges)
+             or ipv4_is_in_any_range(IPAddress, _xdr_AnonymizingIPRanges))
+    | distinct IPAddress;
+let Base = CloudAppEvents
+    | where Timestamp > ago(Window)
+    | where Application == "Microsoft Exchange Online"
+    | where ActionType in (
+        "New-InboxRule","Set-InboxRule","Remove-InboxRule",
+        "Enable-InboxRule","Disable-InboxRule","UpdateInboxRules",
+        "New-TransportRule","Set-TransportRule","Remove-TransportRule",
+        "Enable-TransportRule","Disable-TransportRule","Set-Mailbox")
+    | extend UserId = tostring(RawEventData.UserId)
+    | where '{account_upn}' == '' or UserId =~ '{account_upn}'
+    | extend Params = todynamic(RawEventData.Parameters);
+let Extracted = Base
+    | mv-apply p = Params on (
+        summarize
+            RuleName              = anyif(tostring(p.Value), tostring(p.Name) == "Name"),
+            SubjectContains       = anyif(tostring(p.Value), tostring(p.Name) == "SubjectContainsWords"),
+            BodyContains          = anyif(tostring(p.Value), tostring(p.Name) == "BodyContainsWords"),
+            SubjectOrBodyContains = anyif(tostring(p.Value), tostring(p.Name) == "SubjectOrBodyContainsWords"),
+            FromAddresses         = anyif(tostring(p.Value), tostring(p.Name) == "From"),
+            SentTo                = anyif(tostring(p.Value), tostring(p.Name) == "SentTo"),
+            MoveToFolder          = anyif(tostring(p.Value), tostring(p.Name) == "MoveToFolder"),
+            CopyToFolder          = anyif(tostring(p.Value), tostring(p.Name) == "CopyToFolder"),
+            DeleteMessage         = anyif(tostring(p.Value), tostring(p.Name) == "DeleteMessage"),
+            MarkAsRead            = anyif(tostring(p.Value), tostring(p.Name) == "MarkAsRead"),
+            ForwardTo             = anyif(tostring(p.Value), tostring(p.Name) == "ForwardTo"),
+            RedirectTo            = anyif(tostring(p.Value), tostring(p.Name) == "RedirectTo"),
+            FwdAddress            = anyif(tostring(p.Value), tostring(p.Name) == "ForwardingAddress"),
+            FwdSmtp               = anyif(tostring(p.Value), tostring(p.Name) == "ForwardingSmtpAddress"),
+            DeliverAndFwd         = anyif(tostring(p.Value), tostring(p.Name) == "DeliverToMailboxAndForward"))
+    | extend ForwardingDestination = coalesce(ForwardTo, RedirectTo, FwdSmtp, FwdAddress)
+    | extend ForwardingDomain = tolower(extract(@"@([^>\s,;]+)\s*>?\s*$", 1, tostring(ForwardingDestination)))
+    | extend
+        IsExternalForwarding =
+            isnotempty(ForwardingDestination)
+            and isnotempty(ForwardingDomain)
+            and array_length(_xdr_TenantDomains) > 0
+            and not(ForwardingDomain in (_xdr_TenantDomains)),
+        IsMailboxLevelForwarding =
+            ActionType == "Set-Mailbox" and isnotempty(FwdSmtp),
+        FinanceText = tolower(strcat(coalesce(SubjectContains,""), " ",
+                                     coalesce(BodyContains,""),    " ",
+                                     coalesce(SubjectOrBodyContains,""))),
+        IsHiddenName =
+            isnotempty(RuleName)
+            and (RuleName matches regex @"^[\.\-_\s]+$"
+                 or RuleName matches regex @"[\u200B-\u200F\u202A-\u202E\u2066-\u2069]"
+                 or strlen(trim(@"[\.\s\-_]+", RuleName)) <= 1),
+        IsHiddenFolderTarget = MoveToFolder in~ (_xdr_HiddenFolders),
+        IsDelete             = tostring(DeleteMessage) =~ "True",
+        IsHostingProviderIP  = isnotempty(IPAddress) and IPAddress in (HostingIPs),
+        IsAiTMIP             = isnotempty(IPAddress) and IPAddress in (_xdr_AiTMInfrastructure)
+    | extend HasFinanceKeyword = FinanceText has_any (_xdr_FinanceKeywords)
+                              or FinanceText has_any (_xdr_RiskyKeywords);
+let Scored = Extracted
+    | extend Score =
+          (iff(IsMailboxLevelForwarding,                              6, 0))
+        + (iff(IsHiddenFolderTarget and HasFinanceKeyword,            6, 0))
+        + (iff(IsDelete and HasFinanceKeyword,                        5, 0))
+        + (iff(IsExternalForwarding,                                  3, 0))
+        + (iff(IsHiddenName,                                          4, 0))
+        + (iff(IsHostingProviderIP or IsAiTMIP,                       4, 0));
+let RankedDetail = Scored
+    | order by Score desc, Timestamp desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp",             Timestamp,
+            "Operation",             ActionType,
+            "RuleName",              RuleName,
+            "ForwardingDestination", ForwardingDestination,
+            "IsExternal",            IsExternalForwarding,
+            "IsMailboxLevel",        IsMailboxLevelForwarding,
+            "MoveToFolder",          MoveToFolder,
+            "SubjectContains",       SubjectContains,
+            "ClientIP",              IPAddress,
+            "IPCategory",            iff(IsHostingProviderIP, "hostingProvider/tor/anon",
+                                       iff(IsAiTMIP, "aitm-infra", "")),
+            "Score",                 Score), 5)
+        by UserId;
+let Agg = Scored
+    | summarize
+        RuleChangeCount                  = count(),
+        EvidenceTotal                    = count(),
+        FirstSeen                        = min(Timestamp),
+        LastSeen                         = max(Timestamp),
+        IsMailboxLevelForwardingCount    = countif(IsMailboxLevelForwarding),
+        ExternalForwardingCount          = countif(IsExternalForwarding),
+        MoveToHiddenFolderWithFinanceCount = countif(IsHiddenFolderTarget and HasFinanceKeyword),
+        DeleteWithFinanceCount           = countif(IsDelete and HasFinanceKeyword),
+        NewForwardingDestinations        = make_set(iff(isnotempty(ForwardingDestination), ForwardingDestination, ""), 8),
+        RulesWithHiddenNames             = countif(IsHiddenName),
+        HostingProviderClientIPCount     = countif(IsHostingProviderIP or IsAiTMIP),
+        BurstScore                       = max(toint(Score)),
+        MaxScore                         = max(Score)
+        by UserId;
+let SummaryRow = Agg
+    | join kind=leftouter (
+        Scored
+        | summarize HourBurstMax = count() by UserId, BurstHour = bin(Timestamp, 1h)
+        | summarize MaxBurstHour = max(HourBurstMax) by UserId
+      ) on UserId
+    | extend Score = MaxScore + iff(MaxBurstHour > 1, 2, 0)
+    | join kind=leftouter TopEv on UserId
+    | extend Indicators = strcat_array(pack_array(
+            iff(IsMailboxLevelForwardingCount    > 0, "mailbox-fwd-smtp",        ""),
+            iff(MoveToHiddenFolderWithFinanceCount > 0, "moveto-hidden-finance", ""),
+            iff(DeleteWithFinanceCount           > 0, "delete-finance",          ""),
+            iff(ExternalForwardingCount          > 0, "external-forwarding",     ""),
+            iff(RulesWithHiddenNames             > 0, "hidden-rule-name",        ""),
+            iff(HostingProviderClientIPCount     > 0, "hosting-provider-ip",     ""),
+            iff(MaxBurstHour                     > 1, "rule-burst",              "")
+        ), " ")
+    // SuppressedCount = 0: this query has no tenant-curated row-drop filter.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project UserId, Score, RuleChangeCount, IsMailboxLevelForwardingCount,
+              ExternalForwardingCount, MoveToHiddenFolderWithFinanceCount,
+              DeleteWithFinanceCount, NewForwardingDestinations, RulesWithHiddenNames,
+              HostingProviderClientIPCount, Indicators, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, FirstSeen, LastSeen, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Scored
+    | project Timestamp, Operation = ActionType, UserId, RuleName,
+              SubjectContains, BodyContains, SubjectOrBodyContains,
+              FromAddresses, SentTo, MoveToFolder, CopyToFolder, DeleteMessage, MarkAsRead,
+              ForwardingDestination, ForwardingDomain, IsExternalForwarding, IsMailboxLevelForwarding,
+              DeliverAndFwd, ClientIP = IPAddress, IsHostingProviderIP, IsAiTMIP, Score
+    | order by Score desc, Timestamp desc;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail')

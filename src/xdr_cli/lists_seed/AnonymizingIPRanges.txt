@@ -1,0 +1,3 @@
+# Anonymizing IP / VPN / Tor / open-proxy CIDR ranges. CIDR allowed.
+# Populate from chosen feed via future xdr lists refresh.
+# source: <feed selection deferred>

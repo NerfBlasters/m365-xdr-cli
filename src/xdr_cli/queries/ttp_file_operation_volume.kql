@@ -1,0 +1,19 @@
+-- name: ttp_file_operation_volume
+-- description: File operation volume by type for an account — quantifies download, upload, share, and access activity
+-- tier: r3
+-- params: account_oid, start, end, mode=detail
+let DetailRows =
+    CloudAppEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where AccountObjectId == '{account_oid}'
+    | where ActionType in ('FileDownloaded', 'FileUploaded', 'FileSyncDownloadedFull', 'FileShared', 'FileAccessed')
+    | summarize Count=count(), DistinctFiles=dcount(ObjectName) by ActionType, Application;
+let SummaryRow =
+    DetailRows
+    | summarize
+        OpCount    = count(),
+        DistinctOps = make_bag(pack(ActionType, Count))
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Count desc)

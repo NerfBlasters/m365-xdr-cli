@@ -1,0 +1,23 @@
+-- name: qry_connection_scope
+-- description: All devices connecting to a specific remote IP or domain — scopes C2 infrastructure or phishing campaign blast radius
+-- tier: pivot
+-- params: remote, start, end, mode=detail
+// Hoist raw rows so SummaryRow can compute distinct DeviceName and event
+// timestamps directly from the events (DetailRows aggregates them away).
+let RawHits =
+    DeviceNetworkEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where RemoteIP == '{remote}' or RemoteUrl has '{remote}';
+let DetailRows = RawHits
+    | summarize Devices=make_set(DeviceName), ConnectionCount=count() by RemoteIP, RemoteUrl;
+let SummaryRow = RawHits
+    | summarize
+        Connections     = count(),
+        DistinctDevices = dcount(DeviceName),
+        FirstSeen       = min(Timestamp),
+        LastSeen        = max(Timestamp)
+    | extend SchemaVersion = 1
+    | extend Remote = '{remote}';
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by ConnectionCount desc)

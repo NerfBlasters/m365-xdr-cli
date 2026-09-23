@@ -1,0 +1,42 @@
+-- name: identity_cloud_spray_summary
+-- description: Cloud password-spray scope by attacker IP — Severity-banded, error-code distribution, suppression list aware
+-- tier: r2
+-- params: ip, start, end, mode=summary
+-- lists: InternalSubnets, KnownEgressIPs
+let _xdr_InternalSubnets = dynamic([]);
+let _xdr_KnownEgressIPs = dynamic([]);
+let ScoredEvents = EntraIdSignInEvents
+| where Timestamp between(datetime({start}) .. datetime({end}))
+| where IPAddress == '{ip}';
+let SummaryRow = ScoredEvents
+    | summarize
+        Attempts          = count(),
+        EvidenceTotal     = count(),
+        FirstSeen         = min(Timestamp),
+        LastSeen          = max(Timestamp),
+        SuccessCount      = countif(ErrorCode == 0),
+        FailCount         = countif(ErrorCode != 0),
+        UniqueAccounts    = dcount(AccountUpn),
+        SuccessfulAccounts = make_set_if(AccountUpn, ErrorCode == 0),
+        ErrorCodes        = make_bag(pack(tostring(ErrorCode), 1)),
+        Country           = take_any(Country),
+        City              = take_any(City)
+        by IPAddress
+    | extend IsExternal = not(ipv4_is_in_any_range(IPAddress, _xdr_InternalSubnets))
+        and not(IPAddress in (_xdr_KnownEgressIPs))
+        and not(ipv4_is_in_any_range(IPAddress, _xdr_KnownEgressIPs))
+    | extend Score = case(
+        SuccessCount > 0, 10,
+        UniqueAccounts > 50 and FailCount > 100, 5,
+        1)
+    // SuppressedCount = 0: this query has no tenant-curated row-drop filter.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = 0
+    | extend ListHealth = _xdr_ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(SuccessCount > 0, 'high', UniqueAccounts > 50 and FailCount > 100, 'medium', 'low');
+let DetailRows = ScoredEvents
+    | project Timestamp, AccountUpn, IPAddress, ErrorCode, Country, City, Application, Browser;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Timestamp desc)

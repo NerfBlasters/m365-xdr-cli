@@ -1,0 +1,133 @@
+-- name: ttp_ransomware_precursors
+-- description: Pre-deployment ransomware kill-chain — recon, AV tamper, backup kill, operator tooling, DA acquisition
+-- tier: n
+-- params: hours=72, device_name=, mode=summary
+-- lists: KnownServiceAccounts, DomainControllers
+-- agent_hint: DomainControllers list block is a tenant-populated placeholder pending future xdr enumerate spec; until then, novel-DA-logon leg matches against an empty list and operators must hand-seed lists/DomainControllers.txt with DC hostnames per docs/lists.md
+let _xdr_KnownServiceAccounts = dynamic([]);
+let _xdr_DomainControllers    = dynamic([]);
+let Window = {hours}h;
+let DeviceFilter = '{device_name}';
+let ReconCandidates = DeviceProcessEvents
+    | where Timestamp > ago(Window)
+    | where DeviceFilter == '' or DeviceName =~ DeviceFilter
+    | extend CmdLower = tolower(ProcessCommandLine)
+    | where CmdLower has "invoke-bloodhound" or CmdLower has "sharphound"
+         or CmdLower has "powerview" or CmdLower has "adexplorer"
+         or (CmdLower has "nltest" and CmdLower has "/domain_trusts")
+         or (CmdLower has "net" and CmdLower has "group" and CmdLower has "domain admins")
+    | project Timestamp, DeviceName, InitiatingProcessAccountName,
+              Leg = "recon", Detail = substring(ProcessCommandLine, 0, 300);
+let ReconLeg = ReconCandidates
+    | where not(InitiatingProcessAccountName in~ (_xdr_KnownServiceAccounts))
+    | project-away InitiatingProcessAccountName;
+let AvTamperCandidates = DeviceProcessEvents
+    | where Timestamp > ago(Window)
+    | where DeviceFilter == '' or DeviceName =~ DeviceFilter
+    | extend CmdLower = tolower(ProcessCommandLine)
+    | where CmdLower matches regex @"set-mppreference\s+.*-disable"
+         or CmdLower matches regex @"set-mppreference\s+.*-exclusion"
+         or (CmdLower has "mpcmdrun" and CmdLower has "-removedefinitions")
+         or CmdLower matches regex @"\bsc(\.exe)?\b\s+stop\s+(sense|windefend)"
+         or CmdLower matches regex @"stop-service\s+.*-name\s+(""|')?(sense|windefend)"
+    | project Timestamp, DeviceName, InitiatingProcessAccountName,
+              Leg = "av-tamper", Detail = substring(ProcessCommandLine, 0, 300);
+let AvTamperLeg = AvTamperCandidates
+    | where not(InitiatingProcessAccountName in~ (_xdr_KnownServiceAccounts))
+    | project-away InitiatingProcessAccountName;
+let BackupKillLeg = DeviceProcessEvents
+    | where Timestamp > ago(Window)
+    | where DeviceFilter == '' or DeviceName =~ DeviceFilter
+    | extend CmdLower = tolower(ProcessCommandLine)
+    | extend FileLower = tolower(FileName)
+    | where (CmdLower has "stop-process" and (CmdLower has "veeam" or CmdLower has "commvault"
+              or CmdLower has "rubrik" or CmdLower has "wbengine" or CmdLower has "cohesity"
+              or CmdLower has "datto" or CmdLower has "acronis" or CmdLower has "carbonite"
+              or CmdLower has "arcserve" or CmdLower has "yosemite"))
+         or (FileLower in~ ("taskkill.exe", "sc.exe") and (CmdLower has "veeam" or CmdLower has "commvault"
+              or CmdLower has "rubrik" or CmdLower has "wbengine" or CmdLower has "cohesity"
+              or CmdLower has "datto" or CmdLower has "acronis" or CmdLower has "carbonite"
+              or CmdLower has "arcserve" or CmdLower has "yosemite"))
+         or CmdLower matches regex @"\bsc(\.exe)?\b\s+stop\s+(veeamagent|veeambackup|wbengine|cvfwd|cvd|cohesity|bm_main|datto|airgap|acronis|arsm|carbonite|arcserve|yosemite)"
+         or FileLower matches regex @"^(veeam.*|cvfwd|cvd|cohesity.*|bm_main|datto|dattorwa|airgap.*|acronis.*|arsm|carbonite|arcserve.*|yosemite.*)\.exe$"
+    | project Timestamp, DeviceName, Leg = "backup-kill", Detail = substring(ProcessCommandLine, 0, 300);
+let OperatorToolingLeg = DeviceProcessEvents
+    | where Timestamp > ago(Window)
+    | where DeviceFilter == '' or DeviceName =~ DeviceFilter
+    | extend FileLower = tolower(FileName)
+    | extend CmdLower = tolower(ProcessCommandLine)
+    | where FileLower matches regex @"^psexec.*\.exe$"
+         or FileLower in~ ("rclone.exe", "mega.exe", "megacmd.exe")
+         or (FileLower == "anydesk.exe" and (CmdLower has "--silent" or CmdLower has "--install"))
+    | project Timestamp, DeviceName, Leg = "operator-tooling", Detail = strcat(FileName, " ", substring(ProcessCommandLine, 0, 250));
+let DaBaseline = IdentityLogonEvents
+    | where Timestamp between (ago(90d) .. ago(Window))
+    | where LogonType in ("Interactive", "Remote interactive")
+    | where array_length(_xdr_DomainControllers) > 0
+    | where DestinationDeviceName in~ (_xdr_DomainControllers)
+    | summarize KnownDcLogons = make_set(DestinationDeviceName, 256) by AccountUpn;
+let DaCandidates = IdentityLogonEvents
+    | where Timestamp > ago(Window)
+    | where LogonType in ("Interactive", "Remote interactive")
+    | where array_length(_xdr_DomainControllers) > 0
+    | where DestinationDeviceName in~ (_xdr_DomainControllers);
+let DaLeg = DaCandidates
+    | where not(AccountName in~ (_xdr_KnownServiceAccounts))
+    | join kind=leftouter DaBaseline on AccountUpn
+    | where isnull(KnownDcLogons) or not(set_has_element(KnownDcLogons, DestinationDeviceName))
+    | project Timestamp, DeviceName = DestinationDeviceName, Leg = "da-acquisition",
+              Detail = strcat(AccountUpn, " -> ", DestinationDeviceName, " (", LogonType, ")");
+let SuppressedPerDeviceWindow = union
+    (ReconCandidates
+        | where InitiatingProcessAccountName in~ (_xdr_KnownServiceAccounts)
+        | extend WindowBin = bin(Timestamp, 6h)
+        | project DeviceName, WindowBin),
+    (AvTamperCandidates
+        | where InitiatingProcessAccountName in~ (_xdr_KnownServiceAccounts)
+        | extend WindowBin = bin(Timestamp, 6h)
+        | project DeviceName, WindowBin),
+    (DaCandidates
+        | where AccountName in~ (_xdr_KnownServiceAccounts)
+        | extend WindowBin = bin(Timestamp, 6h)
+        | project DeviceName = DestinationDeviceName, WindowBin)
+    | summarize SuppressedCount = count() by DeviceName, WindowBin;
+let Hits = union ReconLeg, AvTamperLeg, BackupKillLeg, OperatorToolingLeg, DaLeg
+    | extend WindowBin = bin(Timestamp, 6h);
+let RankedDetail = Hits | order by Timestamp desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp", Timestamp,
+            "Leg",       Leg,
+            "Detail",    Detail
+            ), 5)
+        by DeviceName, WindowBin;
+let Agg = Hits
+    | summarize
+        DistinctLegs = make_set(Leg, 8),
+        LegCount     = dcount(Leg),
+        EventCount   = count(),
+        EvidenceTotal = count(),
+        FirstSignal  = min(Timestamp),
+        LastSignal   = max(Timestamp),
+        FirstSeen    = min(Timestamp),
+        LastSeen     = max(Timestamp)
+        by DeviceName, WindowBin
+    | extend Score = (LegCount * 3) + (iff(LegCount >= 2, 5, 0))
+    | extend Indicators = strcat_array(DistinctLegs, " ")
+    | where Score >= 3;
+let Correlated = Agg
+    | join kind=leftouter TopEv on DeviceName, WindowBin
+    | join kind=leftouter SuppressedPerDeviceWindow on DeviceName, WindowBin
+    | extend SuppressedCount = coalesce(SuppressedCount, 0)
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project DeviceName, WindowBin, Score, LegCount, DistinctLegs, EventCount,
+              FirstSignal, LastSignal, Indicators, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, FirstSeen, LastSeen, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Hits
+    | project Timestamp, DeviceName, Leg, Detail;
+union
+    (Correlated | where '{mode}' == 'summary' | order by Score desc, LastSignal desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Timestamp desc)

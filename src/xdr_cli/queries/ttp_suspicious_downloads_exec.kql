@@ -1,0 +1,148 @@
+-- name: ttp_suspicious_downloads_exec
+-- description: Executables / scripts run from user-writable paths with at least one behavioural indicator — multi-signal scored
+-- tier: r2
+-- params: hours=24, device_name=, account_upn=, mode=summary
+-- lists: KnownGoodSigners
+-- agent_hint: tables=[DeviceProcessEvents]; row_volume=high; cpu_class=medium; SHA1
+--   5+ device baselines (KnownGoodHashes / KnownGoodChildHashes) are hard-drops because
+--   tenant-curated counts may suppress per spec. Public list `KnownGoodSigners` is wired
+--   as a **negative-weight signal** (Score -3) per the spec's public-list-semantics
+--   contract — an attacker-deployed AnyDesk / signed-vendor binary running from a
+--   user-writable path must still surface and can still reach medium severity via
+--   compounding signals (DoubleExtension, DirectURLLoad, etc.).
+let _xdr_KnownGoodSigners = dynamic([]);
+let SuspiciousPaths = dynamic([
+    "\\downloads\\", "\\temp\\", "\\tmp\\",
+    "\\appdata\\local\\temp\\", "\\appdata\\roaming\\"
+]);
+let LOLBins = dynamic([
+    "powershell.exe", "powershell_ise.exe", "cmd.exe",
+    "wscript.exe", "cscript.exe", "mshta.exe",
+    "rundll32.exe", "regsvr32.exe", "certutil.exe",
+    "bitsadmin.exe", "msiexec.exe", "installutil.exe",
+    "regasm.exe", "msbuild.exe", "cmstp.exe", "wmic.exe",
+    "odbcconf.exe", "pcalua.exe", "curl.exe", "wget.exe"
+]);
+let BrowsersAndOffice = dynamic([
+    "chrome.exe", "firefox.exe", "msedge.exe", "iexplore.exe",
+    "outlook.exe", "winword.exe", "excel.exe", "powerpnt.exe",
+    "mspub.exe", "onenote.exe", "acrobat.exe", "acrord32.exe",
+    "teams.exe"
+]);
+// Suppress parent SHA1s seen on 5+ devices — mass-deployed known-good software
+let KnownGoodHashes = DeviceProcessEvents
+| where Timestamp > ago({hours}h)
+| where ActionType == "ProcessCreated"
+| where InitiatingProcessFolderPath has_any (SuspiciousPaths)
+    and not(InitiatingProcessFolderPath has "\\imecache\\")  // Intune Management Extension deployments
+| where isnotempty(InitiatingProcessSHA1)
+| summarize DeviceCount=dcount(DeviceId) by InitiatingProcessSHA1
+| where DeviceCount >= 5;
+// Suppress child binary SHA1s seen on 5+ devices — software rollouts (InsightWands, Chrome, Firefox etc.)
+let KnownGoodChildHashes = DeviceProcessEvents
+| where Timestamp > ago({hours}h)
+| where ActionType == "ProcessCreated"
+| where FolderPath has_any (SuspiciousPaths)
+    and not(FolderPath has "\\imecache\\")
+| where isnotempty(SHA1)
+| summarize DeviceCount=dcount(DeviceId) by SHA1
+| where DeviceCount >= 5;
+let CandidateRows = DeviceProcessEvents
+| where Timestamp > ago({hours}h)
+| where ActionType == "ProcessCreated"
+| where '{device_name}' == '' or DeviceName has '{device_name}'
+| where '{account_upn}' == '' or AccountUpn =~ '{account_upn}'
+// Candidate events: process in a suspicious path, parent in a suspicious path, or browser/office spawning a LOLBin
+| where (FolderPath has_any (SuspiciousPaths) and not(FolderPath has "\\imecache\\"))
+    or (InitiatingProcessFolderPath has_any (SuspiciousPaths) and not(InitiatingProcessFolderPath has "\\imecache\\"))
+    or (InitiatingProcessFileName in~ (BrowsersAndOffice) and FileName in~ (LOLBins));
+let SuppressedPerDevice = union
+    (CandidateRows | join kind=leftsemi KnownGoodHashes on InitiatingProcessSHA1),
+    (CandidateRows | join kind=leftsemi KnownGoodChildHashes on SHA1)
+    | summarize SuppressedCount = count() by DeviceName;
+let ScoredEvents = CandidateRows
+| join kind=leftanti KnownGoodHashes on InitiatingProcessSHA1
+| join kind=leftanti KnownGoodChildHashes on SHA1
+// KnownGoodSigners is a NEGATIVE-WEIGHT signal, not a row-drop filter — see spec
+// "Public-list semantics" (~line 239). An attacker-deployed AnyDesk or signed-vendor
+// binary running from a user-writable path must still surface and can still reach
+// medium via compounding signals (DoubleExtension, DirectURLLoad, etc.).
+| extend
+    FromSuspiciousPath    = FolderPath has_any (SuspiciousPaths) and not(FolderPath has "\\imecache\\"),
+    ParentInSuspPath      = InitiatingProcessFolderPath has_any (SuspiciousPaths) and not(InitiatingProcessFolderPath has "\\imecache\\"),
+    IsLOLBin              = FileName in~ (LOLBins),
+    ParentIsBrowserOffice = InitiatingProcessFileName in~ (BrowsersAndOffice),
+    // Tight suspicious keywords — exclude bypass/hidden (too common in legitimate installers)
+    SuspiciousCmdLine     = ProcessCommandLine has_any ("downloadstring","encodedcommand","frombase64string","invoke-expression","webclient","urlcache","bitsadmin")
+        or ProcessCommandLine contains "iex(",
+    ParentIsScript        = InitiatingProcessFileName has_any (".vbs",".js",".hta",".ps1"),
+    // Double extension: document/image with executable suffix (invoice.pdf.exe)
+    DoubleExtension       = FileName matches regex @"\.(pdf|doc|docx|xls|xlsx|txt|jpg|png)\.(exe|bat|cmd|ps1|vbs|js)$",
+    // LOLBin called with an inline URL — Squiblydoo, certutil download, MSHTA stager etc.
+    DirectURLLoad         = ProcessCommandLine has_any ("http://","https://") and FileName in~ ("mshta.exe","wscript.exe","cscript.exe","regsvr32.exe","certutil.exe","bitsadmin.exe"),
+    // .tmp file as parent — InnoSetup/dropper self-extractor pattern (e.g. tlmvqbrv.tmp)
+    ParentIsTmpDropper    = InitiatingProcessFileName endswith ".tmp"
+        and InitiatingProcessFolderPath has_any (SuspiciousPaths),
+    // Public-list signed vendor — negative-weight signal, not a hard-drop
+    IsKnownGoodSigner     = InitiatingProcessVersionInfoCompanyName in (_xdr_KnownGoodSigners)
+| extend Score =
+    (iif(FromSuspiciousPath, 3, 0)) +
+    (iif(ParentInSuspPath, 2, 0)) +
+    (iif(IsLOLBin, 2, 0)) +
+    (iif(ParentIsBrowserOffice, 2, 0)) +
+    (iif(SuspiciousCmdLine, 4, 0)) +
+    (iif(ParentIsScript, 3, 0)) +
+    (iif(DoubleExtension, 5, 0)) +
+    (iif(DirectURLLoad, 5, 0)) +
+    (iif(ParentIsTmpDropper, 2, 0)) +
+    (iif(IsKnownGoodSigner, -3, 0))
+// Require at least one behavioral/contextual signal beyond path location alone
+| where IsLOLBin or SuspiciousCmdLine or ParentIsBrowserOffice or ParentIsScript
+    or DoubleExtension or DirectURLLoad or ParentIsTmpDropper
+| where Score >= 4
+| extend Indicators = trim(" ", strcat(
+    iif(FromSuspiciousPath, "exec-from-userpath ", ""),
+    iif(ParentInSuspPath, "parent-in-userpath ", ""),
+    iif(IsLOLBin, "lolbin ", ""),
+    iif(ParentIsBrowserOffice, "browser-office-parent ", ""),
+    iif(SuspiciousCmdLine, "suspicious-cmdline ", ""),
+    iif(ParentIsScript, "script-parent ", ""),
+    iif(DoubleExtension, "DOUBLE-EXTENSION ", ""),
+    iif(DirectURLLoad, "DIRECT-URL-LOAD ", ""),
+    iif(ParentIsTmpDropper, "tmp-dropper-parent ", ""),
+    iif(IsKnownGoodSigner, "signed-vendor ", "")
+    ));
+let SummaryRow = ScoredEvents
+    | order by Score desc
+    | summarize
+        Score                   = max(Score),
+        SuspiciousExecutionCount = count(),
+        EvidenceTotal           = count(),
+        FirstSeen               = min(Timestamp),
+        LastSeen                = max(Timestamp),
+        MaxScore                = max(Score),
+        Indicators              = make_set(Indicators, 20),
+        TopEvidence = make_list(pack(
+            'Timestamp',           Timestamp,
+            'Device',              DeviceName,
+            'Account',             AccountName,
+            'FileName',            FileName,
+            'FolderPath',          FolderPath,
+            'ProcessCommandLine',  ProcessCommandLine,
+            'ParentProcess',       InitiatingProcessFileName,
+            'Score',               Score), 5)
+        by DeviceName
+    | join kind=leftouter SuppressedPerDevice on DeviceName
+    | extend SuppressedCount = coalesce(SuppressedCount, 0)
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 8, 'critical', Score >= 6, 'high', Score >= 4, 'medium', 'low');
+let DetailRows = ScoredEvents
+    | project Timestamp, DeviceName, AccountName, Score, Indicators,
+        FileName, FolderPath, ProcessCommandLine,
+        InitiatingProcessFileName, InitiatingProcessFolderPath,
+        InitiatingProcessCommandLine, SHA1;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Timestamp desc)

@@ -1,0 +1,22 @@
+-- name: qry_device_logons
+-- description: Logon events on a specific device or from a specific remote IP — identifies who accessed a compromised machine
+-- tier: pivot
+-- params: device_name, start, end, mode=detail
+let DetailRows =
+    DeviceLogonEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where DeviceName =~ '{device_name}'
+    | project Timestamp, AccountName, AccountDomain, LogonType, ActionType, RemoteIP, RemoteDeviceName;
+let SummaryRow =
+    DetailRows
+    | summarize
+        LogonCount        = count(),
+        DistinctAccounts  = dcount(AccountName),
+        DistinctSourceIPs = dcount(RemoteIP),
+        Successes         = countif(ActionType == 'LogonSuccess'),
+        FirstSeen         = min(Timestamp),
+        LastSeen          = max(Timestamp)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp asc)

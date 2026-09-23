@@ -1,0 +1,181 @@
+-- name: ttp_lateral_psexec_wmi
+-- description: Lateral movement via PsExec / WMI / PSRemoting / remote schtasks — cross-device fan-out, unsigned tooling, suspicious cmdline, suppression-list aware
+-- tier: r1
+-- params: hours=24, device_id=, account_upn=, mode=summary
+-- lists: KnownGoodSigners, KnownRemoteSupportTools, KnownServiceAccounts, InternalSubnets
+-- agent_hint: tables=[DeviceProcessEvents]; row_volume=medium; cpu_class=medium; multi-leg union of PsExec/WMI/Invoke-Command/Enter-PSSession/schtasks-/S/services.exe-spawn patterns. Cross-device fan-out keyed on (InitiatingProcessAccountName, DeviceId) -> distinct RemoteTargets parsed from cmdline (\\target) or InitiatingProcessRemoteSessionDeviceName.
+let _xdr_KnownGoodSigners        = dynamic([]);
+let _xdr_KnownRemoteSupportTools = dynamic([]);
+let _xdr_KnownServiceAccounts    = dynamic([]);
+let _xdr_InternalSubnets         = dynamic([]);
+let Window = {hours}h;
+let DownloadCmdlets = dynamic([
+    "downloadstring","downloadfile","invoke-webrequest","iwr","webclient",
+    "frombase64string","invoke-expression","iex","bitstransfer"]);
+let Base = DeviceProcessEvents
+    | where Timestamp > ago(Window)
+    | where ActionType == "ProcessCreated"
+    | where '{device_id}'   == '' or DeviceId == '{device_id}'
+    | where '{account_upn}' == '' or InitiatingProcessAccountUpn  =~ '{account_upn}'
+                                  or InitiatingProcessAccountName =~ '{account_upn}'
+                                  or AccountUpn                   =~ '{account_upn}'
+                                  or AccountName                  =~ '{account_upn}';
+let PsExecLeg = Base
+    | where FileName in~ ("psexec.exe","psexec64.exe","psexesvc.exe","paexec.exe")
+       or InitiatingProcessFileName in~ ("psexec.exe","psexec64.exe","psexesvc.exe","paexec.exe")
+       or InitiatingProcessVersionInfoOriginalFileName in~ ("psexec.exe","psexesvc.exe")
+    | extend ToolFileName = FileName, LegName = "psexec";
+let WmiLeg = Base
+    | where (InitiatingProcessFileName =~ "wmiprvse.exe"
+             and FileName in~ ("cmd.exe","powershell.exe","pwsh.exe"))
+         or FileName =~ "wmic.exe"
+         or (FileName =~ "wmic.exe"
+             and isnotempty(ProcessVersionInfoOriginalFileName)
+             and ProcessVersionInfoOriginalFileName !~ "wmic.exe")
+    | extend ToolFileName = FileName, LegName = "wmi";
+let PsRemotingLeg = Base
+    | where FileName in~ ("powershell.exe","pwsh.exe")
+    | where ProcessCommandLine has_any ("Invoke-Command","Enter-PSSession","New-PSSession")
+    | extend ToolFileName = FileName, LegName = "psremoting";
+let SchTasksLeg = Base
+    | where FileName =~ "schtasks.exe"
+    | where ProcessCommandLine has "/S " or ProcessCommandLine has "/s "
+    | where ProcessCommandLine has @"\\"
+    | extend ToolFileName = FileName, LegName = "schtasks";
+let ServicesLeg = Base
+    | where InitiatingProcessFileName =~ "services.exe"
+    | where IsInitiatingProcessRemoteSession == true
+         or isnotempty(InitiatingProcessRemoteSessionIP)
+    | extend ToolFileName = FileName, LegName = "services-remote";
+let UnionLegs = union PsExecLeg, WmiLeg, PsRemotingLeg, SchTasksLeg, ServicesLeg
+    | extend
+        CmdLower = tolower(ProcessCommandLine),
+        UncTarget = extract(@"\\\\([A-Za-z0-9._-]+)", 1, ProcessCommandLine),
+        SchtasksTarget = extract(@"(?i)\s/S\s+\\\\?([A-Za-z0-9._-]+)", 1, ProcessCommandLine),
+        InvokeTarget   = extract(@"(?i)-ComputerName\s+([A-Za-z0-9._,-]+)", 1, ProcessCommandLine),
+        SessionTarget  = tostring(InitiatingProcessRemoteSessionDeviceName),
+        SessionIp      = tostring(InitiatingProcessRemoteSessionIP)
+    | extend RemoteTarget = tolower(coalesce(
+            iff(isnotempty(SchtasksTarget), SchtasksTarget, ""),
+            iff(isnotempty(InvokeTarget),   InvokeTarget,   ""),
+            iff(isnotempty(UncTarget),      UncTarget,      ""),
+            SessionTarget))
+    | where isnotempty(RemoteTarget) or LegName in ("psexec","wmi","services-remote")
+    | extend
+        ParentSignerKnownGood = isnotempty(InitiatingProcessVersionInfoCompanyName)
+                                and InitiatingProcessVersionInfoCompanyName in~ (_xdr_KnownGoodSigners),
+        ParentIsRemoteSupport = isnotempty(InitiatingProcessFileName)
+                                and InitiatingProcessFileName in~ (_xdr_KnownRemoteSupportTools),
+        ToolIsRemoteSupport   = isnotempty(FileName)
+                                and FileName in~ (_xdr_KnownRemoteSupportTools),
+        AccountKnownService   = isnotempty(InitiatingProcessAccountName)
+                                and (InitiatingProcessAccountName in~ (_xdr_KnownServiceAccounts)
+                                     or InitiatingProcessAccountUpn in~ (_xdr_KnownServiceAccounts)),
+        SourceIp              = SessionIp,
+        SourceIpInternal      = isnotempty(SessionIp)
+                                and ipv4_is_in_any_range(SessionIp, _xdr_InternalSubnets),
+        ToolUnsigned          = isempty(ProcessVersionInfoCompanyName) and FileName in~ ("psexec.exe","psexec64.exe","paexec.exe","wmic.exe"),
+        ToolRenamed           = isnotempty(ProcessVersionInfoOriginalFileName)
+                                and tolower(ProcessVersionInfoOriginalFileName) != tolower(FileName)
+                                and FileName in~ ("wmic.exe","psexec.exe","psexec64.exe"),
+        SuspiciousScriptBlock = LegName == "psremoting"
+                                and (CmdLower has "-encodedcommand"
+                                     or CmdLower has_any (DownloadCmdlets)),
+        IsOffHours            = hourofday(Timestamp) < 6 or hourofday(Timestamp) > 22;
+let Fanout = UnionLegs
+    | where isnotempty(RemoteTarget)
+    | summarize FanoutTargets = dcount(RemoteTarget, 2)
+        by InitiatingProcessAccountName, DeviceId;
+let Scored = UnionLegs
+    | join kind=leftouter Fanout on InitiatingProcessAccountName, DeviceId
+    | extend FanoutTargets = coalesce(FanoutTargets, 0)
+    | extend
+        IsPsExec        = LegName == "psexec",
+        IsWmiSpawn      = LegName == "wmi",
+        IsInvokeCommand = LegName == "psremoting",
+        IsCrossDevice   = FanoutTargets >= 3
+    | extend Score =
+          (iff(IsPsExec,                                 4, 0))
+        + (iff(IsWmiSpawn,                               5, 0))
+        + (iff(IsInvokeCommand,                          3, 0))
+        + (iff(LegName == "schtasks",                    3, 0))
+        + (iff(LegName == "services-remote",             3, 0))
+        + (iff(IsCrossDevice,                            5, 0))
+        + (iff(SuspiciousScriptBlock,                    4, 0))
+        + (iff(ToolUnsigned or ToolRenamed,              4, 0))
+        + (iff(IsOffHours,                               2, 0))
+        + (iff(isnotempty(SourceIp) and not(SourceIpInternal), 2, 0))
+        - (iff(ParentSignerKnownGood,                    3, 0))
+        - (iff(ParentIsRemoteSupport or ToolIsRemoteSupport, 3, 0))
+        - (iff(AccountKnownService,                      3, 0))
+    | where Score >= 3;
+let RankedDetail = Scored | order by Score desc, Timestamp desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp",     Timestamp,
+            "SourceDevice",  DeviceName,
+            "SourceAccount", InitiatingProcessAccountName,
+            "ToolFileName",  ToolFileName,
+            "LegName",       LegName,
+            "RemoteTarget",  RemoteTarget,
+            "Cmdline",       substring(ProcessCommandLine, 0, 300),
+            "FanoutTargets", FanoutTargets,
+            "IsCrossDevice", IsCrossDevice,
+            "IsOffHours",    IsOffHours,
+            "Score",         Score), 5)
+        by DeviceId, DeviceName, InitiatingProcessAccountName;
+let Agg = Scored
+    | summarize
+        Score                = max(Score),
+        LateralCount         = count(),
+        EvidenceTotal        = count(),
+        FirstSeen            = min(Timestamp),
+        LastSeen             = max(Timestamp),
+        FanoutTargets        = max(FanoutTargets),
+        DistinctRemoteTargets = make_set(RemoteTarget, 8),
+        DistinctLegs         = make_set(LegName, 6),
+        AnyPsExec            = countif(IsPsExec) > 0,
+        AnyWmiSpawn          = countif(IsWmiSpawn) > 0,
+        AnyInvokeCommand     = countif(IsInvokeCommand) > 0,
+        AnyCrossDevice       = countif(IsCrossDevice) > 0,
+        AnyUnsignedTooling   = countif(ToolUnsigned or ToolRenamed) > 0,
+        AnyOffHours          = countif(IsOffHours) > 0,
+        AnyKnownService      = countif(AccountKnownService) > 0,
+        ExternalSourceIPs    = make_set(iff(isnotempty(SourceIp) and not(SourceIpInternal), SourceIp, ""), 8)
+        by DeviceId, DeviceName, InitiatingProcessAccountName;
+let SummaryRow = Agg
+    | join kind=leftouter TopEv on DeviceId, DeviceName, InitiatingProcessAccountName
+    | extend Indicators = strcat_array(pack_array(
+            iff(AnyPsExec,                "psexec",       ""),
+            iff(AnyWmiSpawn,              "wmi-spawn",    ""),
+            iff(AnyInvokeCommand,         "invoke-cmd",   ""),
+            iff(AnyCrossDevice,           "cross-device", ""),
+            iff(AnyUnsignedTooling,       "unsigned-tool",""),
+            iff(AnyOffHours,              "off-hours",    ""),
+            iff(array_length(ExternalSourceIPs) > 0, "external-source", "")
+        ), " ")
+    // SuppressedCount = 0: KSA / KnownGoodSigners / KnownRemoteSupportTools are wired as negative-weight annotations, not row-drops.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project DeviceId, DeviceName, SourceAccount = InitiatingProcessAccountName,
+              Score, LateralCount, FanoutTargets, DistinctRemoteTargets, DistinctLegs,
+              IsUnsignedTooling = AnyUnsignedTooling, NonItAccount = not(AnyKnownService),
+              ExternalSourceIPs, Indicators, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, FirstSeen, LastSeen, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Scored
+    | project Timestamp, DeviceId, SourceDevice = DeviceName,
+              SourceAccount = InitiatingProcessAccountName, AccountDomain = InitiatingProcessAccountDomain,
+              LegName, ToolFileName, ParentProcess = InitiatingProcessFileName,
+              ParentSigner = InitiatingProcessVersionInfoCompanyName,
+              RemoteTarget, SourceIp, FanoutTargets,
+              IsPsExec = toint(IsPsExec), IsWmiSpawn = toint(IsWmiSpawn),
+              IsInvokeCommand = toint(IsInvokeCommand), IsCrossDevice = toint(IsCrossDevice),
+              IsOffHours = toint(IsOffHours), Score,
+              Cmdline = substring(ProcessCommandLine, 0, 500)
+    | order by Score desc, Timestamp desc;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Score desc, Timestamp desc)

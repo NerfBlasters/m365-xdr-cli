@@ -1,0 +1,106 @@
+-- name: ttp_facedancer_webview2
+-- description: FaceDancer / DLL proxy sideloading — rename + replace correlation in user-writable paths, WebView2 target awareness
+-- tier: r2
+-- params: hours=24, device_name=, mode=summary
+-- lists: KnownGoodSigners
+-- agent_hint: Public list KnownGoodSigners is wired as a -3 negative-weight signal,
+--   not a row-drop, per spec "Public-list semantics" (line 239-247). A signed
+--   software updater that performs both rename + replace (the legitimate Opera /
+--   Chrome pattern) is already filtered by the same-process check at line 50;
+--   this list is the secondary safety net for unusual signed-vendor activity.
+let _xdr_KnownGoodSigners = dynamic([]);
+let LookbackHours = {hours};
+let CorrelationWindow = 10m;
+// Step 1: Find DLLs renamed to a backup/non-.dll name in user-writable paths
+// This is the "move original aside" step in DLL proxy sideloading
+let DllRenames = DeviceFileEvents
+| where Timestamp > ago(LookbackHours * 1h)
+| where ActionType == "FileRenamed"
+| where PreviousFileName endswith ".dll"
+// New name lacks .dll extension OR matches a known backup naming pattern
+| where not(FileName endswith ".dll")
+    or tolower(FileName) matches regex @"[-_](old|bak|orig|backup|real|legit|clean)\.dll$"
+    or tolower(FileName) matches regex @"\.(old|bak|orig|backup|tmp|save)$"
+| where FolderPath has_any ("\\appdata\\", "\\users\\", "\\programdata\\", "\\temp\\")
+| where '{device_name}' == '' or DeviceName has '{device_name}'
+| extend RenameDir = tolower(extract(@"^(.*\\)[^\\]+$", 1, FolderPath))
+| project RenameTime=Timestamp, DeviceId, DeviceName, UserAccount=InitiatingProcessAccountName,
+    RenameDir, OriginalDllName=tolower(PreviousFileName), RenamedTo=FileName,
+    RenamingProcess=InitiatingProcessFileName,
+    RenamingVendor=InitiatingProcessVersionInfoCompanyName;
+// Step 2: Find new DLL files created in user-writable paths (the malicious replacement)
+let DllCreations = DeviceFileEvents
+| where Timestamp > ago(LookbackHours * 1h)
+| where ActionType == "FileCreated"
+| where FileName endswith ".dll"
+| where FolderPath has_any ("\\appdata\\", "\\users\\", "\\programdata\\", "\\temp\\")
+| extend CreateDir = tolower(extract(@"^(.*\\)[^\\]+$", 1, FolderPath))
+| project CreateTime=Timestamp, DeviceId, CreateDir,
+    CreatedDllName=tolower(FileName),
+    DllSHA1=SHA1,
+    DroppingProcess=InitiatingProcessFileName,
+    DroppingVendor=InitiatingProcessVersionInfoCompanyName,
+    DroppingCmd=InitiatingProcessCommandLine;
+// Step 3: Correlate — same device + same directory + created DLL matches original renamed DLL
+//         within the time window. This is the FaceDancer "rename + replace" pattern.
+let ScoredEvents = DllRenames
+| join kind=inner DllCreations on DeviceId,
+    $left.RenameDir == $right.CreateDir,
+    $left.OriginalDllName == $right.CreatedDllName
+| where CreateTime >= RenameTime - CorrelationWindow
+    and CreateTime <= RenameTime + CorrelationWindow
+// Suppress legitimate software updaters: same signed process does both the rename and the
+// creation (e.g., Opera assistant_installer.exe, Chrome updater). FaceDancer uses an
+// unknown/unsigned dropper or a different process for each step.
+| where not(RenamingProcess =~ DroppingProcess and isnotempty(RenamingVendor))
+// KnownGoodSigners is a NEGATIVE-WEIGHT signal, not a row-drop filter — see spec
+// "Public-list semantics" (~line 239). A signed BYOVD / partner-vendor DLL must
+// still surface in detail mode and can still reach medium via compounding signals.
+| extend IsWebView2Target = (OriginalDllName == "domain_actions.dll")
+| extend IsKnownGoodSigner = DroppingVendor in (_xdr_KnownGoodSigners)
+| extend SeverityScore = case(
+    // domain_actions.dll is the primary FaceDancer WebView2 hijack target
+    IsWebView2Target, 3,
+    // Other DLLs in Edge / user-installed programs paths
+    RenameDir has_any ("\\appdata\\local\\microsoft\\edge", "\\appdata\\local\\programs\\"), 2,
+    1)
+| extend Score = SeverityScore + iif(IsKnownGoodSigner, -3, 0)
+| extend Severity = case(Score >= 3, 'critical', Score == 2, 'high', Score >= 1, 'medium', 'low');
+let SummaryRow = ScoredEvents
+    | order by Score desc
+    | summarize
+        Score                  = max(Score),
+        RenameReplaceEventCount = count(),
+        EvidenceTotal          = count(),
+        FirstSeen              = min(RenameTime),
+        LastSeen               = max(RenameTime),
+        IsWebView2TargetCount  = countif(IsWebView2Target),
+        KnownGoodSignerCount   = countif(IsKnownGoodSigner),
+        TopEvidence = make_list(pack(
+            'RenameTime',     RenameTime,
+            'CreateTime',     CreateTime,
+            'Device',         DeviceName,
+            'OriginalDllName', OriginalDllName,
+            'RenamedTo',      RenamedTo,
+            'DroppingProcess', DroppingProcess,
+            'DroppingVendor', DroppingVendor,
+            'Score',          Score), 5)
+        by DeviceName
+    // SuppressedCount = 0: KnownGoodSigners is wired as a -3 negative-weight annotation, not a row-drop.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 3, 'critical', Score == 2, 'high', Score >= 1, 'medium', 'low');
+let DetailRows = ScoredEvents
+    | project
+        RenameTime, CreateTime, Severity, Score,
+        DeviceName, UserAccount,
+        IsWebView2Target, IsKnownGoodSigner,
+        OriginalDllName, RenamedTo, RenameDir,
+        DllSHA1,
+        DroppingProcess, DroppingVendor, DroppingCmd,
+        RenamingProcess, RenamingVendor;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by RenameTime desc)

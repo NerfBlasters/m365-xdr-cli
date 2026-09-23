@@ -1,0 +1,11 @@
+# Security policy changes require maintainer review.
+/.github/ @NerfBlasters
+/pyproject.toml @NerfBlasters
+/uv.lock @NerfBlasters
+/.gitleaks.toml @NerfBlasters
+/src/xdr_cli/auth.py @NerfBlasters
+/src/xdr_cli/portal_auth.py @NerfBlasters
+/src/xdr_cli/secret_files.py @NerfBlasters
+/SECURITY.md @NerfBlasters
+/src/xdr_cli/commands/auth_cmd.py @NerfBlasters
+/tests/test_ci_security.py @NerfBlasters

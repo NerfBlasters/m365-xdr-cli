@@ -1,0 +1,207 @@
+-- name: ttp_ldap_process_attribution
+-- description: Correlate MDI LDAP recon with initiating process on source device — Severity-banded for triage
+-- tier: r2
+-- params: device_name, start, end, lookback=0d, mode=summary
+-- lists: KnownServiceAccounts, KnownRemoteSupportTools
+-- agent_hint: Public list KnownRemoteSupportTools is wired as a -3 negative-weight
+--   signal (Connections - 3 when the initiating process is a known RMM tool),
+--   not a row-drop, per spec "Public-list semantics" (line 239-247). RMM
+--   tools are real attacker tradecraft (e.g., AnyDesk install on a CFO
+--   laptop); silently dropping them masks the BYOL ("bring your own legit")
+--   attack class. KnownServiceAccounts (line 28) IS a row-drop because it
+--   is a tenant-curated list per spec line 244. The MDI sensor process
+--   `microsoft.tri.sensor.exe` (running as NT AUTHORITY\Local Service) is
+--   hard-excluded inside the query body since it is a universally-known
+--   benign process performing DC connectivity health checks — analysts on
+--   a fresh tenant without a populated KnownServiceAccounts list would
+--   otherwise see it surfaced as low-severity LDAP attribution. The
+--   `lookback` param widens ONLY the MDI/IdentityQueryEvents discovery
+--   window backward from `start` (default 0d = no lookback); useful when
+--   MDI LDAP events are sparse and a tight start/end leaves
+--   LdapTargetRows empty while MDE has plenty of LDAP-port traffic.
+--   LDAP-destination IPs come from TWO sources, unioned and tagged via the
+--   `IpSource` field on output rows: `mdi` (from
+--   IdentityQueryEvents.DestinationIPAddress — the authoritative
+--   LDAP-semantic source) and `mde-learned` (RemoteIPs observed in
+--   DeviceNetworkEvents rows whose RemoteUrl already matched an MDI FQDN
+--   target — i.e., we learned the IP from a confirmed-LDAP connection in
+--   the same window). The MDE-learned source is essential in tenants
+--   where MDI never populates DestinationIPAddress: without it the
+--   IsIpFallback path is dormant and DC-to-DC empty-RemoteUrl
+--   connections silently disappear from results. The `IpSource` value
+--   `fqdn` denotes the strong FQDN-direct correlation path (RemoteUrl
+--   matched a known MDI target directly); the two IP-fallback values
+--   denote progressively weaker correlation.
+let _xdr_KnownServiceAccounts = dynamic([]);
+let _xdr_KnownRemoteSupportTools = dynamic([]);
+let t0=datetime({start});
+let t1=datetime({end});
+// MDI leg's window starts `lookback` before t0 so LDAP target discovery can
+// reach further back than the MDE attribution window. Default 0d preserves
+// historical behavior; set e.g. `--param lookback=7d` when MDI events are
+// rare for the device under investigation.
+let t0_ldap = t0 - totimespan({lookback});
+let deviceNameToInvestigate = "{device_name}";
+// MDI tells us WHICH DCs received LDAP queries from this device. Two artefacts:
+//   * LdapTargets   — FQDNs of LDAP destinations (the strongest signal).
+//   * LdapTargetIPs — destination IPs, used to attribute DC-to-DC LDAP and
+//     other empty-RemoteUrl connections that DeviceNetworkEvents records
+//     without DNS context.
+// LdapTargetIPs comes from TWO sources (unioned + deduped below):
+//   1. MDI-provided — IdentityQueryEvents.DestinationIPAddress on the
+//      LdapTargetRows above. Authoritative when present.
+//   2. MDE-learned — in the same window/device, DeviceNetworkEvents rows on
+//      LDAP ports whose RemoteUrl already matches an MDI FQDN target. Their
+//      RemoteIP is a known-LDAP-destination IP we can reuse to attribute the
+//      empty-RemoteUrl rows from the same DC. Critical in tenants where MDI
+//      never populates DestinationIPAddress.
+let LdapTargetRows = IdentityQueryEvents
+| where Timestamp between (t0_ldap .. t1)
+| where DeviceName has deviceNameToInvestigate
+| where Protocol =~ "LDAP"
+| where ActionType has "Ldap"
+| extend DestFqdn=tolower(tostring(DestinationDeviceName)),
+         DestIP=tostring(DestinationIPAddress)
+| where isnotempty(DestFqdn) or isnotempty(DestIP);
+let LdapTargets = LdapTargetRows | where isnotempty(DestFqdn) | distinct DestFqdn;
+let LdapTargetIPsMdi = LdapTargetRows
+| where isnotempty(DestIP)
+| project DestIP, DestFqdn, IpSource="mdi";
+let LdapTargetIPsMdeLearned = DeviceNetworkEvents
+| where Timestamp between (t0 .. t1)
+| where DeviceName has deviceNameToInvestigate
+| where RemotePort in (389, 636, 3268, 3269)
+| extend RemoteFqdnLower=tolower(tostring(RemoteUrl))
+| where isnotempty(RemoteFqdnLower) and RemoteFqdnLower in (LdapTargets) and isnotempty(RemoteIP)
+| project DestIP=RemoteIP, DestFqdn=RemoteFqdnLower, IpSource="mde-learned"
+| distinct DestIP, DestFqdn, IpSource;
+let LdapTargetIPSources = union LdapTargetIPsMdi, LdapTargetIPsMdeLearned;
+let LdapTargetIPs = LdapTargetIPSources | distinct DestIP;
+// IP -> FQDN map for back-filling RemoteFqdn on rows where RemoteUrl is empty
+// but the IP matched a known LDAP target. When the same IP appears in both
+// the MDI-provided and MDE-learned sources, prefer the MDI tag (stronger
+// evidence); the resolved FQDN is the same either way.
+let LdapIpToFqdn = LdapTargetIPSources
+| where isnotempty(DestIP) and isnotempty(DestFqdn)
+| summarize
+    ResolvedFqdn = take_any(DestFqdn),
+    HasMdi       = countif(IpSource == "mdi") > 0
+    by DestIP
+| extend ResolvedIpSource = iif(HasMdi, "mdi", "mde-learned")
+| project DestIP, ResolvedFqdn, ResolvedIpSource;
+let AttributedCandidates = DeviceNetworkEvents
+| where Timestamp between (t0 .. t1)
+| where DeviceName has deviceNameToInvestigate
+| where RemotePort in (389, 636, 3268, 3269)
+| extend RemoteFqdn=tolower(tostring(RemoteUrl))
+| where RemoteFqdn in (LdapTargets) or (isnotempty(RemoteIP) and RemoteIP in (LdapTargetIPs))
+| extend IsIpFallback = isempty(RemoteFqdn) and RemoteIP in (LdapTargetIPs)
+| join kind=leftouter LdapIpToFqdn on $left.RemoteIP == $right.DestIP
+| extend RemoteFqdn = case(
+    isnotempty(RemoteFqdn), RemoteFqdn,
+    isnotempty(ResolvedFqdn), ResolvedFqdn,
+    RemoteIP)
+// IpSource captures HOW each row was correlated to a known LDAP destination:
+//   `fqdn`        — RemoteUrl matched an MDI FQDN target directly (strongest).
+//   `mdi`         — RemoteUrl empty; RemoteIP matched an MDI-provided IP.
+//   `mde-learned` — RemoteUrl empty; RemoteIP matched an IP we learned from
+//                   another MDE row where RemoteUrl was populated and matched
+//                   an MDI FQDN target in the same window.
+| extend IpSource = case(
+    not(IsIpFallback), "fqdn",
+    isnotempty(ResolvedIpSource), ResolvedIpSource,
+    "unknown")
+| project-away DestIP, ResolvedFqdn, ResolvedIpSource;
+let AttributedEvents = AttributedCandidates
+// The MDI sensor process (microsoft.tri.sensor.exe, running as NT AUTHORITY\Local
+// Service) makes periodic LDAP health-check connections to its DC. It is a
+// universally-known benign process — hard-exclude it inside the query body so
+// fresh tenants without a populated KnownServiceAccounts list still get clean
+// output. See agent_hint at the top of the file for rationale.
+| where InitiatingProcessFileName !~ "microsoft.tri.sensor.exe"
+// KnownServiceAccounts is a tenant-curated allowlist per spec line 244 — row-drop is permitted.
+| where InitiatingProcessAccountName !in (_xdr_KnownServiceAccounts)
+// KnownRemoteSupportTools is a NEGATIVE-WEIGHT signal, not a row-drop filter — see spec
+// "Public-list semantics" (~line 239). An attacker-deployed RMM tool (BYOL: AnyDesk on
+// a CFO laptop) must still surface in detail mode and can still reach medium via volume.
+| extend IsRemoteSupportTool = InitiatingProcessFileName in (_xdr_KnownRemoteSupportTools);
+let SuppressedPerDevice = AttributedCandidates
+| where InitiatingProcessAccountName in (_xdr_KnownServiceAccounts)
+   or InitiatingProcessFileName =~ "microsoft.tri.sensor.exe"
+| summarize SuppressedCount = count() by DeviceName;
+let SummaryRow = AttributedEvents
+    // KQL rejects nested aggregations: `make_list(pack(... 'FirstSeen',
+    // min(Timestamp) ...))` is invalid because min()/max() inside a
+    // make_list inside a summarize are double-aggregations. Project per-row
+    // FirstSeen/LastSeen as the row's own Timestamp and let the outer
+    // summarize compute the group-level min/max separately.
+    | summarize
+        Connections  = count(),
+        IpFallbackCount = countif(IsIpFallback),
+        FirstSeen    = min(Timestamp),
+        LastSeen     = max(Timestamp),
+        Ports        = make_set(RemotePort, 10),
+        RemoteIPs    = make_set(RemoteIP, 20),
+        IpSources    = make_set(IpSource, 4),
+        SampleCmd    = make_set(InitiatingProcessCommandLine, 3),
+        NonItAccountCount = dcount(InitiatingProcessAccountName),
+        TopEvidence = make_list(pack(
+            'Process',    InitiatingProcessFileName,
+            'Account',    InitiatingProcessAccountName,
+            'RemoteFqdn', RemoteFqdn,
+            'IpSource',   IpSource,
+            'Timestamp',  Timestamp), 5)
+        by DeviceName, InitiatingProcessFileName,
+           InitiatingProcessAccountDomain, InitiatingProcessAccountName,
+           InitiatingProcessAccountSid, IsRemoteSupportTool
+    | extend ProcessCount = 1
+    | extend Score = Connections + iif(IsRemoteSupportTool, -3, 0)
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score > 50, 'high', Score > 10, 'medium', 'low')
+    | summarize
+        SchemaVersion    = max(SchemaVersion),
+        ProcessCount     = count(),
+        EvidenceTotal    = count(),
+        FirstSeen        = min(FirstSeen),
+        LastSeen         = max(LastSeen),
+        MaxConnections   = max(Connections),
+        MaxScore         = max(Score),
+        IpFallbackCount  = sum(IpFallbackCount),
+        NonItAccountCount = sum(NonItAccountCount),
+        RemoteSupportToolCount = countif(IsRemoteSupportTool),
+        TopEvidence      = make_list(pack(
+            'Process',     InitiatingProcessFileName,
+            'Account',     InitiatingProcessAccountName,
+            'Connections', Connections,
+            'IpFallbackCount', IpFallbackCount,
+            'IpSources',   IpSources,
+            'Score',       Score,
+            'IsRemoteSupportTool', IsRemoteSupportTool,
+            'FirstSeen',   FirstSeen,
+            'LastSeen',    LastSeen), 5)
+        by DeviceName, Severity
+    | join kind=leftouter SuppressedPerDevice on DeviceName
+    | extend SuppressedCount = coalesce(SuppressedCount, 0)
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth;
+let DetailRows = AttributedEvents
+    | summarize Connections=count(), FirstSeen=min(Timestamp), LastSeen=max(Timestamp),
+                Ports=make_set(RemotePort, 10), RemoteIPs=make_set(RemoteIP, 20),
+                IpSources=make_set(IpSource, 4),
+                IpFallbackCount=countif(IsIpFallback),
+                SampleCmd=make_set(InitiatingProcessCommandLine, 3)
+      by DeviceName, RemoteFqdn, InitiatingProcessFileName,
+         InitiatingProcessAccountDomain, InitiatingProcessAccountName,
+         InitiatingProcessAccountSid, IsRemoteSupportTool
+    | extend Score = Connections + iif(IsRemoteSupportTool, -3, 0)
+    | extend Severity = case(Score > 50, 'high', Score > 10, 'medium', 'low')
+    // R3: surface the same per-device SuppressedCount the summary row exposes,
+    // so analysts in detail mode see how many connections were dropped by
+    // KnownServiceAccounts / the MDI-sensor hard-exclusion without having to
+    // re-run in summary mode.
+    | join kind=leftouter SuppressedPerDevice on DeviceName
+    | extend SuppressedCount = coalesce(SuppressedCount, 0)
+    | project-away DeviceName1;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by MaxConnections desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Connections desc)

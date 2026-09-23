@@ -1,0 +1,41 @@
+# Widely-deployed publishers. Per-tenant additions go below.
+Microsoft Corporation
+Microsoft Windows
+Microsoft Windows Publisher
+Microsoft Windows Hardware Compatibility Publisher
+Microsoft Edge Update
+Adobe Inc.
+Adobe Systems Incorporated
+Google LLC
+Google Inc.
+Mozilla Corporation
+Cisco Systems, Inc.
+Citrix Systems, Inc.
+VMware, Inc.
+Dropbox, Inc.
+Slack Technologies, LLC
+Atlassian Pty Ltd
+Zoom Video Communications, Inc.
+Apple Inc.
+Intel Corporation
+NVIDIA Corporation
+Hewlett-Packard
+Hewlett-Packard Company
+HP Inc.
+Dell Inc.
+Lenovo
+Realtek Semiconductor Corp.
+Logitech
+Crowdstrike, Inc.
+SentinelOne
+Trend Micro Inc.
+McAfee, LLC
+Symantec Corporation
+Sophos
+Tanium Inc.
+Carbon Black, Inc.
+1Password
+LastPass
+Github, Inc.
+GitLab, Inc.
+JetBrains s.r.o.

@@ -1,0 +1,129 @@
+-- name: ttp_lateral_movement_rdp
+-- description: Successful RDP logons (LogonType=RemoteInteractive) with novelty, fan-out, failed-then-success scoring, tunnel detection, off-hours, and KnownRemoteSupportTools suppression
+-- tier: r1
+-- params: hours=6, source_account=, target_device=, source_ip=, mode=summary
+-- lists: InternalSubnets, KnownRemoteSupportTools
+-- agent_hint: RemoteInteractive rows often have empty RemoteIP; we coalesce with the
+--   joined DeviceNetworkEvents 3389 hit's RemoteIP. Baseline30d skipped when any
+--   scope param set, since a single user/device cannot be "net-new" in a baseline
+--   that is itself tightly scoped.
+let _xdr_InternalSubnets         = dynamic([]);
+let _xdr_KnownRemoteSupportTools = dynamic([]);
+let Window  = {hours}h;
+let Scoped  = '{source_account}' != '' or '{target_device}' != '' or '{source_ip}' != '';
+let Baseline30d = DeviceLogonEvents
+    | where not(Scoped)
+    | where Timestamp between (ago(30d) .. ago(Window))
+    | where LogonType == "RemoteInteractive"
+    | where ActionType == "LogonSuccess"
+    | where isnotempty(AccountSid)
+    | summarize by AccountSid, DeviceId;
+let Successes = DeviceLogonEvents
+    | where Timestamp > ago(Window)
+    | where LogonType == "RemoteInteractive"
+    | where ActionType == "LogonSuccess"
+    | where '{source_account}' == '' or AccountName =~ '{source_account}' or strcat(AccountName, "@", AccountDomain) =~ '{source_account}'
+    | where '{target_device}'  == '' or DeviceName =~ '{target_device}'
+    | where '{source_ip}'      == '' or RemoteIP   == '{source_ip}'
+    | project SuccessTime = Timestamp, DeviceId, DeviceName, AccountSid, AccountName, AccountDomain,
+              RemoteIP, ReportId, InitiatingProcessFileName;
+let Failures = DeviceLogonEvents
+    | where Timestamp > ago(Window)
+    | where LogonType == "RemoteInteractive"
+    | where ActionType == "LogonFailed"
+    | summarize FailedAttempts = count() by DeviceId, RemoteIP, AccountName;
+let NetEvents = DeviceNetworkEvents
+    | where Timestamp > ago(Window)
+    | where RemotePort == 3389 or LocalPort == 3389
+    | project NetTime = Timestamp, DeviceId, NetRemoteIP = RemoteIP, NetLocalIP = LocalIP, NetReportId = ReportId;
+let WithNet = Successes
+    | join kind=leftouter hint.strategy=shuffle NetEvents on DeviceId
+    | where isnull(NetTime) or abs(datetime_diff('second', SuccessTime, NetTime)) <= 30
+    | summarize NetTime = min(NetTime), NetRemoteIP = any(NetRemoteIP)
+        by SuccessTime, DeviceId, DeviceName, AccountSid, AccountName, AccountDomain, RemoteIP,
+           InitiatingProcessFileName
+    | extend SourceIP = coalesce(iff(isempty(RemoteIP) or RemoteIP in ("0.0.0.0",""), "", RemoteIP),
+                                 NetRemoteIP)
+    | extend RawRemoteIP = RemoteIP
+    | join kind=leftouter Failures on DeviceId, $left.SourceIP == $right.RemoteIP, $left.AccountName == $right.AccountName
+    | extend FailedAttempts = coalesce(FailedAttempts, 0);
+let WithBaseline = WithNet
+    | join kind=leftanti Baseline30d on AccountSid, DeviceId
+    | extend IsNetNew = true;
+let WithoutBaseline = WithNet
+    | join kind=leftsemi Baseline30d on AccountSid, DeviceId
+    | extend IsNetNew = false;
+let Combined = union (WithBaseline), (WithoutBaseline)
+    | extend
+        IsExternalSource = isnotempty(SourceIP) and not(ipv4_is_in_any_range(SourceIP, _xdr_InternalSubnets)),
+        FailedThenSuccess = FailedAttempts >= 3,
+        IsTunneled = RawRemoteIP in ("127.0.0.1","::1","0.0.0.0"),
+        IsKnownTool = isnotempty(InitiatingProcessFileName)
+                      and InitiatingProcessFileName in~ (_xdr_KnownRemoteSupportTools),
+        IsOffHours = hourofday(SuccessTime) < 6 or hourofday(SuccessTime) > 22;
+let Fanout = Combined
+    | summarize FanoutDevices = dcount(DeviceId, 2) by AccountSid;
+let Scored = Combined
+    | join kind=leftouter Fanout on AccountSid
+    | extend FanoutDevices = coalesce(FanoutDevices, 0)
+    | extend Score =
+          (iff(IsTunneled,                                 4, 0))
+        + (iff(IsNetNew,                                   3, 0))
+        + (iff(FanoutDevices >= 5,                         5, 0))
+        + (iff(FailedThenSuccess,                          4, 0))
+        + (iff(IsExternalSource and FanoutDevices >= 2,    3, 0))
+        + (iff(IsOffHours,                                 2, 0))
+        - (iff(IsKnownTool,                                5, 0))
+    | where Score > 0;
+let RankedDetail = Scored | order by Score desc, SuccessTime desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp",      SuccessTime,
+            "SourceIP",       SourceIP,
+            "TargetDevice",   DeviceName,
+            "FailedAttempts", FailedAttempts,
+            "IsNetNew",       IsNetNew,
+            "IsTunneled",     IsTunneled,
+            "IsOffHours",     IsOffHours,
+            "Score",          Score), 5)
+        by AccountSid, AccountName;
+let Agg = Scored
+    | summarize
+        Score                  = max(Score),
+        EvidenceTotal          = count(),
+        FirstSeen              = min(SuccessTime),
+        LastSeen               = max(SuccessTime),
+        NetNewTargets30d       = countif(IsNetNew),
+        FanoutDevices          = max(FanoutDevices),
+        FailedThenSuccessCount = countif(FailedThenSuccess),
+        ExternalSourceIPs      = make_set(iff(IsExternalSource, SourceIP, ""), 8),
+        IsTunneled             = countif(IsTunneled),
+        OffHoursLogons         = countif(IsOffHours)
+        by AccountSid, AccountName;
+let SummaryRow = Agg
+    | join kind=leftouter TopEv on AccountSid, AccountName
+    | extend Indicators = strcat_array(pack_array(
+            iff(NetNewTargets30d       > 0, "net-new-target",       ""),
+            iff(FanoutDevices         >= 5, "fanout",               ""),
+            iff(FailedThenSuccessCount > 0, "failed-then-success",  ""),
+            iff(array_length(ExternalSourceIPs) > 0, "external-source", ""),
+            iff(IsTunneled             > 0, "rdp-tunnel",           ""),
+            iff(OffHoursLogons         > 0, "off-hours",            "")
+        ), " ")
+    // SuppressedCount = 0: KnownRemoteSupportTools is wired as a -5 negative-weight annotation, not a row-drop.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project AccountSid, AccountName, Score, Indicators, NetNewTargets30d, FanoutDevices,
+              FailedThenSuccessCount, ExternalSourceIPs, IsTunneled, OffHoursLogons, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, FirstSeen, LastSeen, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Scored
+    | project SuccessTime, AccountName, AccountDomain, AccountSid, DeviceName, SourceIP,
+              FailedAttempts, IsNetNew, IsTunneled, IsExternalSource, IsKnownTool, IsOffHours,
+              FanoutDevices, Score
+    | order by Score desc, SuccessTime desc;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail')

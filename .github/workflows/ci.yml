@@ -1,0 +1,311 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.18"
+          enable-cache: false
+      - run: uv python install "$PYTHON_VERSION"
+        env:
+          PYTHON_VERSION: ${{ matrix.python }}
+      - run: uv sync --locked --extra dev --python "$PYTHON_VERSION"
+        env:
+          PYTHON_VERSION: ${{ matrix.python }}
+      - run: uv run --frozen --extra dev ruff check src/ tests/ .github/scripts/
+      - run: uv run --frozen --extra dev pytest tests/ -q
+  windows:
+    name: Windows portability
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.18"
+          enable-cache: false
+      - run: uv python install 3.14
+      - run: uv sync --locked --extra dev --python 3.14
+      - run: >-
+          uv run --frozen --extra dev pytest -q
+          tests/test_schema_graph_bundle.py tests/test_schema_graph_cache.py
+          tests/test_schema_graph_overlay.py tests/test_schema_graph_commands.py
+          tests/test_sessions.py tests/test_auth.py
+  dependencies:
+    name: Dependency security
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.18"
+          enable-cache: false
+      - name: Export all locked platform variants
+        run: |
+          mkdir -p reports
+          uv lock --check
+          uv export --frozen --extra dev --group build --no-emit-project \
+            --no-hashes --no-header --no-annotate --output-file reports/marked.txt
+          # Scan every version in the universal lock, including Windows-only packages.
+          sed 's/ ;.*//' reports/marked.txt | sort -u > reports/dependencies.txt
+      - name: Audit known vulnerabilities
+        run: >-
+          uvx --from pip-audit==2.10.1 pip-audit
+          --requirement reports/dependencies.txt --no-deps --disable-pip
+          --format json --output reports/pip-audit.json
+      - name: Scan for malicious packages
+        if: ${{ !cancelled() && hashFiles('reports/dependencies.txt') != '' }}
+        run: |
+          docker run --rm --cap-drop=ALL --security-opt=no-new-privileges \
+            --user "$(id -u):$(id -g)" --env HOME=/tmp \
+            --mount "type=bind,src=$PWD,dst=/work,readonly" \
+            --mount "type=bind,src=$PWD/reports,dst=/work/reports" \
+            --workdir /work --entrypoint python \
+            ghcr.io/datadog/guarddog:3.2.0@sha256:3dbc783f65f508b95222101cb2cd84d1d5f3e3675e42d6f1329bb9b8a99c8998 \
+            .github/scripts/guarddog_scan.py reports/dependencies.txt reports
+      - name: Upload GuardDog findings to code scanning
+        if: ${{ !cancelled() && !github.event.repository.private && hashFiles('reports/guarddog.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4
+        with:
+          sarif_file: reports/guarddog.sarif
+          category: guarddog
+      - name: Preserve reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependency-security
+          path: reports/
+          retention-days: 14
+          if-no-files-found: error
+  secrets:
+    name: Secret scanning
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install verified Gitleaks binary
+        run: |
+          curl -fsSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o "$RUNNER_TEMP/gitleaks.tar.gz"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+      - name: Scan fetched history, including intermediate PR commits
+        run: >-
+          "$RUNNER_TEMP/gitleaks" git . --log-opts=--all
+          --config .gitleaks.toml --ignore-gitleaks-allow --redact
+          --report-format sarif --report-path gitleaks.sarif
+      - name: Preserve reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: secret-scan
+          path: gitleaks.sarif
+          retention-days: 14
+          if-no-files-found: error
+  static:
+    name: Python security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.18"
+          enable-cache: false
+      - name: Check Python security patterns
+        run: >-
+          uvx --from bandit==1.9.4 bandit -r src/ scripts/ .github/scripts/
+          -ll -iii -f json -o bandit.json
+      - name: Preserve reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: python-security
+          path: bandit.json
+          retention-days: 14
+          if-no-files-found: error
+  workflows:
+    name: Workflow checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.18"
+          enable-cache: false
+      - name: Install verified actionlint binary
+        run: |
+          curl -fsSL https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$RUNNER_TEMP/actionlint.tar.gz"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+      - name: Check workflow correctness
+        run: '"$RUNNER_TEMP/actionlint" -color'
+      - name: Check workflow security
+        if: ${{ !cancelled() }}
+        run: >-
+          uvx --from zizmor==1.30.1 zizmor --offline --strict-collection
+          --format json .github/ > zizmor.json
+      - name: Preserve reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: workflow-security
+          path: zizmor.json
+          retention-days: 14
+          if-no-files-found: error
+  package:
+    name: Distribution checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.18"
+          enable-cache: false
+      - run: uv python install 3.13
+      - run: uv sync --locked --extra dev --group build --python 3.13
+      - name: Build and inspect wheel and source archive
+        run: |
+          uv run --frozen --extra dev --group build python -m build --no-isolation
+          uv run --frozen --extra dev --group build twine check --strict dist/*
+          uv run --frozen --extra dev --group build python .github/scripts/check_dist.py
+      - name: Install the wheel in a clean environment
+        env:
+          XDR_CLI_HOME: ${{ runner.temp }}/xdr-smoke-config
+        run: |
+          uv export --frozen --no-dev --no-emit-project --no-hashes \
+            --output-file "$RUNNER_TEMP/runtime.txt"
+          uv venv --python 3.13 "$RUNNER_TEMP/smoke"
+          uv pip sync --python "$RUNNER_TEMP/smoke/bin/python" "$RUNNER_TEMP/runtime.txt"
+          uv pip install --python "$RUNNER_TEMP/smoke/bin/python" --no-deps dist/*.whl
+          cd "$RUNNER_TEMP"
+          ./smoke/bin/xdr --version
+          ./smoke/bin/xdr --help
+          ./smoke/bin/python -c "from importlib.resources import files; p = files('xdr_cli'); assert list((p / 'queries').glob('*.kql')); assert (p / 'schema_graph/data/semantic-graph.jsonl').is_file()"
+  version-and-changelog:
+    name: version-bump and CHANGELOG check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Scope gate: PRs whose ENTIRE diff is under .github/ don't change the
+      # shipped package, so the version-bump/CHANGELOG policy doesn't apply
+      # (CONTRIBUTING §5). Three constructions are load-bearing:
+      #   --no-renames  — a rename src/x.py -> .github/x.py must list BOTH
+      #                   endpoints; default rename detection lists only the
+      #                   destination and would misclassify the PR as `.github/`-only.
+      #   files=$(...)  — variable capture (not a pipeline) so the default
+      #                   `bash -e` aborts the step if $base is unresolvable;
+      #                   the pipeline form fails OPEN to shipped=false.
+      #   [ -z ] branch — empty diff → shipped=true, preserving the current
+      #                   behavior that an empty PR fails the version check.
+      - name: Check if PR touches shipped code
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          base="$BASE_SHA"
+          files=$(git diff --name-only --no-renames "$base" HEAD)
+          if [ -z "$files" ] || grep -qv '^\.github/' <<< "$files"; then
+            echo "shipped=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "shipped=false" >> "$GITHUB_OUTPUT"
+            echo "Scope: all changed paths are under .github/ — version-bump/CHANGELOG checks skipped for this PR"
+          fi
+      - name: Verify pyproject.toml version was bumped (and increased)
+        if: steps.scope.outputs.shipped == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          base="$BASE_SHA"
+          base_v=$(git show "$base:pyproject.toml" | sed -n 's/^version = "\(.*\)"$/\1/p' | head -1)
+          head_v=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)
+          if [ "$base_v" = "$head_v" ]; then
+            echo "::error file=pyproject.toml::Version not bumped (still $head_v). Per CONTRIBUTING.md §5, every PR must bump pyproject.toml version (PATCH at minimum)."
+            exit 1
+          fi
+          larger=$(printf '%s\n%s\n' "$base_v" "$head_v" | sort -V | tail -1)
+          if [ "$larger" != "$head_v" ]; then
+            echo "::error file=pyproject.toml::Version decreased ($base_v → $head_v). Per CONTRIBUTING.md §5, version must increase. If you're intentionally rolling back, coordinate with the maintainer first."
+            exit 1
+          fi
+          echo "Version bumped: $base_v → $head_v"
+      - name: Verify CHANGELOG.md was updated
+        if: steps.scope.outputs.shipped == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          base="$BASE_SHA"
+          if git diff --quiet "$base" HEAD -- CHANGELOG.md; then
+            echo "::error file=CHANGELOG.md::CHANGELOG.md not updated. Per CONTRIBUTING.md §5, every PR must add an entry under a new version heading."
+            exit 1
+          fi
+          echo "CHANGELOG.md updated"
+
+  gate:
+    name: CI gate
+    if: ${{ always() }}
+    needs: [test, windows, dependencies, secrets, static, workflows, package, version-and-changelog]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every applicable check to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          python - <<'PYTHON'
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          failed = [name for name, job in results.items()
+                    if job['result'] != 'success'
+                    and not (name == 'version-and-changelog'
+                             and os.environ['EVENT'] != 'pull_request'
+                             and job['result'] == 'skipped')]
+          if failed:
+              raise SystemExit('Required checks did not pass: ' + ', '.join(failed))
+          PYTHON

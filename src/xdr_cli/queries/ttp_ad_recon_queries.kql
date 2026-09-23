@@ -1,0 +1,20 @@
+-- name: ttp_ad_recon_queries
+-- description: LDAP/SAMR reconnaissance activity — AD queries by a specific account or source IP
+-- tier: r3
+-- params: account_oid, start, end, mode=detail
+let DetailRows =
+    IdentityQueryEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where AccountObjectId == '{account_oid}'
+    | project Timestamp, AccountUpn, ActionType, QueryType, QueryTarget,
+              DeviceName, SourceDeviceName, DestinationDeviceName, DestinationIPAddress;
+let SummaryRow =
+    DetailRows
+    | summarize
+        QueryCount      = count(),
+        DistinctTargets = dcount(QueryTarget),
+        DistinctSources = dcount(SourceDeviceName)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp asc)

@@ -1,0 +1,20 @@
+-- name: ttp_shadow_copy_deletion
+-- description: Detect shadow copy deletion and recovery mode tampering — a hallmark of ransomware pre-encryption staging
+-- tier: r3
+-- params: device_id, start, end, mode=detail
+let DetailRows =
+    DeviceProcessEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where DeviceId == '{device_id}'
+    | where ProcessCommandLine has_any ('vssadmin', 'wmic shadowcopy', 'bcdedit', 'wbadmin')
+    | project Timestamp, FileName, ProcessCommandLine, InitiatingProcessFileName, AccountName, DeviceName, ActionType;
+let SummaryRow =
+    DetailRows
+    | summarize
+        EventCount      = count(),
+        DistinctActions = make_set(ActionType),
+        DistinctDevices = dcount(DeviceName)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp asc)

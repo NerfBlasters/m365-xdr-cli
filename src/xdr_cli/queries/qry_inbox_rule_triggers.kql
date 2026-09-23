@@ -1,0 +1,5 @@
+-- name: qry_inbox_rule_triggers
+-- description: Deprecated; use qry_inbox_rule_activity. Will be removed in v0.5.0.
+-- params:
+-- tier: deprecated
+-- alias_of: qry_inbox_rule_activity

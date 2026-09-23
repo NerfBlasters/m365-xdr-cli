@@ -1,0 +1,22 @@
+-- name: qry_delivery_vector
+-- description: How a file arrived on a device — download URL, origin IP, parent process. Traces the delivery vector for malware.
+-- tier: pivot
+-- params: device_id, sha256, start, end, mode=detail
+let DetailRows =
+    DeviceFileEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where DeviceId == '{device_id}'
+    | where SHA256 == '{sha256}' or FileName =~ '{sha256}'
+    | project Timestamp, ActionType, FileName, FolderPath, SHA256,
+              FileOriginUrl, FileOriginIP, InitiatingProcessFileName;
+let SummaryRow =
+    DetailRows
+    | summarize
+        EventCount      = count(),
+        DistinctOrigins = dcount(FileOriginUrl),
+        FirstSeen       = min(Timestamp),
+        LastSeen        = max(Timestamp)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp asc)

@@ -1,0 +1,2 @@
+# Tenant-owned domains. Populated by hand or by scripts/extract_tenant_domains.py.
+# fetched: <ISO timestamp at populate time>

@@ -1,0 +1,94 @@
+-- name: ttp_device_code_flow_abuse
+-- description: (beta) Device-code flow abuse — net-new location, off-hours completion, rapid multi-completion
+-- tier: beta
+-- params: hours=24, account_upn=, mode=summary
+-- lists: InternalSubnets
+let _xdr_InternalSubnets = dynamic([]);
+let Window = {hours}h;
+let DcBase = EntraIdSignInEvents
+    | where Timestamp > ago(30d)
+    | where ErrorCode == 0
+    | where '{account_upn}' == '' or AccountUpn =~ '{account_upn}'
+    | extend AuthDetailsLower = tolower(tostring(AuthenticationProcessingDetails))
+    | where AuthDetailsLower has "devicecode" or AuthDetailsLower has "device code";
+let Baseline = DcBase
+    | where Timestamp between (ago(30d) .. ago(Window))
+    | summarize KnownIPs = make_set(IPAddress, 256), KnownCountries = make_set(Country, 64),
+                TypicalHourBins = make_set(hourofday(Timestamp), 24)
+        by AccountUpn;
+let Scoped = DcBase
+    | where Timestamp > ago(Window)
+    | extend IsInternalSrc = isnotempty(IPAddress) and ipv4_is_in_any_range(IPAddress, _xdr_InternalSubnets)
+    | extend SignInHour = hourofday(Timestamp);
+let Joined = Scoped
+    | join kind=leftouter Baseline on AccountUpn
+    | extend NetNewIP      = isnotempty(IPAddress) and not(set_has_element(coalesce(KnownIPs, dynamic([])), IPAddress))
+    | extend NetNewCountry = isnotempty(Country)   and not(set_has_element(coalesce(KnownCountries, dynamic([])), Country))
+    | extend OffHours      = not(set_has_element(coalesce(TypicalHourBins, dynamic([])), SignInHour));
+let Burst = Scoped
+    | summarize CompletionCount = count() by AccountUpn, bin(Timestamp, 1h)
+    | where CompletionCount >= 2
+    | summarize BurstHours = count(), MaxBurst = max(CompletionCount) by AccountUpn;
+let Scored = Joined
+    | summarize
+        Completions      = count(),
+        EvidenceTotal    = count(),
+        DistinctIPs      = dcount(IPAddress, 2),
+        NetNewIPCount    = countif(NetNewIP),
+        NetNewCountryCount = countif(NetNewCountry),
+        OffHoursCount    = countif(OffHours),
+        InternalCount    = countif(IsInternalSrc),
+        IPs              = make_set(IPAddress, 8),
+        Countries        = make_set(Country, 8),
+        FirstSeen        = min(Timestamp),
+        LastSeen         = max(Timestamp)
+        by AccountUpn
+    | join kind=leftouter Burst on AccountUpn
+    | extend BurstHours = coalesce(BurstHours, 0), MaxBurst = coalesce(MaxBurst, 0)
+    | extend Score =
+          (iff(NetNewIPCount      > 0, 4, 0))
+        + (iff(NetNewCountryCount > 0, 5, 0))
+        + (iff(OffHoursCount      > 0, 3, 0))
+        + (iff(MaxBurst         >= 2, 4, 0))
+        - (iff(InternalCount      > 0 and NetNewIPCount == 0, 3, 0))
+    | extend Indicators = strcat_array(pack_array(
+            iff(NetNewIPCount      > 0, "net-new-ip",      ""),
+            iff(NetNewCountryCount > 0, "net-new-country", ""),
+            iff(OffHoursCount      > 0, "off-hours",       ""),
+            iff(MaxBurst         >= 2, "burst",            "")
+        ), " ")
+    | where Score >= 3
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let RankedDetail = Joined
+    | extend RowScore =
+          (iff(NetNewIP,        4, 0))
+        + (iff(NetNewCountry,   5, 0))
+        + (iff(OffHours,        3, 0))
+        - (iff(IsInternalSrc and not(NetNewIP), 3, 0))
+    | order by RowScore desc, Timestamp desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp",        Timestamp,
+            "Account",          AccountUpn,
+            "IPAddress",        IPAddress,
+            "Country",          Country,
+            "IsNovelLocation",  (NetNewIP or NetNewCountry),
+            "Score",            RowScore), 5)
+        by AccountUpn;
+let SummaryRow = Scored
+    | join kind=leftouter TopEv on AccountUpn
+    // SuppressedCount = 0: this query has no tenant-curated row-drop filter.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project AccountUpn, SchemaVersion, Severity, Score, Indicators,
+              Completions, DistinctIPs, NetNewIPCount, NetNewCountryCount,
+              OffHoursCount, MaxBurst, IPs, Countries, FirstSeen, LastSeen, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, ListHealth;
+let DetailRows = Joined
+    | project Timestamp, AccountUpn, IPAddress, Country, City, UserAgent,
+              NetNewIP, NetNewCountry, OffHours, IsInternalSrc, Application;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Timestamp desc)

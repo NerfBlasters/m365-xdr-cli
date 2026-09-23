@@ -1,0 +1,143 @@
+-- name: qry_entra_role_changes
+-- description: Entra role and group membership changes — actor/target scope, privileged-role weighting, new-IP-for-actor (30d), self-add and rapid add+revoke detection
+-- tier: r1
+-- params: hours=72, actor_upn=, target_upn=, mode=summary
+-- lists: KnownServiceAccounts, InternalSubnets
+-- agent_hint: tables=[CloudAppEvents, EntraIdSignInEvents]; row_volume=low; cpu_class=low; CloudAppEvents Application "Microsoft Entra ID" / "Office 365" — actor resolved from RawEventData.UserId, target resolved from RawEventData.ObjectId / TargetResources mv-apply. Some tenants surface ActionType strings with trailing periods ("Add member to role."); the in~ () operator is case-insensitive and exact, so both punctuated and unpunctuated variants are listed.
+let _xdr_KnownServiceAccounts = dynamic([]);
+let _xdr_InternalSubnets      = dynamic([]);
+let Window = {hours}h;
+let PrivilegedRoles = dynamic([
+    "Global Administrator","Company Administrator","Privileged Role Administrator",
+    "Security Administrator","Application Administrator","Cloud Application Administrator",
+    "User Access Administrator","User Administrator","Authentication Administrator",
+    "Helpdesk Administrator","Privileged Authentication Administrator",
+    "Exchange Administrator","SharePoint Administrator","Conditional Access Administrator"]);
+let RawChanges = CloudAppEvents
+    | where Timestamp > ago(Window)
+    | where Application in~ ("Microsoft Entra ID","Microsoft Azure Active Directory","Office 365","Azure Active Directory")
+    | where ActionType in~ (
+        "Add member to role","Add member to role.","Remove member from role","Remove member from role.",
+        "Add eligible member to role","Add eligible member to role.",
+        "Remove eligible member from role","Remove eligible member from role.",
+        "Add member to group","Remove member from group","Add owner to group","Remove owner from group")
+    | extend ActorUpn = tolower(tostring(RawEventData.UserId))
+    | extend ActorIp  = tostring(coalesce(IPAddress, tostring(RawEventData.ClientIP)))
+    | extend Params   = todynamic(RawEventData.ModifiedProperties)
+    | extend Targets  = todynamic(RawEventData.TargetResources);
+let Resolved = RawChanges
+    | mv-apply t = Targets on (
+        summarize
+            TargetUpn         = anyif(tolower(tostring(t.userPrincipalName)), isnotempty(tostring(t.userPrincipalName))),
+            TargetObjectId    = anyif(tostring(t.id), isnotempty(tostring(t.id))),
+            TargetDisplayName = anyif(tostring(t.displayName), isnotempty(tostring(t.displayName)))
+      )
+    | mv-apply p = Params on (
+        summarize
+            RoleName = anyif(tostring(p.NewValue),
+                             tostring(p.Name) in~ ("Role.DisplayName","RoleDisplayName","Role.TemplateId.DisplayName"))
+      )
+    | extend RoleName = coalesce(RoleName,
+                                 tostring(RawEventData.Role),
+                                 tostring(RawEventData.ExtendedProperties))
+    | extend TargetUpn = coalesce(TargetUpn, tolower(tostring(RawEventData.ObjectId)))
+    | extend IsAddOp    = ActionType has "Add",
+             IsRemoveOp = ActionType has "Remove",
+             IsPrivileged = isnotempty(RoleName) and RoleName in~ (PrivilegedRoles),
+             IsSelfAdd  = isnotempty(ActorUpn) and isnotempty(TargetUpn) and ActorUpn == TargetUpn,
+             IsOffHours = hourofday(Timestamp) < 6 or hourofday(Timestamp) > 22,
+             IsKnownService = isnotempty(ActorUpn) and ActorUpn in~ (_xdr_KnownServiceAccounts),
+             IsExternalSource = isnotempty(ActorIp) and not(ipv4_is_in_any_range(ActorIp, _xdr_InternalSubnets))
+    | where '{actor_upn}'  == '' or ActorUpn  =~ '{actor_upn}'
+    | where '{target_upn}' == '' or TargetUpn =~ '{target_upn}'
+    | project Timestamp, ActorUpn, TargetUpn, TargetObjectId, TargetDisplayName,
+              ActionType, RoleName, ActorIp, IsAddOp, IsRemoveOp, IsPrivileged,
+              IsSelfAdd, IsOffHours, IsKnownService, IsExternalSource;
+let ActorBaseline = EntraIdSignInEvents
+    | where Timestamp between (ago(30d) .. ago(Window))
+    | where ErrorCode == 0
+    | where isnotempty(AccountUpn) and isnotempty(IPAddress)
+    | extend ActorUpn = tolower(AccountUpn)
+    | summarize by ActorUpn, IPAddress;
+let WithNewIp = Resolved
+    | join kind=leftouter ActorBaseline on $left.ActorUpn == $right.ActorUpn, $left.ActorIp == $right.IPAddress
+    | extend IsNewIP = isnotempty(ActorIp) and isempty(IPAddress)
+    | project-away IPAddress;
+let Adds = WithNewIp | where IsAddOp    | project AddTs    = Timestamp, ActorUpn, TargetUpn, RoleName;
+let Revs = WithNewIp | where IsRemoveOp | project RemoveTs = Timestamp, ActorUpn, TargetUpn, RoleName;
+let Pairs = Adds
+    | join kind=inner Revs on ActorUpn, TargetUpn, RoleName
+    | where RemoveTs > AddTs and datetime_diff('minute', RemoveTs, AddTs) <= 10
+    | summarize by ActorUpn, TargetUpn, RoleName, AddTs;
+let Marked = WithNewIp
+    | join kind=leftouter (Pairs | extend Timestamp = AddTs | extend IsRapidPair = true
+                                  | project ActorUpn, TargetUpn, RoleName, Timestamp, IsRapidPair)
+        on ActorUpn, TargetUpn, RoleName, Timestamp
+    | extend IsRapidPair = coalesce(IsRapidPair, false);
+let Scored = Marked
+    | extend Score =
+          (iff(IsPrivileged,                  5, 0))
+        + (iff(IsSelfAdd and IsAddOp,         5, 0))
+        + (iff(IsNewIP,                       3, 0))
+        + (iff(IsOffHours,                    2, 0))
+        + (iff(IsRapidPair,                   3, 0))
+        + (iff(IsExternalSource,              2, 0))
+        - (iff(IsKnownService,                3, 0))
+    | where Score >= 1;
+let RankedDetail = Scored | order by Score desc, Timestamp desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp",         Timestamp,
+            "ActorUpn",          ActorUpn,
+            "TargetUpn",         TargetUpn,
+            "ActionType",        ActionType,
+            "RoleName",          RoleName,
+            "ActorIp",           ActorIp,
+            "IsPrivilegedRole",  IsPrivileged,
+            "IsSelfAdd",         IsSelfAdd,
+            "IsNewIP",           IsNewIP,
+            "IsRapidPair",       IsRapidPair,
+            "IsOffHours",        IsOffHours,
+            "Score",             Score), 5)
+        by ActorUpn;
+let Agg = Scored
+    | summarize
+        Score              = max(Score),
+        RoleChangeCount    = count(),
+        EvidenceTotal      = count(),
+        FirstSeen          = min(Timestamp),
+        LastSeen           = max(Timestamp),
+        PrivilegedRoleAdds = countif(IsPrivileged and IsAddOp),
+        SelfAddCount       = countif(IsSelfAdd and IsAddOp),
+        NewIPForActor      = countif(IsNewIP),
+        AddRevokePairs     = countif(IsRapidPair),
+        OffHoursChanges    = countif(IsOffHours),
+        ExternalSourceIPs  = make_set(iff(IsExternalSource, ActorIp, ""), 8)
+        by ActorUpn;
+let SummaryRow = Agg
+    | join kind=leftouter TopEv on ActorUpn
+    | extend Indicators = strcat_array(pack_array(
+            iff(PrivilegedRoleAdds > 0, "privileged-role", ""),
+            iff(SelfAddCount       > 0, "self-add",        ""),
+            iff(NewIPForActor      > 0, "new-ip",          ""),
+            iff(AddRevokePairs     > 0, "rapid-pair",      ""),
+            iff(OffHoursChanges    > 0, "off-hours",       ""),
+            iff(array_length(ExternalSourceIPs) > 0, "external-source", "")
+        ), " ")
+    // SuppressedCount = 0: KSA is wired as a -3 negative-weight annotation, not a row-drop.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project ActorUpn, Score, RoleChangeCount, PrivilegedRoleAdds, SelfAddCount, NewIPForActor,
+              AddRevokePairs, OffHoursChanges, ExternalSourceIPs, Indicators, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, FirstSeen, LastSeen, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Scored
+    | project Timestamp, ActorUpn, TargetUpn, TargetDisplayName, ActionType, RoleName, ActorIp,
+              IsPrivilegedRole = IsPrivileged, IsSelfAdd, IsNewIP, IsRapidPair, IsOffHours,
+              IsKnownService, IsExternalSource, Score
+    | order by Score desc, Timestamp desc;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Score desc, Timestamp desc)

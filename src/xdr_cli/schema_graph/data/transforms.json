@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "transforms": [
+    {"id": "domain-lower", "lossy": false},
+    {"id": "guid-lower", "lossy": false},
+    {"id": "hex40-lower", "lossy": false},
+    {"id": "hostname-lower", "lossy": false},
+    {"id": "identity", "lossy": false},
+    {"id": "ip-canonical", "lossy": false},
+    {"id": "sha1-lower", "lossy": false},
+    {"id": "sha256-lower", "lossy": false},
+    {"id": "smtp-lower", "lossy": false},
+    {"id": "upn-lower", "lossy": false},
+    {"id": "url-canonical", "lossy": true}
+  ]
+}

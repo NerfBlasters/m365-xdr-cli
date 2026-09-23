@@ -1,0 +1,17 @@
+-- name: qry_email_urls
+-- description: Embedded URLs in a specific email by NetworkMessageId
+-- tier: pivot
+-- params: network_message_id, mode=detail
+let DetailRows =
+    EmailUrlInfo
+    | where NetworkMessageId == '{network_message_id}'
+    | project Url, UrlDomain;
+let SummaryRow =
+    DetailRows
+    | summarize
+        UrlCount       = count(),
+        DistinctDomains = dcount(UrlDomain)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail')

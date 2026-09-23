@@ -1,0 +1,21 @@
+-- name: qry_file_access_detail
+-- description: Specific files downloaded or synced by an account — identifies targeted access to sensitive content
+-- tier: pivot
+-- params: account_oid, start, end, mode=detail
+let DetailRows =
+    CloudAppEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where AccountObjectId == '{account_oid}'
+    | where ActionType in ('FileDownloaded', 'FileSyncDownloadedFull')
+    | project Timestamp, ActionType, Application, ObjectName, IPAddress, CountryCode, City;
+let SummaryRow =
+    DetailRows
+    | summarize
+        EventCount     = count(),
+        DistinctFiles  = dcount(ObjectName),
+        Downloads      = countif(ActionType == 'FileDownloaded'),
+        Syncs          = countif(ActionType has 'Sync')
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp asc)

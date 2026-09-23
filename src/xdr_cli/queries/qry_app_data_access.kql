@@ -1,0 +1,24 @@
+-- name: qry_app_data_access
+-- description: File downloads, access, and uploads by an OAuth app — data exfiltration detection
+-- tier: pivot
+-- params: app_name, start, end, mode=detail
+let DetailRows =
+    CloudAppEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where Application contains '{app_name}'
+    | where ActionType in ('FileDownloaded', 'FileAccessed', 'FileUploaded', 'FileSyncDownloadedFull')
+    | project Timestamp, AccountUpn, ActionType, ObjectName, ObjectType, IPAddress, UserAgent;
+let SummaryRow =
+    DetailRows
+    | summarize
+        EventCount         = count(),
+        DistinctAccounts   = dcount(AccountUpn),
+        DistinctActions    = make_set(ActionType),
+        DistinctObjects    = dcount(ObjectName),
+        FirstSeen          = min(Timestamp),
+        LastSeen           = max(Timestamp)
+    | extend SchemaVersion = 1
+    | extend Application = '{app_name}';
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp desc)

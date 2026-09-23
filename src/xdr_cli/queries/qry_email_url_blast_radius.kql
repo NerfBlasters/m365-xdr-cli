@@ -1,0 +1,20 @@
+-- name: qry_email_url_blast_radius
+-- description: Recipients who received email containing a specific URL or domain — scopes phishing campaign reach
+-- tier: pivot
+-- params: url_domain, start, end, mode=detail
+let DetailRows =
+    EmailUrlInfo
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where Url has '{url_domain}' or UrlDomain == '{url_domain}'
+    | join kind=inner EmailEvents on NetworkMessageId
+    | summarize Recipients=make_set(RecipientEmailAddress), Clicks=countif(isnotempty(NetworkMessageId)) by UrlDomain;
+let SummaryRow =
+    DetailRows
+    | summarize
+        RecipientCount   = dcount(RecipientEmailAddress),
+        DistinctUrls     = dcount(Url),
+        DistinctMessages = dcount(NetworkMessageId)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail')

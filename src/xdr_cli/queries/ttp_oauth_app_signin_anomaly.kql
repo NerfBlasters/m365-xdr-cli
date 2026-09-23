@@ -1,0 +1,97 @@
+-- name: ttp_oauth_app_signin_anomaly
+-- description: SPN sign-in anomalies — net-new IPs/countries, token reuse across IPs, public-client workload sign-ins
+-- tier: n
+-- params: hours=24, service_principal_id=, mode=summary
+-- lists: InternalSubnets
+let _xdr_InternalSubnets = dynamic([]);
+let Window = {hours}h;
+let Baseline = EntraIdSpnSignInEvents
+    | where Timestamp between (ago(30d) .. ago(Window))
+    | where ErrorCode == 0
+    | where '{service_principal_id}' == '' or ServicePrincipalId =~ '{service_principal_id}'
+    | summarize KnownIPs = make_set(IPAddress, 256), KnownCountries = make_set(Country, 64)
+        by ServicePrincipalId;
+let Scoped = EntraIdSpnSignInEvents
+    | where Timestamp > ago(Window)
+    | where ErrorCode == 0
+    | where '{service_principal_id}' == '' or ServicePrincipalId =~ '{service_principal_id}'
+    | extend IsInternalSrc = isnotempty(IPAddress) and ipv4_is_in_any_range(IPAddress, _xdr_InternalSubnets)
+    | extend IsPublicClient_ = (IsManagedIdentity == false and IsConfidentialClient == false);
+let Joined = Scoped
+    | join kind=leftouter Baseline on ServicePrincipalId
+    | extend NetNewIP      = isnotempty(IPAddress) and not(set_has_element(coalesce(KnownIPs, dynamic([])), IPAddress))
+    | extend NetNewCountry = isnotempty(Country) and not(set_has_element(coalesce(KnownCountries, dynamic([])), Country));
+let TokenReuse = Scoped
+    | where isnotempty(UniqueTokenId)
+    | summarize TokenIPCount = dcount(IPAddress, 2), TokenIPs = make_set(IPAddress, 8)
+        by ServicePrincipalId, UniqueTokenId
+    | where TokenIPCount >= 2;
+let Scored = Joined
+    | summarize
+        SignInCount       = count(),
+        EvidenceTotal     = count(),
+        DistinctIPs       = dcount(IPAddress, 2),
+        DistinctCountries = dcount(Country, 2),
+        NetNewIPCount     = countif(NetNewIP),
+        NetNewCountryCount= countif(NetNewCountry),
+        PublicClientCount = countif(IsPublicClient_),
+        IsPublicClient    = countif(IsPublicClient_) > 0,
+        ExternalSrcCount  = countif(not(IsInternalSrc)),
+        IPs               = make_set(IPAddress, 10),
+        Countries         = make_set(Country, 10),
+        UAs               = make_set(UserAgent, 8),
+        FirstSeen         = min(Timestamp),
+        LastSeen          = max(Timestamp)
+        by ServicePrincipalId, ServicePrincipalName
+    | join kind=leftouter (
+        TokenReuse
+        | summarize ReusedTokenCount = count() by ServicePrincipalId
+      ) on ServicePrincipalId
+    | extend ReusedTokenCount = coalesce(ReusedTokenCount, 0)
+    | extend Score =
+          (iff(NetNewIPCount      > 0, 4, 0))
+        + (iff(NetNewCountryCount > 0, 5, 0))
+        + (iff(ReusedTokenCount   > 0, 5, 0))
+        + (iff(PublicClientCount  > 0, 4, 0))
+        + (iff(ExternalSrcCount   > 0 and DistinctIPs >= 3, 2, 0))
+    | extend Indicators = strcat_array(pack_array(
+            iff(NetNewIPCount      > 0, "net-new-ip",       ""),
+            iff(NetNewCountryCount > 0, "net-new-country",  ""),
+            iff(ReusedTokenCount   > 0, "token-reuse",      ""),
+            iff(IsPublicClient,         "public-client",    ""),
+            iff(ExternalSrcCount   > 0 and DistinctIPs >= 3, "ip-spread", "")
+        ), " ")
+    | where Score >= 3
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let RankedDetail = Joined
+    | extend RowScore =
+          (iff(NetNewIP,      4, 0))
+        + (iff(NetNewCountry, 5, 0))
+    | order by RowScore desc, Timestamp desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp", Timestamp,
+            "IPAddress", IPAddress,
+            "Country",   Country,
+            "UserAgent", UserAgent,
+            "Score",     RowScore), 5)
+        by ServicePrincipalId, ServicePrincipalName;
+let SummaryRow = Scored
+    | join kind=leftouter TopEv on ServicePrincipalId, ServicePrincipalName
+    // SuppressedCount = 0: this query has no tenant-curated row-drop filter.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project ServicePrincipalId, ServicePrincipalName, SchemaVersion, Severity, Score, Indicators,
+              SignInCount, DistinctIPs, DistinctCountries, NetNewIPCount, NetNewCountryCount,
+              ReusedTokenCount, PublicClientCount, IsPublicClient,
+              ExternalSrcCount, IPs, Countries, UAs, FirstSeen, LastSeen, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, ListHealth;
+let DetailRows = Joined
+    | project Timestamp, ServicePrincipalId, ServicePrincipalName, ApplicationId, IPAddress,
+              Country, City, UserAgent, GatewayJA4, IsManagedIdentity, IsConfidentialClient,
+              ResourceDisplayName, NetNewIP, NetNewCountry;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Timestamp desc)

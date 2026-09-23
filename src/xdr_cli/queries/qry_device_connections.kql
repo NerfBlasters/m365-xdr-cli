@@ -1,0 +1,23 @@
+-- name: qry_device_connections
+-- description: Process on a device connecting to a specific remote IP or domain — identifies C2 communication, phishing proxy connections, or post-click endpoint activity
+-- tier: pivot
+-- params: device_id, remote, start, end, mode=detail
+let DetailRows =
+    DeviceNetworkEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where DeviceId == '{device_id}'
+    | where RemoteIP == '{remote}' or RemoteUrl has '{remote}'
+    | project Timestamp, RemoteIP, RemoteUrl, RemotePort,
+              InitiatingProcessFileName, InitiatingProcessCommandLine,
+              InitiatingProcessFolderPath, InitiatingProcessSHA256;
+let SummaryRow =
+    DetailRows
+    | summarize
+        Connections     = count(),
+        DistinctRemotes = dcount(RemoteIP),
+        FirstSeen       = min(Timestamp),
+        LastSeen        = max(Timestamp)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp asc)

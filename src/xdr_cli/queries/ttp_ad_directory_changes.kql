@@ -1,0 +1,20 @@
+-- name: ttp_ad_directory_changes
+-- description: On-prem AD group membership changes, account modifications, and computer account creation by a specific account
+-- tier: r3
+-- params: account_oid, start, end, mode=detail
+let DetailRows =
+    IdentityDirectoryEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where AccountObjectId == '{account_oid}'
+    | where ActionType has_any ('Group Membership changed', 'Account modified', 'Computer Account created')
+    | project Timestamp, AccountUpn, ActionType, TargetAccountUpn, TargetDeviceName, Application;
+let SummaryRow =
+    DetailRows
+    | summarize
+        ChangeCount      = count(),
+        DistinctActions  = make_set(ActionType),
+        DistinctTargets  = dcount(TargetAccountUpn)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp asc)

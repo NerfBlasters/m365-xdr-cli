@@ -1,0 +1,51 @@
+-- name: qry_spn_activity
+-- description: Per-SPN sign-in activity — per-day rollup with multi-country Severity annotation
+-- tier: r2
+-- params: spn_id, start, end, mode=summary
+-- lists: InternalSubnets
+let _xdr_InternalSubnets = dynamic([]);
+let SpnEvents = EntraIdSpnSignInEvents
+| where Timestamp between(datetime({start}) .. datetime({end}))
+| where ServicePrincipalId == '{spn_id}'
+| extend IsExternal = not(ipv4_is_in_any_range(IPAddress, _xdr_InternalSubnets));
+// Per-day rollup — used both as DetailRows and as the input for the
+// TopEvidence pack. Building TopEvidence inline in SummaryRow's summarize
+// would nest count() / make_set() inside make_list(pack(...)), which KQL
+// rejects. Same pattern as qry_connection_scope.
+let DailyRows = SpnEvents
+| summarize SignIns=count(), IPs=make_set(IPAddress, 5), Resources=make_set(ResourceDisplayName, 5)
+  by ServicePrincipalId, bin(Timestamp, 1d);
+let TopEv = DailyRows
+    | order by SignIns desc, Timestamp desc
+    | summarize TopEvidence = make_list(pack(
+            'Date',      Timestamp,
+            'SignIns',   SignIns,
+            'IPs',       IPs,
+            'Resources', Resources), 5)
+        by ServicePrincipalId;
+let SummaryRow = SpnEvents
+    | summarize
+        TotalSignIns      = count(),
+        EvidenceTotal     = count(),
+        FirstSeen         = min(Timestamp),
+        LastSeen          = max(Timestamp),
+        DistinctIPs       = dcount(IPAddress),
+        DistinctCountries = dcount(Country),
+        ExternalIPCount   = countif(IsExternal),
+        TopResources      = make_set(ResourceDisplayName, 10)
+        by ServicePrincipalId
+    | join kind=leftouter TopEv on ServicePrincipalId
+    | extend Score = case(
+        DistinctCountries >= 5, 7,
+        DistinctCountries >= 3, 4,
+        1)
+    // SuppressedCount = 0: this query has no tenant-curated row-drop filter.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(DistinctCountries >= 5, 'high', DistinctCountries >= 3, 'medium', 'low');
+let DetailRows = DailyRows;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Timestamp desc)

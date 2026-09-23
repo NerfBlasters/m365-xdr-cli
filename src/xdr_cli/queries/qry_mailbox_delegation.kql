@@ -1,0 +1,93 @@
+-- name: qry_mailbox_delegation
+-- description: Exchange mailbox delegation grants — FullAccess / SendAs / SendOnBehalf, with internal/external delegate classification
+-- tier: n
+-- params: hours=168, account_upn=, mode=summary
+-- lists: TenantDomains
+let _xdr_TenantDomains = dynamic([]);
+let Window = {hours}h;
+let Base = CloudAppEvents
+    | where Timestamp > ago(Window)
+    | where Application == "Microsoft Exchange Online"
+    | where ActionType in ("Add-MailboxPermission", "Add-RecipientPermission", "Set-Mailbox")
+    | where '{account_upn}' == '' or tostring(RawEventData.UserId) =~ '{account_upn}'
+    | extend Params = todynamic(RawEventData.Parameters)
+    | mv-apply p = Params on (
+        summarize
+            TargetMailbox = anyif(tostring(p.Value), tostring(p.Name) =~ "Identity"),
+            Delegate      = anyif(tostring(p.Value), tostring(p.Name) =~ "User" or tostring(p.Name) =~ "Trustee"),
+            AccessRights  = anyif(tostring(p.Value), tostring(p.Name) =~ "AccessRights"),
+            SendOnBehalf  = anyif(tostring(p.Value), tostring(p.Name) =~ "GrantSendOnBehalfTo")
+      )
+    | where isnotempty(Delegate) or isnotempty(SendOnBehalf)
+    | extend EffectiveDelegate = coalesce(Delegate, SendOnBehalf)
+    | extend DelegateDomain = tolower(tostring(split(EffectiveDelegate, "@")[1]))
+    | extend IsExternalDelegate = isnotempty(DelegateDomain)
+                                  and array_length(_xdr_TenantDomains) > 0
+                                  and not(DelegateDomain in (_xdr_TenantDomains))
+    | extend HasFullAccess = AccessRights has "FullAccess"
+    | extend HasSendAs     = ActionType == "Add-RecipientPermission" and AccessRights has "SendAs"
+    | extend HasSendOnBehalf = isnotempty(SendOnBehalf) or ActionType == "Set-Mailbox";
+let Scored = Base
+    | extend Score =
+          (iff(IsExternalDelegate, 5, 0))
+        + (iff(HasFullAccess,      4, 0))
+        + (iff(HasSendAs,          4, 0))
+        + (iff(HasSendOnBehalf,    5, 0))
+    | extend Indicators = strcat_array(pack_array(
+            iff(IsExternalDelegate, "external-delegate", ""),
+            iff(HasFullAccess,      "full-access",       ""),
+            iff(HasSendAs,          "send-as",           ""),
+            iff(HasSendOnBehalf,    "send-on-behalf",    "")
+        ), " ")
+    | where Score >= 2
+    | extend GrantingUser = tostring(RawEventData.UserId);
+let RankedDetail = Scored | order by Score desc, Timestamp desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp",      Timestamp,
+            "Operation",      ActionType,
+            "GrantingUser",   GrantingUser,
+            "TargetMailbox",  TargetMailbox,
+            "Delegate",       EffectiveDelegate,
+            "AccessRights",   AccessRights,
+            "IsExternal",     IsExternalDelegate,
+            "ClientIP",       IPAddress,
+            "Score",          Score), 5)
+        by GrantingUser;
+let Agg = Scored
+    | summarize
+        Score                = max(Score),
+        DelegationCount      = count(),
+        EvidenceTotal        = count(),
+        FirstSeen            = min(Timestamp),
+        LastSeen             = max(Timestamp),
+        ExternalDelegateCount= countif(IsExternalDelegate),
+        FullAccessGrants     = countif(HasFullAccess),
+        SendAsGrants         = countif(HasSendAs),
+        SendOnBehalfGrants   = countif(HasSendOnBehalf)
+        by GrantingUser
+    | extend Indicators = strcat_array(pack_array(
+            iff(ExternalDelegateCount > 0, "external-delegate", ""),
+            iff(FullAccessGrants      > 0, "full-access",       ""),
+            iff(SendAsGrants          > 0, "send-as",           ""),
+            iff(SendOnBehalfGrants    > 0, "send-on-behalf",    "")
+        ), " ");
+let SummaryRow = Agg
+    | join kind=leftouter TopEv on GrantingUser
+    // SuppressedCount = 0: this query has no tenant-curated row-drop filter.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project GrantingUser, Score, DelegationCount, ExternalDelegateCount,
+              FullAccessGrants, SendAsGrants, SendOnBehalfGrants,
+              Indicators, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, FirstSeen, LastSeen, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Scored
+    | project Timestamp, Operation = ActionType, GrantingUser,
+              TargetMailbox, Delegate = EffectiveDelegate, AccessRights, IsExternalDelegate,
+              ClientIP = IPAddress, Indicators, Score;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Timestamp desc)

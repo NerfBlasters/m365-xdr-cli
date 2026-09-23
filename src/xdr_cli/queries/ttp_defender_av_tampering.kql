@@ -1,0 +1,126 @@
+-- name: ttp_defender_av_tampering
+-- description: Defender AV / Sense tampering — disable, exclusion, definition removal, service stop, tamper attempts, registry-policy poke
+-- tier: n
+-- params: hours=24, device_name=, mode=summary
+-- lists: KnownServiceAccounts
+let _xdr_KnownServiceAccounts = dynamic([]);
+let Window = {hours}h;
+let CmdCandidates = DeviceProcessEvents
+    | where Timestamp > ago(Window)
+    | where '{device_name}' == '' or DeviceName =~ '{device_name}'
+    | extend CmdLower = tolower(ProcessCommandLine)
+    | extend Leg =
+        case(
+            CmdLower matches regex @"set-mppreference\s+.*-disable", "av-disable",
+            CmdLower matches regex @"set-mppreference\s+.*-exclusion", "av-exclusion",
+            CmdLower has "mpcmdrun" and CmdLower has "-removedefinitions", "av-removedefs",
+            CmdLower matches regex @"\bsc(\.exe)?\b\s+stop\s+(sense|windefend)", "av-svc-stop",
+            CmdLower matches regex @"stop-service\s+.*-name\s+(""|')?(sense|windefend)", "av-svc-stop",
+            CmdLower has "set-mppreference" and CmdLower has "disablerealtimemonitoring", "av-realtime-off",
+            "")
+    | where isnotempty(Leg)
+    | project Timestamp, DeviceName,
+              InitiatingProcessAccountName,
+              AccountUpn = coalesce(AccountUpn, InitiatingProcessAccountUpn),
+              Leg, ProcessCommandLine, InitiatingProcessFileName, Source = "DeviceProcessEvents";
+let CmdLeg = CmdCandidates
+    | where not(InitiatingProcessAccountName in~ (_xdr_KnownServiceAccounts))
+    | project-away InitiatingProcessAccountName;
+let EventCandidates = DeviceEvents
+    | where Timestamp > ago(Window)
+    | where '{device_name}' == '' or DeviceName =~ '{device_name}'
+    | where ActionType has_any ("Tampering", "AntivirusReportingEvent",
+                                "TamperingAttempt", "DefenderTamperingAttempt",
+                                "AntivirusDefinitionsUpdateFailure")
+    | extend Leg = case(
+        ActionType has "Tampering", "tamper-event",
+        ActionType has "AntivirusReportingEvent", "av-reporting-event",
+        ActionType has "DefinitionsUpdateFailure", "defs-update-fail",
+        "av-event")
+    | project Timestamp, DeviceName,
+              InitiatingProcessAccountName,
+              AccountUpn = InitiatingProcessAccountUpn,
+              Leg, ProcessCommandLine = AdditionalFields, InitiatingProcessFileName, Source = "DeviceEvents";
+let EventLeg = EventCandidates
+    | where not(InitiatingProcessAccountName in~ (_xdr_KnownServiceAccounts))
+    | project-away InitiatingProcessAccountName;
+let RegistryCandidates = DeviceRegistryEvents
+    | where Timestamp > ago(Window)
+    | where '{device_name}' == '' or DeviceName =~ '{device_name}'
+    | where ActionType == "RegistryValueSet"
+    | where (RegistryKey has @"\Software\Policies\Microsoft\Windows Defender"
+             or RegistryKey has @"\Real-Time Protection")
+    | where RegistryValueData == "1"
+    | where RegistryValueName has_any ("DisableAntiSpyware",
+                                       "DisableRealtimeMonitoring",
+                                       "DisableBehaviorMonitoring",
+                                       "DisableIOAVProtection")
+    | extend Leg = "av-policy-poke"
+    | project Timestamp, DeviceName,
+              InitiatingProcessAccountName,
+              AccountUpn = InitiatingProcessAccountUpn,
+              Leg, ProcessCommandLine = strcat(RegistryKey, " -> ", RegistryValueName, "=", RegistryValueData),
+              InitiatingProcessFileName, Source = "DeviceRegistryEvents";
+let RegistryLeg = RegistryCandidates
+    | where not(InitiatingProcessAccountName in~ (_xdr_KnownServiceAccounts))
+    | project-away InitiatingProcessAccountName;
+let SuppressedPerDevice = union
+    (CmdCandidates | where InitiatingProcessAccountName in~ (_xdr_KnownServiceAccounts)),
+    (EventCandidates | where InitiatingProcessAccountName in~ (_xdr_KnownServiceAccounts)),
+    (RegistryCandidates | where InitiatingProcessAccountName in~ (_xdr_KnownServiceAccounts))
+    | summarize SuppressedCount = count() by DeviceName;
+let Hits = union CmdLeg, EventLeg, RegistryLeg;
+let Scored = Hits
+    | extend LegScore = case(
+        Leg == "av-svc-stop",         5,
+        Leg == "av-removedefs",       5,
+        Leg == "tamper-event",        5,
+        Leg == "av-realtime-off",     5,
+        Leg == "av-policy-poke",      5,
+        Leg == "av-reporting-event",  5,
+        Leg == "av-disable",          4,
+        Leg == "defs-update-fail",    2,
+        2);
+let RankedDetail = Scored | order by LegScore desc, Timestamp desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp", Timestamp,
+            "Account",   AccountUpn,
+            "Leg",       Leg,
+            "Source",    Source,
+            "Parent",    InitiatingProcessFileName,
+            "CmdLine",   substring(tostring(ProcessCommandLine), 0, 400),
+            "LegScore",  LegScore
+            ), 5)
+        by DeviceName;
+let Agg = Scored
+    | summarize
+        SumNonExclusionScore = sumif(LegScore, Leg != "av-exclusion"),
+        ExclusionAddCount    = countif(Leg == "av-exclusion"),
+        EventCount           = count(),
+        EvidenceTotal        = count(),
+        DistinctLegs         = make_set(Leg, 12),
+        FirstSeen            = min(Timestamp),
+        LastSeen             = max(Timestamp)
+        by DeviceName
+    | extend ExclusionScore = iff(ExclusionAddCount > 3, 6, ExclusionAddCount * 4)
+    | extend Score = min_of(SumNonExclusionScore + ExclusionScore, 12)
+    | extend Indicators = strcat_array(DistinctLegs, " ")
+    | where Score >= 4;
+let DeviceCorrelated = Agg
+    | join kind=leftouter TopEv on DeviceName
+    | join kind=leftouter SuppressedPerDevice on DeviceName
+    | extend SuppressedCount = coalesce(SuppressedCount, 0)
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project DeviceName, Score, EventCount, ExclusionAddCount, DistinctLegs,
+              FirstSeen, LastSeen, Indicators, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Scored
+    | project Timestamp, DeviceName, AccountUpn, Leg, LegScore, Source,
+              ParentFile = InitiatingProcessFileName, ProcessCommandLine;
+union
+    (DeviceCorrelated | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows       | where '{mode}' == 'detail'  | order by Timestamp desc)

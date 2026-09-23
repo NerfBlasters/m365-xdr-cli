@@ -1,0 +1,2 @@
+# Inbox-rule body / subject content keywords (BEC patterns).
+# Suggested seeds: wire, ach, payment, invoice, iban, swift, routing, beneficiary, bank

@@ -1,0 +1,10 @@
+title = "m365-xdr-cli secret scanning"
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic pagination cursor used to test + / = preservation"
+condition = "AND"
+paths = ['''^tests/test_(portal_client|timeline_api)\.py$''']
+regexTarget = "secret"
+regexes = ['''^aB\+cD/eF12\+gh==$''']

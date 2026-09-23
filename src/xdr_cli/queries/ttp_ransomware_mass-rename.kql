@@ -1,0 +1,157 @@
+-- name: ttp_ransomware_mass-rename
+-- description: Late-stage ransomware activity — mass rename + extension-entropy + shadow copy deletion + backup deletion + ransom note creation. For early-warning, see ttp_ransomware_precursors.
+-- tier: r1
+-- params: hours=6, threshold=50, device_name=, mode=summary
+-- lists: KnownGoodSigners
+let _xdr_KnownGoodSigners = dynamic([]);
+let Window = {hours}h;
+let Threshold = toint('{threshold}');
+let DeviceFilter = '{device_name}';
+let ShadowCopy = DeviceProcessEvents
+    | where Timestamp > ago(Window)
+    | where DeviceFilter == '' or DeviceName =~ DeviceFilter
+    | where (FileName =~ "vssadmin.exe"  and ProcessCommandLine has "delete" and ProcessCommandLine has "shadows")
+         or (FileName =~ "wmic.exe"      and ProcessCommandLine has "shadowcopy" and ProcessCommandLine has "delete")
+         or (FileName in~ ("powershell.exe","pwsh.exe")
+                and ProcessCommandLine has "Win32_ShadowCopy"
+                and (ProcessCommandLine has "Remove-WmiObject" or ProcessCommandLine has "Delete()"))
+    | extend Signal = "shadow-copy-deletion",
+             Bin = bin(Timestamp, 30m),
+             Detail = substring(ProcessCommandLine, 0, 300),
+             Signer = tostring(InitiatingProcessVersionInfoCompanyName)
+    | project Signal, Timestamp, Bin, DeviceName, Detail, Signer;
+let BackupDel = DeviceProcessEvents
+    | where Timestamp > ago(Window)
+    | where DeviceFilter == '' or DeviceName =~ DeviceFilter
+    | where (FileName =~ "bcdedit.exe"
+                and (ProcessCommandLine has "recoveryenabled" or ProcessCommandLine has "bootstatuspolicy"))
+         or (FileName =~ "wbadmin.exe" and ProcessCommandLine has "delete")
+    | extend Signal = "backup-deletion",
+             Bin = bin(Timestamp, 30m),
+             Detail = substring(ProcessCommandLine, 0, 300),
+             Signer = tostring(InitiatingProcessVersionInfoCompanyName)
+    | project Signal, Timestamp, Bin, DeviceName, Detail, Signer;
+let MassRenameRaw = DeviceFileEvents
+    | where Timestamp > ago(Window)
+    | where ActionType == "FileRenamed"
+    | where DeviceFilter == '' or DeviceName =~ DeviceFilter
+    | extend Extension = tolower(tostring(split(FileName, ".")[-1])),
+             Bin = bin(Timestamp, 30m),
+             Signer = tostring(InitiatingProcessVersionInfoCompanyName);
+let MassRename = MassRenameRaw
+    | summarize RenamedFiles = count(),
+                FirstRename  = min(Timestamp),
+                LastRename   = max(Timestamp),
+                Signers      = make_set(Signer, 4)
+        by DeviceName, Bin, Extension
+    | where RenamedFiles >= Threshold
+    | extend Signal = "mass-rename",
+             Detail = strcat(".", Extension, " x", RenamedFiles),
+             Signer = tostring(Signers[0])
+    | project Signal, Timestamp = FirstRename, Bin, DeviceName, Detail, Signer;
+let ExtEntropy = MassRenameRaw
+    | where Extension matches regex @"^[a-z0-9]{4,8}$"
+    | where Extension matches regex @"[0-9]"   // require at least one digit (excludes plain words)
+    | summarize DistinctRandomExt = dcount(Extension, 2),
+                ExtList           = make_set(Extension, 8),
+                FirstSeen         = min(Timestamp),
+                Signers           = make_set(Signer, 4)
+        by DeviceName, Bin
+    | where DistinctRandomExt > 3
+    | extend Signal = "extension-entropy",
+             Detail = strcat("distinct=", DistinctRandomExt, " e.g. ", tostring(ExtList)),
+             Signer = tostring(Signers[0])
+    | project Signal, Timestamp = FirstSeen, Bin, DeviceName, Detail, Signer;
+let RansomNotes = DeviceFileEvents
+    | where Timestamp > ago(Window)
+    | where ActionType == "FileCreated"
+    | where DeviceFilter == '' or DeviceName =~ DeviceFilter
+    | extend Lower = tolower(FileName)
+    | extend Ext   = tolower(tostring(split(FileName, ".")[-1]))
+    | where Ext in ("txt","html","htm","hta","rtf")
+    | where Lower has_any (dynamic(["readme","decrypt","recover","_help","!important","how_to","restore_files"]))
+    | extend Signal = "ransom-note",
+             Bin = bin(Timestamp, 30m),
+             Detail = strcat(FolderPath, FileName),
+             Signer = tostring(InitiatingProcessVersionInfoCompanyName)
+    | project Signal, Timestamp, Bin, DeviceName, Detail, Signer;
+let All = union ShadowCopy, BackupDel, MassRename, ExtEntropy, RansomNotes;
+let PerBin = All
+    | summarize
+        ShadowCopyDeletion = countif(Signal == "shadow-copy-deletion"),
+        BackupDeletion     = countif(Signal == "backup-deletion"),
+        MassRenameCount    = countif(Signal == "mass-rename"),
+        ExtEntropyHits     = countif(Signal == "extension-entropy"),
+        RansomNoteCount    = countif(Signal == "ransom-note"),
+        AllSigners         = make_set(Signer, 8),
+        FirstSignal        = min(Timestamp),
+        LastSignal         = max(Timestamp)
+        by DeviceName, Bin
+    | extend SignalsPresent =
+          toint(ShadowCopyDeletion > 0)
+        + toint(BackupDeletion     > 0)
+        + toint(MassRenameCount    > 0)
+        + toint(ExtEntropyHits     > 0)
+        + toint(RansomNoteCount    > 0)
+    | extend RawScore =
+          (iff(ShadowCopyDeletion > 0, 5, 0))
+        + (iff(BackupDeletion     > 0, 5, 0))
+        + (iff(MassRenameCount    > 0, 5, 0))
+        + (iff(ExtEntropyHits     > 0, 4, 0))
+        + (iff(RansomNoteCount    > 0, 4, 0))
+        + (iff(SignalsPresent    >= 2, 5, 0))
+        + (iff(SignalsPresent    >= 3, 5, 0))
+    | extend OnlyMassRename = SignalsPresent == 1 and MassRenameCount > 0
+    | extend HasGoodSigner  = array_length(set_intersect(AllSigners, _xdr_KnownGoodSigners)) > 0
+    | extend Score = iff(OnlyMassRename and HasGoodSigner, 0, RawScore);
+let PerDevice = PerBin
+    | summarize
+        Score              = max(Score),
+        EvidenceTotal      = count(),
+        MaxScore           = max(RawScore),
+        ShadowCopyDeletionFlag = max(ShadowCopyDeletion) > 0,
+        BackupDeletionFlag = max(BackupDeletion) > 0,
+        MassRenameCount    = sum(MassRenameCount),
+        ExtensionEntropyScore = sum(ExtEntropyHits),
+        RansomNoteCount    = sum(RansomNoteCount),
+        FirstSignal        = min(FirstSignal),
+        LastSignal         = max(LastSignal),
+        FirstSeen          = min(FirstSignal),
+        LastSeen           = max(LastSignal)
+        by DeviceName
+    | extend Indicators = strcat_array(pack_array(
+        iff(ShadowCopyDeletionFlag,        "shadow-copy-deletion", ""),
+        iff(BackupDeletionFlag,            "backup-deletion",      ""),
+        iff(MassRenameCount    > 0,        "mass-rename",          ""),
+        iff(ExtensionEntropyScore > 0,     "extension-entropy",    ""),
+        iff(RansomNoteCount    > 0,        "ransom-note",          "")
+        ), " ");
+let RankedEvidence = All
+    | join kind=inner (PerBin | project DeviceName, Bin, Score) on DeviceName, Bin
+    | order by Score desc, Timestamp desc;
+let TopEv = RankedEvidence
+    | summarize TopEvidence = make_list(pack(
+        "Signal",    Signal,
+        "Timestamp", Timestamp,
+        "Device",    DeviceName,
+        "Detail",    Detail,
+        "Score",     Score), 5)
+        by DeviceName;
+let SummaryRow = PerDevice
+    | join kind=leftouter TopEv on DeviceName
+    // SuppressedCount = 0: KnownGoodSigners is wired as a Score-zeroing annotation (not a row-drop)
+    // applied only when the only signal is mass-rename — see PerBin.Score expression.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project DeviceName, Score, MaxScore, ShadowCopyDeletionFlag, BackupDeletionFlag,
+              MassRenameCount, ExtensionEntropyScore, RansomNoteCount,
+              FirstSignal, LastSignal, Indicators, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, FirstSeen, LastSeen, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = All
+    | order by Timestamp desc;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail')

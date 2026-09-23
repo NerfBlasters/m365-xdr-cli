@@ -1,0 +1,209 @@
+-- name: ttp_token_theft_replay
+-- description: Per-session sign-in fingerprint anomalies (SessionId / UniqueTokenId reuse from different IPs / UAs / Countries / JA4) + AiTM infra hits + refresh-token replay (>24h, no-MFA)
+-- tier: r1
+-- params: hours=24, account_upn=, session_id=, mode=summary
+-- lists: InternalSubnets, AiTMInfrastructure, KnownEgressIPs, AnonymizingIPRanges
+-- agent_hint: NetworkLocationDetails.ipCategory regex was removed in round 4 — that JSON
+--   column does not contain ipCategory per the documented schema. Use the operator-curated
+--   _xdr_AnonymizingIPRanges deny-list (Tor + commercial VPN + hosting-provider feeds).
+let _xdr_InternalSubnets       = dynamic([]);
+let _xdr_AiTMInfrastructure    = dynamic([]);
+let _xdr_KnownEgressIPs        = dynamic([]);
+let _xdr_AnonymizingIPRanges   = dynamic([]);
+let Window = {hours}h;
+let Scoped = EntraIdSignInEvents
+    | where Timestamp > ago(Window)
+    | where ErrorCode == 0
+    | where '{account_upn}' == '' or AccountUpn =~ '{account_upn}'
+    | where '{session_id}'  == '' or SessionId  =~ '{session_id}'
+    | where isnotempty(SessionId) or isnotempty(UniqueTokenId)
+    | extend IsInternal  = isnotempty(IPAddress) and ipv4_is_in_any_range(IPAddress, _xdr_InternalSubnets)
+    | extend IsKnownEgress = isnotempty(IPAddress) and ipv4_is_in_any_range(IPAddress, _xdr_KnownEgressIPs)
+    | extend IsAiTM      = isnotempty(IPAddress) and (IPAddress in (_xdr_AiTMInfrastructure)
+                              or ipv4_is_in_any_range(IPAddress, _xdr_AiTMInfrastructure))
+    | extend IsHostingOrAnon = isnotempty(IPAddress)
+                              and (IPAddress in (_xdr_AnonymizingIPRanges)
+                                   or ipv4_is_in_any_range(IPAddress, _xdr_AnonymizingIPRanges))
+    | extend HasMfa      = AuthenticationRequirement =~ "multiFactorAuthentication"
+    | extend IsPrimaryAuthSuccess =
+            tolower(tostring(AuthenticationProcessingDetails)) has "primary authentication"
+        and tolower(tostring(AuthenticationProcessingDetails)) has "succeeded";
+// ---- per-session aggregate ----
+let SessionFacts = Scoped
+    | where isnotempty(SessionId)
+    | summarize
+        EventCount        = count(),
+        DistinctIPs       = dcount(IPAddress, 2),
+        DistinctCountries = dcount(Country, 2),
+        DistinctUAs       = dcount(UserAgent, 2),
+        DistinctJA4       = dcount(GatewayJA4, 2),
+        DistinctTokens    = dcount(UniqueTokenId, 2),
+        IPs               = make_set(IPAddress, 8),
+        Countries         = make_set(Country, 8),
+        UAs               = make_set(UserAgent, 6),
+        JA4s              = make_set(GatewayJA4, 6),
+        AiTMHits          = countif(IsAiTM),
+        HostingAnonHits   = countif(IsHostingOrAnon),
+        HostingAnonRisky  = countif(IsHostingOrAnon and tostring(RiskLevelDuringSignIn) != "none"
+                                    and isnotempty(tostring(RiskLevelDuringSignIn))),
+        HostingAnonPrimary = countif(IsHostingOrAnon and IsPrimaryAuthSuccess),
+        // ConditionalAccessStatus is the Entra enum: some tenants emit the
+        // string label ("notApplied"), some the int (2 = notApplied per
+        // /entraidsignineventbeta schema). Match either shape via tostring().
+        CANotApplied      = countif(tostring(ConditionalAccessStatus) in~ ("notApplied", "2")),
+        MaxRiskLevel      = max(tostring(RiskLevelDuringSignIn)),
+        MfaCount          = countif(HasMfa),
+        AllInternal       = countif(not(IsInternal)) == 0,
+        AllKnownEgress    = countif(not(IsKnownEgress)) == 0,
+        FirstSeen         = min(Timestamp),
+        LastSeen          = max(Timestamp)
+        by AccountUpn, SessionId
+    | extend
+        IPSpread       = DistinctIPs       >= 2,
+        CountrySpread  = DistinctCountries >= 2,
+        UASpread       = DistinctUAs       >= 2,
+        JA4Spread      = DistinctJA4       >= 2,
+        BothMfa        = MfaCount >= 2 and EventCount == MfaCount;
+let SessionScored = SessionFacts
+    | extend Score =
+          (iff(IPSpread,                       5, 0))
+        + (iff(CountrySpread,                  4, 0))
+        + (iff(UASpread,                       3, 0))
+        + (iff(JA4Spread,                      3, 0))
+        + (iff(AiTMHits         > 0,           6, 0))
+        + (iff(HostingAnonRisky > 0,           5, 0))
+        + (iff(HostingAnonPrimary > 0,         4, 0))
+        + (iff(CANotApplied     > 0,           3, 0))
+        + (iff(MaxRiskLevel == "high",         2, 0))
+        - (iff(BothMfa,                        3, 0))
+        - (iff(AllInternal,                    5, 0))
+        - (iff(AllKnownEgress,                 3, 0))
+    | extend EntityKey = strcat(AccountUpn, "|S|", SessionId), UniqueTokenIdKey = "";
+// ---- per-token aggregate (refresh-token replay across sessions) ----
+// Advanced Hunting in some tenants rejects `partition by` — synthesise a
+// compound key, order globally, serialize, pull prev(*) per row, then gate
+// adjacency on PartKey equality so prev() values are scoped per-token.
+let TokenLegs = Scoped
+    | where isnotempty(UniqueTokenId)
+    | extend _PartKey = strcat(AccountUpn, "|", UniqueTokenId)
+    | order by _PartKey asc, Timestamp asc
+    | serialize
+    | extend
+        PrevPartKey  = prev(_PartKey),
+        PrevTs       = prev(Timestamp),
+        PrevIP       = prev(IPAddress),
+        PrevHasMfa   = prev(HasMfa)
+    | extend
+        PrevTs       = iff(_PartKey == PrevPartKey, PrevTs,     datetime(null)),
+        PrevIP       = iff(_PartKey == PrevPartKey, PrevIP,     ""),
+        PrevHasMfa   = iff(_PartKey == PrevPartKey, PrevHasMfa, false);
+let TokenFacts = TokenLegs
+    | summarize
+        LegCount         = count(),
+        DistinctIPs      = dcount(IPAddress, 2),
+        DistinctCountries= dcount(Country, 2),
+        DistinctUAs      = dcount(UserAgent, 2),
+        IPs              = make_set(IPAddress, 8),
+        Countries        = make_set(Country, 8),
+        UAs              = make_set(UserAgent, 6),
+        AnyMfa           = countif(HasMfa),
+        MaxDeltaHours    = max(iff(isnotempty(PrevTs),
+                                  toreal(datetime_diff('minute', Timestamp, PrevTs)) / 60.0, real(0))),
+        AnyIPDelta       = countif(isnotempty(PrevIP) and PrevIP != IPAddress),
+        AnyAiTM          = countif(IsAiTM),
+        AllInternal      = countif(not(IsInternal)) == 0,
+        AllKnownEgress   = countif(not(IsKnownEgress)) == 0,
+        FirstSeen        = min(Timestamp),
+        LastSeen         = max(Timestamp)
+        by AccountUpn, UniqueTokenId
+    | extend
+        IsRefreshReplay  = LegCount >= 2 and MaxDeltaHours > 24 and AnyMfa == 0 and AnyIPDelta > 0,
+        IPSpread         = DistinctIPs >= 2;
+let TokenScored = TokenFacts
+    | extend Score =
+          (iff(IsRefreshReplay,                5, 0))
+        + (iff(IPSpread,                       5, 0))
+        + (iff(AnyAiTM > 0,                    6, 0))
+        - (iff(AllInternal,                    5, 0))
+        - (iff(AllKnownEgress,                 3, 0))
+    | where Score > 0
+    | extend EntityKey = strcat(AccountUpn, "|T|", UniqueTokenId), SessionId = "";
+// ---- merge for SummaryRow ----
+let MergedSession = SessionScored
+    | where Score >= 4
+    | project AccountUpn, EntityKey, SessionId, UniqueTokenId = "",
+              IPs, Countries, UAs, JA4s, DistinctTokens, DistinctIPs, DistinctCountries, DistinctUAs, DistinctJA4,
+              AiTMHits, HostingAnonHits, CANotApplied, MaxRiskLevel,
+              IsRefreshReplay = false, MinutesSinceIssue = real(0),
+              FirstSeen, LastSeen, Score;
+let MergedToken = TokenScored
+    | extend DistinctTokens = long(1), DistinctJA4 = long(0), JA4s = dynamic([]),
+             AiTMHits = AnyAiTM, HostingAnonHits = long(0), CANotApplied = long(0), MaxRiskLevel = ""
+    | project AccountUpn, EntityKey, SessionId = "", UniqueTokenId,
+              IPs, Countries, UAs, JA4s, DistinctTokens, DistinctIPs, DistinctCountries, DistinctUAs, DistinctJA4,
+              AiTMHits, HostingAnonHits, CANotApplied, MaxRiskLevel,
+              IsRefreshReplay, MinutesSinceIssue = MaxDeltaHours * 60.0,
+              FirstSeen, LastSeen, Score;
+let Merged = union MergedSession, MergedToken;
+let Ranked = Merged
+    | order by Score desc, LastSeen desc;
+let TopEv = Ranked
+    | summarize TopEvidence = make_list(pack(
+            "SessionId",          SessionId,
+            "UniqueTokenId",      UniqueTokenId,
+            "IPs",                IPs,
+            "Countries",          Countries,
+            "UAs",                UAs,
+            "MinutesSinceIssue",  round(MinutesSinceIssue, 0),
+            "Score",              Score), 5)
+        by AccountUpn;
+let SummaryAgg = Ranked
+    | summarize
+        Score                       = max(Score),
+        EvidenceTotal               = count(),
+        FirstSeen                   = min(FirstSeen),
+        LastSeen                    = max(LastSeen),
+        AnomalousSessions           = countif(SessionId != ""),
+        DistinctIPs                 = max(DistinctIPs),
+        DistinctCountries           = max(DistinctCountries),
+        DistinctUAs                 = max(DistinctUAs),
+        DistinctTokens              = max(tolong(DistinctTokens)),
+        JA4Count                    = max(DistinctJA4),
+        HostingProviderHits         = sum(HostingAnonHits),
+        AiTMInfraHits               = sum(AiTMHits),
+        RefreshTokenReplayCount     = countif(IsRefreshReplay),
+        ConditionalAccessNotApplied = sum(CANotApplied),
+        MaxRiskLevel                = max(MaxRiskLevel)
+        by AccountUpn;
+let SummaryRow = SummaryAgg
+    | join kind=leftouter TopEv on AccountUpn
+    | extend Indicators = strcat_array(pack_array(
+            iff(DistinctIPs >= 2,                  "ip-spread",          ""),
+            iff(DistinctCountries >= 2,            "country-spread",     ""),
+            iff(DistinctUAs >= 2,                  "ua-spread",          ""),
+            iff(JA4Count >= 2,                     "ja4-spread",         ""),
+            iff(AiTMInfraHits > 0,                 "aitm-infra",         ""),
+            iff(HostingProviderHits > 0,           "hosting-anon",       ""),
+            iff(RefreshTokenReplayCount > 0,       "refresh-token-replay", ""),
+            iff(ConditionalAccessNotApplied > 0,   "ca-not-applied",     ""),
+            iff(MaxRiskLevel == "high",            "risk-high",          "")
+        ), " ")
+    // SuppressedCount = 0: this query has no tenant-curated row-drop filter.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project AccountUpn, Score, AnomalousSessions, DistinctIPs, DistinctCountries, DistinctUAs,
+              DistinctTokens, JA4Count, HostingProviderHits, AiTMInfraHits, RefreshTokenReplayCount,
+              ConditionalAccessNotApplied, MaxRiskLevel, Indicators, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, FirstSeen, LastSeen, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Scoped
+    | project Timestamp, AccountUpn, SessionId, UniqueTokenId, IPAddress, Country, City,
+              UserAgent, Browser, GatewayJA4, ConditionalAccessStatus, RiskLevelDuringSignIn,
+              AuthenticationRequirement, AuthenticationProcessingDetails,
+              IsAiTM, IsHostingOrAnon, IsInternal, IsKnownEgress,
+              Application, ResourceDisplayName;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Timestamp desc)

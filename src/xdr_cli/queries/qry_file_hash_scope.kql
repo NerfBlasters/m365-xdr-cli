@@ -1,0 +1,21 @@
+-- name: qry_file_hash_scope
+-- description: Find all devices with a specific file hash
+-- tier: pivot
+-- params: sha256, hours=720, mode=detail
+// Hoist the raw hits so SummaryRow can compute distinct DeviceName from
+// the per-event rows; DetailRows is the per-FileName rollup.
+let RawHits =
+    DeviceFileEvents
+    | where Timestamp > ago({hours}h)
+    | where SHA256 == '{sha256}';
+let DetailRows = RawHits
+    | summarize Machines=dcount(DeviceName), FirstSeen=min(Timestamp), LastSeen=max(Timestamp) by FileName;
+let SummaryRow = RawHits
+    | summarize
+        DeviceCount = dcount(DeviceName),
+        FirstSeen   = min(Timestamp),
+        LastSeen    = max(Timestamp)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Machines desc)

@@ -1,0 +1,56 @@
+-- name: identity_signin_baseline
+-- description: Per-user sign-in baseline — top IPs / UAs / Countries / ASNs by frequency, distinct-counts, last-seen
+-- tier: r3
+-- params: account_oid, hours=720, mode=summary
+-- lists: KnownEgressIPs
+let _xdr_KnownEgressIPs = dynamic([]);
+let BaselineEvents = EntraIdSignInEvents
+| where Timestamp > ago({hours}h)
+| where AccountObjectId == '{account_oid}'
+| where ErrorCode == 0;
+// KQL rejects `make_list(pack(..., 'LastSeen', max(Timestamp)), 10)` because
+// max() inside make_list inside summarize is a nested aggregation. Pre-aggregate
+// per IP first, then build TopIPs from the materialized PerIP rows.
+let PerIP = BaselineEvents
+    | summarize SignIns=count(), LastSeen=max(Timestamp)
+        by AccountObjectId, IPAddress, Country
+    // `ipv4_is_in_any_range()` returns null (not false) for IPv6 inputs, which
+    // bubbles through `... or null` as null instead of false. Wrap with
+    // `coalesce(..., false)` so IsKnownEgress is always a boolean — IPv6
+    // sign-ins now report IsKnownEgress=false (matching the literal `in`
+    // path), instead of leaving the field null.
+    | extend IsKnownEgress = IPAddress in (_xdr_KnownEgressIPs)
+                          or coalesce(ipv4_is_in_any_range(IPAddress, _xdr_KnownEgressIPs), false);
+let SummaryRow = BaselineEvents
+    | summarize
+        TotalSignIns      = count(),
+        DistinctIPs       = dcount(IPAddress),
+        DistinctCountries = dcount(Country),
+        DistinctUAs       = dcount(UserAgent),
+        FirstSeen         = min(Timestamp),
+        LastSeen          = max(Timestamp),
+        TopCountries      = make_set(Country, 20),
+        TopUAs            = make_set(UserAgent, 10),
+        TopBrowsers       = make_set(Browser, 10),
+        TopClientApps     = make_set(ClientAppUsed, 10)
+        by AccountObjectId
+    | join kind=leftouter (
+        PerIP
+        | summarize TopIPs = make_list(pack(
+            'IP',            IPAddress,
+            'Country',       Country,
+            'IsKnownEgress', IsKnownEgress,
+            'SignIns',       SignIns,
+            'LastSeen',      LastSeen), 10)
+          by AccountObjectId
+    ) on AccountObjectId
+    | project-away AccountObjectId1
+    | extend SchemaVersion = 1;
+let DetailRows = BaselineEvents
+    | summarize SignIns=count(), Countries=make_set(Country), Cities=make_set(City),
+                IPs=make_set(IPAddress), Browsers=make_set(Browser), Devices=make_set(DeviceName)
+      by bin(Timestamp, 1d), AccountObjectId
+    | order by Timestamp desc;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail'  | order by Timestamp desc)

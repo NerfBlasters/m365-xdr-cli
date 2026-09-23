@@ -1,0 +1,19 @@
+-- name: qry_process_tree
+-- description: Full process ancestry for a device in a time window
+-- tier: pivot
+-- params: device_name, hours=1, mode=detail
+let DetailRows =
+    DeviceProcessEvents
+    | where DeviceName == '{device_name}'
+    | where Timestamp > ago({hours}h)
+    | project Timestamp, FileName, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessCommandLine, AccountName;
+let SummaryRow =
+    DetailRows
+    | summarize
+        ProcessCount     = count(),
+        DistinctFiles    = dcount(FileName),
+        DistinctAccounts = dcount(AccountName)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp desc)

@@ -1,0 +1,170 @@
+-- name: dns_subdomain_diversity
+-- description: High unique-subdomain count per parent domain — DNS tunneling / data exfil indicator with burst-hour concentration scoring and tenant-data-as-list
+-- tier: r1
+-- params: hours=24, device_name=, mode=summary
+-- lists: TenantDomains, KnownGoodParentDomains
+-- agent_hint: tables=[DeviceNetworkEvents]; row_volume=high; cpu_class=medium;
+--   per-(DeviceId, ParentDomain) unique-subdomain count + 1h burst summarize.
+--   RemoteUrl is the canonical DnsConnectionInspected field; swap to
+--   tostring(parse_json(AdditionalFields).query) if RemoteUrl is empty in your
+--   tenant. Public list KnownGoodParentDomains is wired as a -5 negative-weight
+--   Score term (not a row-drop), per spec line 372 ("Suppress parent in
+--   _xdr_KnownGoodParentDomains (-5)") and the broader "Public-list semantics"
+--   contract (line 239-247). A CDN/ad-tech parent that legitimately bursts
+--   (e.g. cloudfront.net under DGA-look-alike load) can still surface via
+--   compounding signals; -5 demotes typical legit traffic below the Score>=3
+--   floor while leaving the high-signal cases visible. TenantDomains (line 22)
+--   IS a row-drop because it is a tenant-curated list per spec line 244. Note
+--   the Score block uses `+ iif(..., -5, 0)` to match the Tasks 12+17 idiom
+--   used elsewhere in the library, even though local file style for IsSteadyState
+--   uses `- (iff(..., 2, 0))` — kept for cross-file consistency.
+let _xdr_TenantDomains          = dynamic([]);
+let _xdr_KnownGoodParentDomains = dynamic([]);
+let Window = {hours}h;
+let CandidateRows = DeviceNetworkEvents
+    | where Timestamp > ago(Window)
+    | where ActionType == "DnsConnectionInspected"
+    | where '{device_name}' == '' or DeviceName =~ '{device_name}'
+    | where isnotempty(RemoteUrl)
+    | where RemoteUrl != DeviceName
+    | extend DnsQuery = tolower(RemoteUrl)
+    | extend Parts = split(DnsQuery, ".")
+    | where array_length(Parts) >= 3
+    | extend FirstLabel = tostring(Parts[0])
+    | where not(FirstLabel startswith "_")
+    | extend ParentDomain = strcat(tostring(Parts[-2]), ".", tostring(Parts[-1]))
+    | project Timestamp, DeviceId, DeviceName, DnsQuery, ParentDomain;
+let BaseScoped = CandidateRows
+    | where not(ParentDomain in~ (_xdr_TenantDomains));
+let SuppressedPerDevice = CandidateRows
+    | where ParentDomain in~ (_xdr_TenantDomains)
+    | summarize SuppressedCount = count() by DeviceId, DeviceName;
+let Baseline30d = DeviceNetworkEvents
+    | where Timestamp between (ago(30d) .. ago(Window))
+    | where ActionType == "DnsConnectionInspected"
+    | where isnotempty(RemoteUrl)
+    | extend DnsQuery = tolower(RemoteUrl)
+    | extend BParts = split(DnsQuery, ".")
+    | where array_length(BParts) >= 3
+    | extend ParentDomain = strcat(tostring(BParts[-2]), ".", tostring(BParts[-1]))
+    | summarize by ParentDomain;
+let HourlyBurst = BaseScoped
+    | summarize HourSubdomains = dcount(DnsQuery)
+        by DeviceId, DeviceName, ParentDomain, HourBin = bin(Timestamp, 1h)
+    | summarize arg_max(HourSubdomains, HourBin)
+        by DeviceId, DeviceName, ParentDomain
+    | project DeviceId, DeviceName, ParentDomain,
+              MaxBurstSubdomains = HourSubdomains,
+              BurstHour = HourBin;
+let PerParent = BaseScoped
+    | summarize
+        UniqueSubdomains = dcount(DnsQuery),
+        TotalQueries     = count(),
+        DistinctHours    = dcount(bin(Timestamp, 1h)),
+        FirstSeen        = min(Timestamp),
+        LastSeen         = max(Timestamp),
+        OffHoursHits     = countif(hourofday(Timestamp) < 6 or hourofday(Timestamp) > 22),
+        SampleSubdomains = make_set(DnsQuery, 8)
+        by DeviceId, DeviceName, ParentDomain
+    | extend UniquenessRatio = iff(TotalQueries > 0,
+                                   round(toreal(UniqueSubdomains) / toreal(TotalQueries), 3),
+                                   real(0));
+let Joined = PerParent
+    | join kind=leftouter HourlyBurst on DeviceId, DeviceName, ParentDomain
+    | extend MaxBurstSubdomains = coalesce(MaxBurstSubdomains, 0)
+    | extend BurstinessRatio = iff(UniqueSubdomains > 0,
+                                   round(toreal(MaxBurstSubdomains) / toreal(UniqueSubdomains), 3),
+                                   real(0));
+let WithBaseline = Joined
+    | join kind=leftanti Baseline30d on ParentDomain
+    | extend IsFirstSeen = true;
+let WithoutBaseline = Joined
+    | join kind=leftsemi Baseline30d on ParentDomain
+    | extend IsFirstSeen = false;
+let Combined = union (WithBaseline), (WithoutBaseline)
+    | extend
+        IsHighDiversity = UniqueSubdomains >= 50 and UniquenessRatio > 0.8,
+        IsBurst         = MaxBurstSubdomains >= 50 and DistinctHours <= 2,
+        IsMidBurst      = MaxBurstSubdomains between (20 .. 49) and DistinctHours <= 2,
+        IsSteadyState   = DistinctHours >= 12 and BurstinessRatio < 0.4,
+        IsOffHours      = OffHoursHits > 0,
+        IsKnownGoodParentDomain = ParentDomain in (_xdr_KnownGoodParentDomains);
+let Scored = Combined
+    | extend Score =
+          (iff(IsBurst,                 5, 0))
+        + (iff(IsMidBurst,              3, 0))
+        + (iff(IsHighDiversity,         3, 0))
+        + (iff(IsFirstSeen,             3, 0))
+        + (iff(IsOffHours,              1, 0))
+        - (iff(IsSteadyState,           2, 0))
+        + iif(IsKnownGoodParentDomain, -5, 0)
+    | where Score >= 3;
+let RankedDetail = Scored | order by Score desc, LastSeen desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "DeviceId",            DeviceId,
+            "DeviceName",          DeviceName,
+            "ParentDomain",        ParentDomain,
+            "UniqueSubdomains",    UniqueSubdomains,
+            "TotalQueries",        TotalQueries,
+            "UniquenessRatio",     UniquenessRatio,
+            "MaxBurstSubdomains",  MaxBurstSubdomains,
+            "BurstinessRatio",     BurstinessRatio,
+            "IsFirstSeen",         IsFirstSeen,
+            "IsOffHours",          IsOffHours,
+            "IsKnownGoodParentDomain", IsKnownGoodParentDomain,
+            "Score",               Score), 5)
+        by DeviceId, DeviceName;
+let Agg = Scored
+    | summarize
+        SuspiciousParentDomainCount = count(),
+        EvidenceTotal               = count(),
+        FirstSeen                   = min(FirstSeen),
+        LastSeen                    = max(LastSeen),
+        MaxUniqueSubdomains         = max(UniqueSubdomains),
+        MaxBurstinessRatio          = max(BurstinessRatio),
+        NewlySeenParentCount        = countif(IsFirstSeen),
+        OffHoursParentCount         = countif(IsOffHours),
+        KnownGoodParentCount        = countif(IsKnownGoodParentDomain),
+        arg_max(Score, ParentDomain)
+        by DeviceId, DeviceName
+    | project DeviceId, DeviceName, Score,
+              SuspiciousParentDomainCount, EvidenceTotal, FirstSeen, LastSeen,
+              MaxUniqueSubdomains, MaxBurstinessRatio,
+              NewlySeenParentCount, OffHoursParentCount, KnownGoodParentCount,
+              TopParentDomain = ParentDomain;
+let SummaryRow = Agg
+    | join kind=leftouter TopEv on DeviceId, DeviceName
+    | join kind=leftouter SuppressedPerDevice on DeviceId, DeviceName
+    | extend SuppressedCount = coalesce(SuppressedCount, 0)
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | extend Indicators = strcat_array(pack_array(
+            iff(MaxUniqueSubdomains >= 50,   "high-diversity", ""),
+            iff(MaxBurstinessRatio  >= 0.8,  "burst",          ""),
+            iff(NewlySeenParentCount > 0,    "first-seen",     ""),
+            iff(OffHoursParentCount > 0,     "off-hours",      ""),
+            iff(KnownGoodParentCount > 0,    "known-good-parent", "")
+        ), " ")
+    | project DeviceId, DeviceName, Score, SuspiciousParentDomainCount, MaxUniqueSubdomains,
+              MaxBurstinessRatio, NewlySeenParentCount, OffHoursParentCount,
+              KnownGoodParentCount, TopParentDomain,
+              Indicators, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, FirstSeen, LastSeen, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Scored
+    | extend IsBurst = toint(IsBurst),
+             IsHighDiversity = toint(IsHighDiversity),
+             IsFirstSeen = toint(IsFirstSeen),
+             IsOffHours = toint(IsOffHours),
+             IsKnownGoodParentDomain = toint(IsKnownGoodParentDomain)
+    | project Timestamp = LastSeen, DeviceId, DeviceName, ParentDomain,
+              UniqueSubdomains, TotalQueries, UniquenessRatio,
+              MaxBurstSubdomains, BurstinessRatio, DistinctHours,
+              SampleSubdomains, IsBurst, IsHighDiversity, IsFirstSeen, IsOffHours,
+              IsKnownGoodParentDomain, Score
+    | order by Score desc, Timestamp desc;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Score desc, Timestamp desc)

@@ -1,0 +1,18 @@
+-- name: qry_email_attachments
+-- description: Attachment details (name, size, hash) for a specific email by NetworkMessageId
+-- tier: pivot
+-- params: network_message_id, mode=detail
+let DetailRows =
+    EmailAttachmentInfo
+    | where NetworkMessageId == '{network_message_id}'
+    | project FileName, FileSize, SHA256, RecipientEmailAddress;
+let SummaryRow =
+    DetailRows
+    | summarize
+        AttachmentCount = count(),
+        DistinctNames   = dcount(FileName),
+        DistinctHashes  = dcount(SHA256)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail')

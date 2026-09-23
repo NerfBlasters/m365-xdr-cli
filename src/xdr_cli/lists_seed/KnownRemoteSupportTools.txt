@@ -1,0 +1,27 @@
+# Common RMM / remote-support binary names (lowercase). Suppress in lateral / RDP / new-service queries.
+bomgar.exe
+screenconnect.windowsclient.exe
+connectwisecontrol.client.exe
+anydesk.exe
+teamviewer.exe
+splashtop.exe
+splashtopstreamer.exe
+ateraagent.exe
+ninjaagent.exe
+ninjarmm.exe
+action1_agent.exe
+kaseya.exe
+agentmon.exe
+datto.exe
+syncroservice.exe
+itsmagent.exe
+sentryagent.exe
+addigy.exe
+jamf.exe
+zohoassist.exe
+showmypc.exe
+dwagent.exe
+remotepc.exe
+gotomeeting.exe
+gotoassist.exe
+goto-opener.exe

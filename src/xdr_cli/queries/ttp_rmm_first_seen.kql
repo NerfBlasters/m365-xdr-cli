@@ -1,0 +1,182 @@
+-- name: ttp_rmm_first_seen
+-- description: First-seen RMM tool (AnyDesk, ScreenConnect, ConnectWise Control, NinjaRMM, Atera, Splashtop, TeamViewer, etc.) on a device — process or file-create with no occurrence in the prior 30d. Highest-fidelity initial-access signal in the SMB threat model (Akira, BlackBasta, Storm-0867, ScatteredSpider).
+-- tier: n
+-- params: hours=24, device_id=, mode=summary
+-- lists: KnownRemoteSupportTools, KnownServiceAccounts
+-- agent_hint: tables=[DeviceProcessEvents,DeviceFileEvents,DeviceRegistryEvents]; row_volume=medium; cpu_class=medium.
+--   IMPORTANT INVERSION: KnownRemoteSupportTools is used as a *flag* list here (denylist
+--   semantics — `in~`), not the usual suppression allowlist. The list is the RMM inventory
+--   to monitor for first-seen on any device. An empty list correctly produces zero hits.
+--   Do NOT "fix" the operator direction to `!in` -- that would invert the query intent.
+--   KnownServiceAccounts retains its allowlist (`!in~`) suppression role for install user
+--   classification.
+--   inverted-list-direction: true
+let _xdr_KnownRemoteSupportTools = dynamic([]);
+let _xdr_KnownServiceAccounts    = dynamic([]);
+let Window = {hours}h;
+let UserWritable = dynamic([
+    "\\downloads\\","\\appdata\\local\\temp\\","\\appdata\\roaming\\",
+    "\\users\\public\\","\\programdata\\","\\temp\\","\\tmp\\",
+    "\\windows\\temp\\"]);
+let BrowserDelivered = dynamic([
+    "chrome.exe","msedge.exe","firefox.exe","brave.exe","opera.exe",
+    "outlook.exe","teams.exe","ms-teams.exe","onedrive.exe","slack.exe"]);
+let ItUpnRegex = @"(?i)(^|[._-])(admin|adm|svc|it|helpdesk|sysadmin|sccm|tier[0-2])([._-]|@|$)";
+// ---- 30-day baseline of (DeviceId, FileName) RMM occurrences ----
+let Baseline30dProc = DeviceProcessEvents
+    | where Timestamp between (ago(30d) .. ago(Window))
+    | where isnotempty(FileName)
+    | where FileName in~ (_xdr_KnownRemoteSupportTools)
+    | summarize by DeviceId, FileNameLower = tolower(FileName);
+let Baseline30dFile = DeviceFileEvents
+    | where Timestamp between (ago(30d) .. ago(Window))
+    | where isnotempty(FileName)
+    | where FileName in~ (_xdr_KnownRemoteSupportTools)
+    | summarize by DeviceId, FileNameLower = tolower(FileName);
+let Baseline30d = union Baseline30dProc, Baseline30dFile
+    | summarize by DeviceId, FileNameLower;
+// ---- Process-leg first-seen ----
+let ProcLeg = DeviceProcessEvents
+    | where Timestamp > ago(Window)
+    | where ActionType == "ProcessCreated"
+    | where isnotempty(FileName)
+    | where FileName in~ (_xdr_KnownRemoteSupportTools)
+    | where '{device_id}' == '' or DeviceId =~ '{device_id}' or DeviceName =~ '{device_id}'
+    | extend Leg = "process",
+             FileNameLower = tolower(FileName),
+             FolderPathLower = tolower(coalesce(FolderPath, "")),
+             ParentFile = InitiatingProcessFileName,
+             ParentFolder = tolower(coalesce(InitiatingProcessFolderPath, "")),
+             ParentSigner = tostring(InitiatingProcessVersionInfoCompanyName),
+             InstallAccountName = AccountName,
+             InstallAccountUpn  = AccountUpn,
+             EvidenceCmd = substring(coalesce(ProcessCommandLine, ""), 0, 400)
+    | project Timestamp, DeviceId, DeviceName, FileName, FileNameLower, FolderPath, FolderPathLower,
+              ParentFile, ParentFolder, ParentSigner,
+              InstallAccountName, InstallAccountUpn, EvidenceCmd, Leg;
+// ---- File-leg first-seen (install / drop) ----
+let FileLeg = DeviceFileEvents
+    | where Timestamp > ago(Window)
+    | where ActionType in ("FileCreated","FileRenamed")
+    | where isnotempty(FileName)
+    | where FileName in~ (_xdr_KnownRemoteSupportTools)
+    | where '{device_id}' == '' or DeviceId =~ '{device_id}' or DeviceName =~ '{device_id}'
+    | extend Leg = "file",
+             FileNameLower = tolower(FileName),
+             FolderPathLower = tolower(coalesce(FolderPath, "")),
+             ParentFile = InitiatingProcessFileName,
+             ParentFolder = tolower(coalesce(InitiatingProcessFolderPath, "")),
+             ParentSigner = tostring(InitiatingProcessVersionInfoCompanyName),
+             InstallAccountName = InitiatingProcessAccountName,
+             InstallAccountUpn  = InitiatingProcessAccountUpn,
+             EvidenceCmd = substring(coalesce(InitiatingProcessCommandLine, ""), 0, 400)
+    | project Timestamp, DeviceId, DeviceName, FileName, FileNameLower, FolderPath, FolderPathLower,
+              ParentFile, ParentFolder, ParentSigner,
+              InstallAccountName, InstallAccountUpn, EvidenceCmd, Leg;
+let Unioned = union ProcLeg, FileLeg;
+// ---- Anti-join the 30d baseline -> first-seen pairs only ----
+let FirstSeen = Unioned
+    | join kind=leftanti Baseline30d on DeviceId, FileNameLower
+    | summarize arg_min(Timestamp, *) by DeviceId, FileNameLower
+    | extend IsFirstSeen = true;
+// ---- Persistence-style install: any RunKey / Service registry write
+//      on the same DeviceId within 10 minutes of the install ----
+let PersistenceWrites = DeviceRegistryEvents
+    | where Timestamp > ago(Window)
+    | where ActionType in ("RegistryValueSet","RegistryKeyCreated")
+    | where (RegistryKey has @"\Run" or RegistryKey has @"\RunOnce"
+             or RegistryKey has @"\Services\")
+    | project RegTime = Timestamp, RegDeviceId = DeviceId, RegistryKey, RegistryValueName, RegistryValueData;
+let WithPersistence = FirstSeen
+    | join kind=leftouter PersistenceWrites on $left.DeviceId == $right.RegDeviceId
+    | where isnull(RegTime)
+         or (RegTime between (Timestamp .. (Timestamp + 10m)))
+         or (Timestamp between (RegTime .. (RegTime + 10m)))
+    | summarize PersistenceHits = countif(isnotempty(RegTime)),
+                PersistenceKeys = make_set(RegistryKey, 4),
+                arg_min(Timestamp, *)
+        by DeviceId, FileNameLower
+    | extend IsPersistenceInstall = PersistenceHits > 0;
+let Scored = WithPersistence
+    | extend
+        ParentSignerEmpty = isempty(ParentSigner),
+        IsUnsignedParent  = isempty(ParentSigner),
+        IsUserWritable    = FolderPathLower has_any (UserWritable)
+                            or ParentFolder has_any (UserWritable),
+        IsOffHours        = hourofday(Timestamp) < 6 or hourofday(Timestamp) > 22,
+        IsBrowserDelivered= isnotempty(ParentFile)
+                            and tolower(ParentFile) in (BrowserDelivered),
+        IsKnownService    = isnotempty(InstallAccountName)
+                            and InstallAccountName in~ (_xdr_KnownServiceAccounts),
+        IsItAdminUpn      = isnotempty(InstallAccountUpn)
+                            and InstallAccountUpn matches regex ItUpnRegex
+    | extend IsNonItUser = not(IsKnownService) and not(IsItAdminUpn)
+                           and isnotempty(InstallAccountName)
+    | extend Score =
+          (iff(IsFirstSeen,             5, 0))
+        + (iff(IsUnsignedParent or IsUserWritable, 3, 0))
+        + (iff(IsNonItUser,             2, 0))
+        + (iff(IsOffHours,              2, 0))
+        + (iff(IsBrowserDelivered,      3, 0))
+        + (iff(IsPersistenceInstall,    3, 0))
+    | where Score > 0
+    | extend Indicators = strcat_array(pack_array(
+            iff(IsFirstSeen,           "first-seen",        ""),
+            iff(IsUnsignedParent,      "unsigned-parent",   ""),
+            iff(IsUserWritable,        "user-writable",     ""),
+            iff(IsOffHours,            "off-hours",         ""),
+            iff(IsBrowserDelivered,    "browser-delivered", ""),
+            iff(IsPersistenceInstall,  "persistence-install","")
+        ), " ");
+let RankedDetail = Scored | order by Score desc, Timestamp desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp",   Timestamp,
+            "DeviceName",  DeviceName,
+            "FileName",    FileName,
+            "AccountName", InstallAccountName,
+            "ParentFile",  ParentFile,
+            "Score",       Score), 5)
+        by DeviceName, FileName;
+let Agg = Scored
+    | summarize
+        Score                  = max(Score),
+        EvidenceTotal          = count(),
+        FirstSeenInstallCount  = countif(IsFirstSeen),
+        FirstSeenAt            = min(Timestamp),
+        FirstSeen              = min(Timestamp),
+        LastSeen               = max(Timestamp),
+        UnsignedParentHits     = countif(IsUnsignedParent),
+        UserWritableHits       = countif(IsUserWritable),
+        OffHoursHits           = countif(IsOffHours),
+        BrowserDeliveredHits   = countif(IsBrowserDelivered),
+        PersistenceInstallHits = countif(IsPersistenceInstall),
+        NonItUserHits          = countif(IsNonItUser),
+        ParentFiles            = make_set(ParentFile, 6),
+        InstallAccounts        = make_set(InstallAccountName, 6),
+        FolderPaths            = make_set(FolderPath, 6),
+        Indicators             = strcat_array(make_set(Indicators, 8), " ")
+        by DeviceName, DeviceId, FileName;
+let SummaryRow = Agg
+    | join kind=leftouter TopEv on DeviceName, FileName
+    // SuppressedCount = 0: KSA is wired as the IsKnownService -> IsNonItUser annotation, not a row-drop.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project DeviceName, DeviceId, FileName, Score, FirstSeenInstallCount, FirstSeenAt,
+              UnsignedParentHits, UserWritableHits, OffHoursHits,
+              BrowserDeliveredHits, PersistenceInstallHits, NonItUserHits,
+              ParentFiles, InstallAccounts, FolderPaths, Indicators, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, FirstSeen, LastSeen, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Scored
+    | project Timestamp, DeviceName, DeviceId, FileName, FolderPath,
+              ParentFile, ParentFolder, ParentSigner,
+              InstallAccountName, InstallAccountUpn, Leg,
+              IsFirstSeen, IsUnsignedParent, IsUserWritable, IsOffHours,
+              IsBrowserDelivered, IsPersistenceInstall, IsNonItUser,
+              EvidenceCmd, Score;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Score desc, Timestamp desc)

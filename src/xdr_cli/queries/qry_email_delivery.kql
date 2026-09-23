@@ -1,0 +1,19 @@
+-- name: qry_email_delivery
+-- description: Delivery status of a specific email by NetworkMessageId — determines if ZAP succeeded or the threat reached the inbox
+-- tier: pivot
+-- params: network_message_id, mode=detail
+let DetailRows =
+    EmailEvents
+    | where NetworkMessageId == '{network_message_id}'
+    | project Timestamp, RecipientEmailAddress, SenderFromAddress, Subject,
+              DeliveryAction, DeliveryLocation, LatestDeliveryAction, LatestDeliveryLocation,
+              EmailDirection, ConfidenceLevel;
+let SummaryRow =
+    DetailRows
+    | summarize
+        DeliveryActions = make_set(DeliveryAction),
+        LatestActions   = make_set(LatestDeliveryAction)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail')

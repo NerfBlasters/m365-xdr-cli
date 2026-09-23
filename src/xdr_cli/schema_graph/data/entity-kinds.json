@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "entity_kinds": [
+    "alert",
+    "application",
+    "device",
+    "domain",
+    "email-message",
+    "file",
+    "hash",
+    "incident",
+    "ip",
+    "mailbox",
+    "service-principal",
+    "session",
+    "url",
+    "user"
+  ],
+  "namespaces": [
+    "dns-domain",
+    "entra-object-id",
+    "entra-session-id",
+    "entra-upn",
+    "mde-device-id",
+    "mde-device-name",
+    "network-ip",
+    "network-message-id",
+    "sha1",
+    "sha256",
+    "smtp-address",
+    "url"
+  ],
+  "roles": [
+    "actor",
+    "child",
+    "destination",
+    "neutral",
+    "owner",
+    "parent",
+    "recipient",
+    "sender",
+    "source",
+    "subject",
+    "target"
+  ]
+}

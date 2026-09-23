@@ -1,0 +1,41 @@
+-- name: identity_signin_ip_summary
+-- description: Per-user sign-ins by IP/Country/City with external-source flagging
+-- tier: r3
+-- params: account_oid, start, end, mode=summary
+-- lists: InternalSubnets, KnownEgressIPs
+let _xdr_InternalSubnets = dynamic([]);
+let _xdr_KnownEgressIPs = dynamic([]);
+let SignInEvents = EntraIdSignInEvents
+| where Timestamp between(datetime({start}) .. datetime({end}))
+| where AccountObjectId == '{account_oid}'
+| where ErrorCode == 0
+| extend IsExternal = not(ipv4_is_in_any_range(IPAddress, _xdr_InternalSubnets))
+    and not(IPAddress in (_xdr_KnownEgressIPs))
+    and not(ipv4_is_in_any_range(IPAddress, _xdr_KnownEgressIPs));
+let SummaryRow = SignInEvents
+    | summarize
+        SignIns  = count(),
+        Apps     = make_set(Application, 20),
+        Browsers = make_set(Browser, 10),
+        IsExternal = take_any(IsExternal)
+        by AccountObjectId, IPAddress, Country, City
+    | summarize
+        IPCount         = dcount(IPAddress),
+        ExternalIPCount = countif(IsExternal),
+        TopIPs = make_list(pack(
+            'IPAddress', IPAddress,
+            'Country',   Country,
+            'City',      City,
+            'SignIns',   SignIns,
+            'IsExternal', IsExternal,
+            'Apps',      Apps,
+            'Browsers',  Browsers), 20)
+        by AccountObjectId
+    | extend SchemaVersion = 1;
+let DetailRows = SignInEvents
+    | summarize SignIns=count(), Apps=make_set(Application), Browsers=make_set(Browser)
+      by AccountObjectId, IPAddress, Country, City, IsExternal
+    | order by SignIns desc;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail'  | order by SignIns desc)

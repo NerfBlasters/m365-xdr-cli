@@ -1,0 +1,49 @@
+-- name: qry_post_compromise_activity
+-- description: Cloud actions taken by an account from a given IP after compromise — ActionType-taxonomy scored
+-- tier: r2
+-- params: account_oid, ip, start, end, mode=summary
+let HighTier = dynamic([
+    "MailItemsAccessed", "New-InboxRule", "Add-MailboxPermission", "Set-Mailbox",
+    "Add member to role", "Consent to application", "MoveToDeletedItems"
+]);
+let LowTier = dynamic([
+    "FileSyncUploadedFull", "FileDownloaded", "FileAccessed",
+    "UserLoggedIn", "UserLoginFailed"
+]);
+let CompromiseEvents = CloudAppEvents
+| where Timestamp between(datetime({start}) .. datetime({end}))
+| where AccountObjectId == '{account_oid}'
+| where IPAddress == '{ip}'
+| extend Tier = case(ActionType in (HighTier), 'high', ActionType in (LowTier), 'low', 'low')
+| extend TierScore = case(ActionType in (HighTier), 3, 1);
+let SummaryRow = CompromiseEvents
+    | order by Timestamp asc
+    | summarize
+        ActionCount          = count(),
+        EvidenceTotal        = count(),
+        FirstSeen            = min(Timestamp),
+        LastSeen             = max(Timestamp),
+        HighTierActionCount  = countif(ActionType in (HighTier)),
+        MailItemsAccessedCount = countif(ActionType == 'MailItemsAccessed'),
+        RuleChangeCount      = countif(ActionType in ('New-InboxRule', 'Set-Mailbox')),
+        ConsentCount         = countif(ActionType == 'Consent to application'),
+        RoleChangeCount      = countif(ActionType == 'Add member to role'),
+        Score                = sum(TierScore),
+        TopEvidence = make_list(pack(
+            'Timestamp',   Timestamp,
+            'ActionType',  ActionType,
+            'Application', Application,
+            'Tier',        Tier,
+            'Score',       TierScore), 10)
+        by AccountObjectId, IPAddress
+    // SuppressedCount = 0: this query has no tenant-curated row-drop filter.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, 'critical', Score >= 6, 'high', Score >= 3, 'medium', 'low');
+let DetailRows = CompromiseEvents
+    | project Timestamp, ActionType, Application, IPAddress, CountryCode, City, Tier, TierScore;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Timestamp asc)

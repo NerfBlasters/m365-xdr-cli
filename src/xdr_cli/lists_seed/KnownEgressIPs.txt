@@ -1,0 +1,2 @@
+# Corp VPN egress IPs, CGNAT pools, Starlink, iOS Private Relay ranges. CIDR allowed.
+# Populated by hand.

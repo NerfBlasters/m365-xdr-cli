@@ -1,0 +1,21 @@
+-- name: identity_onprem_logon_activity
+-- description: On-prem Kerberos/NTLM logon detail for an account or source IP — used for Golden Ticket, pass-the-ticket, and lateral movement investigation
+-- tier: r3
+-- params: account_oid, start, end, mode=detail
+let DetailRows =
+    IdentityLogonEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where AccountObjectId == '{account_oid}'
+    | project Timestamp, AccountUpn, IPAddress, DeviceName, TargetDeviceName,
+              LogonType, Protocol, FailureReason, Application;
+let SummaryRow =
+    DetailRows
+    | summarize
+        LogonCount      = count(),
+        DistinctTargets = dcount(TargetDeviceName),
+        DistinctSources = dcount(IPAddress),
+        Protocols       = make_set(Protocol)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp asc)

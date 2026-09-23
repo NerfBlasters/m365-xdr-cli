@@ -1,0 +1,172 @@
+-- name: ttp_conditional_access_tamper
+-- description: Conditional Access policy add/update/disable/delete (CloudAppEvents) correlated with actor sign-in context (new IP vs 30d baseline, off-hours, RiskLevel/anonymizing IP within 30m) — Storm-1167 / Tycoon2FA admin-token tamper pattern
+-- tier: n
+-- params: hours=72, actor_upn=, mode=summary
+-- lists: KnownServiceAccounts, InternalSubnets, KnownEgressIPs
+-- agent_hint: tables=[CloudAppEvents,EntraIdSignInEvents]; row_volume=low; cpu_class=medium.
+--   CloudAppEvents.ActionType strings for Conditional Access policy ops are observed
+--   case-sensitively as "Update conditional access policy", "Disable conditional access policy",
+--   "Delete conditional access policy", "Add conditional access policy" (all lowercase
+--   except leading verb). The query matches both via `has` (case-sensitive substring) on
+--   ActionType *and* a RawEventData fallback `has "ConditionalAccessPolicy"` so a tenant
+--   that emits a slightly different verb form ("Set conditional access policy", etc.)
+--   still scores. Verify exact ActionType strings in the portal before tightening.
+--   Application filter targets the Entra-ID workload using `Application has_any` against
+--   common labels ("Microsoft Entra ID","Azure Active Directory","Microsoft.aad","Office 365 Azure Active Directory").
+let _xdr_KnownServiceAccounts = dynamic([]);
+let _xdr_InternalSubnets      = dynamic([]);
+let _xdr_KnownEgressIPs       = dynamic([]);
+let Window = {hours}h;
+let EntraWorkloadNames = dynamic([
+    "Microsoft Entra ID",
+    "Azure Active Directory",
+    "Office 365 Azure Active Directory",
+    "Microsoft.aad",
+    "Microsoft Azure Active Directory"]);
+// ---- Conditional Access policy modification events ----
+// CloudAppEvents has no AccountUpn column in this tenant; resolve actor from
+// RawEventData.UserId (consistent with the other Entra/Exchange role-change
+// queries) and filter on the derived value.
+let CaEvents = CloudAppEvents
+    | where Timestamp > ago(Window)
+    | where isnotempty(Application) and Application has_any (EntraWorkloadNames)
+    | where ActionType has "conditional access policy"
+         or tostring(RawEventData) has "ConditionalAccessPolicy"
+    | extend ActorUpn = tolower(tostring(RawEventData.UserId))
+    | where '{actor_upn}' == '' or ActorUpn =~ '{actor_upn}' or AccountDisplayName =~ '{actor_upn}'
+    | extend ActionLower = tolower(tostring(ActionType))
+    | extend
+        IsDisable = ActionLower has "disable conditional access policy",
+        IsUpdate  = ActionLower has "update conditional access policy"
+                 or ActionLower has "set conditional access policy",
+        IsDelete  = ActionLower has "delete conditional access policy",
+        IsAdd     = ActionLower has "add conditional access policy"
+                 or ActionLower has "create conditional access policy"
+    | extend PolicyName = coalesce(
+            tostring(extract(@"(?i)""(?:displayName|policyName|Name)""\s*:\s*""([^""]+)""", 1, tostring(RawEventData))),
+            tostring(extract(@"(?i)""ModifiedProperties""[\s\S]{0,400}?""DisplayName""\s*:\s*""([^""]+)""", 1, tostring(RawEventData))),
+            "")
+    | project CaTime = Timestamp, AccountObjectId, ActorUpn,
+              AccountDisplayName, ActionType, ActionLower, PolicyName,
+              CaIPAddress = IPAddress, CountryCode, City,
+              RawEventData, ReportId,
+              IsDisable, IsUpdate, IsDelete, IsAdd
+    | where IsDisable or IsUpdate or IsDelete or IsAdd;
+// ---- Actor's 30-day Entra sign-in baseline (IP set) ----
+let ActorBaseline30d = EntraIdSignInEvents
+    | where Timestamp between (ago(30d) .. ago(Window))
+    | where ErrorCode == 0
+    | where '{actor_upn}' == '' or AccountUpn =~ '{actor_upn}'
+    | where isnotempty(AccountObjectId) and isnotempty(IPAddress)
+    | summarize BaselineIPs = make_set(IPAddress, 256) by AccountObjectId;
+// ---- Actor's recent (within 30m of CA event) sign-in context ----
+let ActorRecentSignIn = EntraIdSignInEvents
+    | where Timestamp > ago(Window + 1h)
+    | where ErrorCode == 0
+    | where '{actor_upn}' == '' or AccountUpn =~ '{actor_upn}'
+    | where isnotempty(AccountObjectId)
+    | project SignInTime = Timestamp, AccountObjectId,
+              SignInIP = IPAddress, SignInCountry = Country,
+              RiskLevelDuringSignIn, RiskState, RiskEventTypes,
+              ConditionalAccessStatus, AuthenticationRequirement,
+              UserAgent, SessionId;
+let Joined = CaEvents
+    | join kind=leftouter ActorBaseline30d on AccountObjectId
+    | extend BaselineIPs = coalesce(BaselineIPs, dynamic([]))
+    | join kind=leftouter ActorRecentSignIn on AccountObjectId
+    | where isnull(SignInTime) or abs(datetime_diff('minute', CaTime, SignInTime)) <= 30
+    | summarize arg_min(coalesce(abs(datetime_diff('minute', CaTime, SignInTime)), 999999), *)
+        by ReportId, CaTime, AccountObjectId, ActorUpn, ActionType, PolicyName, CaIPAddress;
+let Scored = Joined
+    | extend
+        ActorIP        = coalesce(SignInIP, CaIPAddress),
+        RiskLevelStr   = tolower(tostring(RiskLevelDuringSignIn)),
+        RiskEventStr   = tolower(tostring(RiskEventTypes)),
+        UAStr          = tolower(tostring(UserAgent))
+    | extend
+        IsNewIP        = isnotempty(ActorIP)
+                         and array_length(BaselineIPs) > 0
+                         and not(set_has_element(BaselineIPs, ActorIP)),
+        IsOffHours     = hourofday(CaTime) < 6 or hourofday(CaTime) > 22
+                         or dayofweek(CaTime) == 0d or dayofweek(CaTime) == 6d,
+        IsRiskySignIn  = isnotempty(RiskLevelStr)
+                         and RiskLevelStr !in ("none","")
+                         or RiskEventStr has "anonymizedipaddress"
+                         or RiskEventStr has "anonymous"
+                         or UAStr has "tor",
+        IsKnownService = isnotempty(ActorUpn) and ActorUpn in~ (_xdr_KnownServiceAccounts),
+        IsInternalActor = isnotempty(ActorIP) and ipv4_is_in_any_range(ActorIP, _xdr_InternalSubnets),
+        IsKnownEgress   = isnotempty(ActorIP) and ipv4_is_in_any_range(ActorIP, _xdr_KnownEgressIPs)
+    | extend IsTokenContext = IsRiskySignIn and isnotempty(SignInTime)
+    | extend Score =
+          (iff(IsDisable,                              6, 0))
+        + (iff(IsUpdate,                               5, 0))
+        + (iff(IsDelete,                               5, 0))
+        + (iff(IsAdd,                                  4, 0))
+        + (iff(IsNewIP,                                4, 0))
+        + (iff(IsOffHours,                             2, 0))
+        + (iff(IsTokenContext,                         5, 0))
+        - (iff(IsKnownService,                         5, 0))
+        - (iff(IsInternalActor and not(IsTokenContext) and not(IsNewIP), 2, 0))
+        - (iff(IsKnownEgress and not(IsTokenContext) and not(IsNewIP),   1, 0))
+    | where Score > 0
+    | extend Indicators = strcat_array(pack_array(
+            iff(IsDisable,         "ca-disable",        ""),
+            iff(IsUpdate,          "ca-update",         ""),
+            iff(IsAdd,             "ca-add",            ""),
+            iff(IsDelete,          "ca-delete",         ""),
+            iff(IsNewIP,           "new-ip",            ""),
+            iff(IsOffHours,        "off-hours",         ""),
+            iff(IsTokenContext,    "token-context",     ""),
+            iff(IsKnownService,    "known-service",     "")
+        ), " ");
+let RankedDetail = Scored | order by Score desc, CaTime desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp",   CaTime,
+            "ActorUpn",    ActorUpn,
+            "ActionType",  ActionType,
+            "PolicyName",  PolicyName,
+            "IPAddress",   ActorIP,
+            "Score",       Score), 5)
+        by ActorUpn;
+let Agg = Scored
+    | summarize
+        Score                = max(Score),
+        CaTamperEventCount   = count(),
+        EvidenceTotal        = count(),
+        DisableCount         = countif(IsDisable),
+        UpdateCount          = countif(IsUpdate),
+        AddCount             = countif(IsAdd),
+        DeleteCount          = countif(IsDelete),
+        NewIpHits            = countif(IsNewIP),
+        OffHoursHits         = countif(IsOffHours),
+        TokenContextHits     = countif(IsTokenContext),
+        PolicyNames          = make_set(PolicyName, 8),
+        ActorIPs             = make_set(ActorIP, 8),
+        FirstSeen            = min(CaTime),
+        LastSeen             = max(CaTime),
+        Indicators           = strcat_array(make_set(Indicators, 8), " ")
+        by ActorUpn, AccountObjectId;
+let SummaryRow = Agg
+    | join kind=leftouter TopEv on ActorUpn
+    // SuppressedCount = 0: KSA is wired as a -5 negative-weight annotation, not a row-drop.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project ActorUpn, AccountObjectId, Score, CaTamperEventCount,
+              DisableCount, UpdateCount, AddCount, DeleteCount,
+              NewIpHits, OffHoursHits, TokenContextHits,
+              PolicyNames, ActorIPs, FirstSeen, LastSeen, Indicators, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Scored
+    | project Timestamp = CaTime, ActorUpn, AccountObjectId, ActionType, PolicyName,
+              ActorIP, SignInTime, RiskLevelDuringSignIn, RiskEventTypes,
+              ConditionalAccessStatus, AuthenticationRequirement, SessionId, UserAgent,
+              IsDisable, IsUpdate, IsAdd, IsDelete, IsNewIP, IsOffHours,
+              IsTokenContext, IsKnownService, Score;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Score desc, Timestamp desc)

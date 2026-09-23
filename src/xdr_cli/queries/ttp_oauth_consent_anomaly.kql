@@ -1,0 +1,126 @@
+-- name: ttp_oauth_consent_anomaly
+-- description: Broad-scan OAuth consent grants scored by requested scope, app age, consent-burst per user, per-IP cross-user burst, same-session register-then-consent, admin-consent
+-- tier: n
+-- params: hours=168, account_upn=, application_id=, mode=summary
+-- agent_hint: VerifiedPublisher signal is NOT implemented — OAuthAppInfo schema in
+--   docs/schema_pivots.md exposes only Permissions, IsAdminConsented,
+--   ConsentedUsersCount, AppOwnerTenantId, LastModifiedTime, AppName. The
+--   "unverified publisher" weight (+4) is dropped rather than synthesised from
+--   Permissions (the prior implementation always evaluated to false).
+let Window = {hours}h;
+let HighRiskScopes = dynamic([
+    "mail.read", "mail.readwrite", "mail.send",
+    "files.readwrite.all", "files.read.all",
+    "directory.read.all", "directory.readwrite.all",
+    "user.read.all", "user.readwrite.all",
+    "full_access_as_user", "offline_access"
+]);
+let Consents = CloudAppEvents
+    | where Timestamp > ago(Window)
+    | where ActionType in ("Consent to application", "Consent to application.")
+    | extend ConsentingUser = tostring(RawEventData.UserId)
+    | where '{account_upn}' == '' or AccountDisplayName =~ '{account_upn}' or ConsentingUser =~ '{account_upn}'
+    | extend OAuthAppId = tostring(RawEventData.ObjectId)
+    | where '{application_id}' == '' or OAuthAppId =~ '{application_id}'
+    | extend GrantedScopesRaw = tolower(tostring(RawEventData.ModifiedProperties))
+    | extend GrantedScopes    = extract_all(@"([a-z0-9_.]+)", GrantedScopesRaw)
+    | extend IsAdminConsent   = tobool(tostring(RawEventData.ConsentContext.IsAdminConsent));
+let AppMeta = OAuthAppInfo
+    | project OAuthAppId, AppName, AppOwnerTenantId, RegisteredOn = LastModifiedTime;
+let Enriched = Consents
+    | join kind=leftouter AppMeta on OAuthAppId
+    | extend AppAgeDays         = iff(isnull(RegisteredOn), real(null),
+                                      toreal(datetime_diff('day', now(), RegisteredOn)))
+    | extend HighRiskScopeCount = array_length(set_intersect(GrantedScopes, HighRiskScopes))
+    | extend HasHighRiskScope   = HighRiskScopeCount >= 1
+    | extend IsRecentlyRegistered = isnotnull(AppAgeDays) and AppAgeDays >= 0 and AppAgeDays < 30
+    | extend MinutesSinceRegister = iff(isnull(RegisteredOn), real(null),
+                                        toreal(datetime_diff('minute', Timestamp, RegisteredOn)))
+    | extend IsRegisterThenConsent = isnotnull(MinutesSinceRegister)
+                                     and MinutesSinceRegister >= 0
+                                     and MinutesSinceRegister <= 30;
+// per-user consent burst (>=3 distinct apps in 1h)
+let UserBurst = Enriched
+    | summarize AppsInHour = dcount(OAuthAppId, 2) by ConsentingUser, HourBin = bin(Timestamp, 1h)
+    | where AppsInHour >= 3
+    | summarize MaxAppsInHour = max(AppsInHour) by ConsentingUser
+    | extend IsUserBurst = true;
+// per-IP cross-user consent burst (>=2 distinct users from same IP in window)
+let IpBurst = Enriched
+    | where isnotempty(IPAddress)
+    | summarize UsersFromIP = dcount(ConsentingUser, 2) by IPAddress
+    | where UsersFromIP >= 2
+    | extend IsIpBurst = true;
+let WithBurst = Enriched
+    | join kind=leftouter UserBurst on ConsentingUser
+    | join kind=leftouter IpBurst    on IPAddress
+    | extend IsUserBurst = coalesce(IsUserBurst, false),
+             IsIpBurst   = coalesce(IsIpBurst,   false);
+let Scored = WithBurst
+    | extend Score =
+          (iff(HasHighRiskScope,                       5, 0))
+        + (iff(HighRiskScopeCount >= 3,                3, 0))
+        + (iff(IsRecentlyRegistered,                   4, 0))
+        + (iff(IsRegisterThenConsent,                  5, 0))
+        + (iff(IsAdminConsent,                         5, 0))
+        + (iff(IsUserBurst,                            3, 0))
+        + (iff(IsIpBurst,                              3, 0))
+    | where Score >= 3;
+let RankedDetail = Scored | order by Score desc, Timestamp desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp",        Timestamp,
+            "AccountUpn",       ConsentingUser,
+            "AppName",          AppName,
+            "OAuthAppId",       OAuthAppId,
+            "AppAgeDays",       AppAgeDays,
+            "Scopes",           substring(GrantedScopesRaw, 0, 400),
+            "IsAdminConsent",   IsAdminConsent,
+            "RegisterToConsentMin", round(MinutesSinceRegister, 0),
+            "ClientIP",         IPAddress,
+            "Score",            Score), 5)
+        by AppName, OAuthAppId;
+let Agg = Scored
+    | summarize
+        Score                    = max(Score),
+        ConsentCount             = count(),
+        EvidenceTotal            = count(),
+        FirstSeen                = min(Timestamp),
+        LastSeen                 = max(Timestamp),
+        HighPrivScopeCount       = countif(HasHighRiskScope),
+        NewlyRegisteredAppCount  = countif(IsRecentlyRegistered),
+        RegisterThenConsentCount = countif(IsRegisterThenConsent),
+        AdminConsentCount        = countif(IsAdminConsent),
+        UserBurstHits            = countif(IsUserBurst),
+        IpBurstHits              = countif(IsIpBurst),
+        AppAgeDays               = min(AppAgeDays)
+        by AppName, OAuthAppId;
+let SummaryRow = Agg
+    | join kind=leftouter TopEv on AppName, OAuthAppId
+    | extend Indicators = strcat_array(pack_array(
+            iff(HighPrivScopeCount       > 0, "high-risk-scope",       ""),
+            iff(NewlyRegisteredAppCount  > 0, "recently-registered",   ""),
+            iff(RegisterThenConsentCount > 0, "register-then-consent", ""),
+            iff(AdminConsentCount        > 0, "admin-consent",         ""),
+            iff(UserBurstHits            > 0, "user-burst",            ""),
+            iff(IpBurstHits              > 0, "ip-burst",              "")
+        ), " ")
+    // SuppressedCount = 0: this query has no tenant-curated row-drop filter.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project AppName, OAuthAppId, Score, ConsentCount, HighPrivScopeCount,
+              NewlyRegisteredAppCount, RegisterThenConsentCount, AdminConsentCount,
+              UserBurstHits, IpBurstHits, AppAgeDays, Indicators, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, FirstSeen, LastSeen, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Scored
+    | project Timestamp, ConsentingUser, AppName, OAuthAppId, IsAdminConsent,
+              HighRiskScopeCount, IsRecentlyRegistered, IsRegisterThenConsent,
+              IsUserBurst, IsIpBurst, AppAgeDays, GrantedScopesRaw,
+              IPAddress, Score
+    | order by Score desc, Timestamp desc;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail')

@@ -1,0 +1,21 @@
+-- name: ttp_registry_persistence
+-- description: Run/RunOnce/Services registry modifications on a device — persistence mechanism detection
+-- tier: r3
+-- params: device_id, start, end, mode=detail
+let DetailRows =
+    DeviceRegistryEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where DeviceId == '{device_id}'
+    | where RegistryKey has_any ('\\Run', '\\RunOnce', '\\Services\\')
+    | project Timestamp, ActionType, RegistryKey, RegistryValueName, RegistryValueData,
+              InitiatingProcessFileName;
+let SummaryRow =
+    DetailRows
+    | summarize
+        ChangeCount    = count(),
+        DistinctKeys   = dcount(RegistryKey),
+        DistinctValues = dcount(RegistryValueName)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp asc)

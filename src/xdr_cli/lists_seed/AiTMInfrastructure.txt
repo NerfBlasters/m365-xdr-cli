@@ -1,0 +1,2 @@
+# AiTM phish-kit IPs / CIDRs / domains. Populate from chosen feed via future xdr lists refresh.
+# source: <feed selection deferred>

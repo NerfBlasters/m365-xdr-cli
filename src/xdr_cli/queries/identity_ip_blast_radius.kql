@@ -1,0 +1,20 @@
+-- name: identity_ip_blast_radius
+-- description: Find all users who successfully signed in from a specific IP — identifies lateral targeting or shared attacker infrastructure
+-- tier: r3
+-- params: ip, start, end, mode=detail
+let DetailRows =
+    EntraIdSignInEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where IPAddress == '{ip}'
+    | where ErrorCode == 0
+    | project Timestamp, AccountUpn, Application, ErrorCode, IPAddress, Country, City;
+let SummaryRow =
+    DetailRows
+    | summarize
+        AccountCount    = dcount(AccountUpn),
+        DistinctApps    = dcount(Application),
+        Successes       = countif(ErrorCode == 0)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp asc)

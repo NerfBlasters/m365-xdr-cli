@@ -1,0 +1,158 @@
+-- name: ttp_dns_beaconing
+-- description: Periodic DNS queries with low inter-arrival jitter (CV) — C2 beaconing detector with tenant-data-as-list, 30-day novelty, off-hours bias
+-- tier: r1
+-- params: hours=24, device_name=, mode=summary
+-- lists: TenantDomains, MaliciousDomains
+-- agent_hint: tables=[DeviceNetworkEvents]; row_volume=high; cpu_class=medium; uses serialize+prev() per (DeviceId, RemoteUrl) for inter-arrival CV. RemoteUrl is the canonical DNS-name field on DeviceNetworkEvents DnsConnectionInspected rows; if a tenant has populated AdditionalFields.query instead, swap RemoteUrl for tostring(parse_json(AdditionalFields).query).
+--   _xdr_MaliciousDomains is wired as a positive +10 weight (deny-list, used as a scoring multiplier per spec line 353); a single IOC hit lands above the critical band by design.
+--   This query no longer suppresses _xdr_KnownGoodParentDomains — that list belongs to dns_subdomain_diversity (spec line 367) and is intentionally a -5 negative weight there, not a row-drop. If a deployment finds beaconing-detection noise unacceptable, add KnownGoodParentDomains back as a -5 negative weight (per dns_subdomain_diversity, spec line 372), NOT a row-drop on a public list.
+let _xdr_TenantDomains          = dynamic([]);
+let _xdr_MaliciousDomains       = dynamic([]);
+let Window      = {hours}h;
+let CandidateRows = DeviceNetworkEvents
+    | where Timestamp > ago(Window)
+    | where ActionType == "DnsConnectionInspected"
+    | where '{device_name}' == '' or DeviceName =~ '{device_name}'
+    | where isnotempty(RemoteUrl)
+    | where RemoteUrl != DeviceName
+    | extend DnsQuery = tolower(RemoteUrl)
+    | extend Parts = split(DnsQuery, ".")
+    | where array_length(Parts) >= 2
+    | extend ParentDomain = strcat(tostring(Parts[-2]), ".", tostring(Parts[-1]))
+    | project Timestamp, DeviceId, DeviceName, DnsQuery, ParentDomain;
+let BaseScoped  = CandidateRows
+    | where not(ParentDomain in~ (_xdr_TenantDomains))
+    | where not(DnsQuery has_any (_xdr_TenantDomains));
+let SuppressedPerDevice = CandidateRows
+    | where ParentDomain in~ (_xdr_TenantDomains) or DnsQuery has_any (_xdr_TenantDomains)
+    | summarize SuppressedCount = count() by DeviceId, DeviceName;
+let Baseline30d = DeviceNetworkEvents
+    | where Timestamp between (ago(30d) .. ago(Window))
+    | where ActionType == "DnsConnectionInspected"
+    | where isnotempty(RemoteUrl)
+    | extend DnsQuery = tolower(RemoteUrl)
+    | extend BParts = split(DnsQuery, ".")
+    | where array_length(BParts) >= 2
+    | extend ParentDomain = strcat(tostring(BParts[-2]), ".", tostring(BParts[-1]))
+    | summarize by ParentDomain;
+// Advanced Hunting in some tenants rejects `partition by` (especially the
+// multi-column form). Order rows globally by (DeviceId, DnsQuery, Timestamp),
+// serialize, pull prev(*) per row, and gate the inter-arrival delta on the
+// partition keys matching so PrevTs is only used within the same series.
+let Intervals = BaseScoped
+    | order by DeviceId asc, DnsQuery asc, Timestamp asc
+    | serialize
+    | extend
+        PrevDeviceId = prev(DeviceId),
+        PrevDnsQuery = prev(DnsQuery),
+        PrevTs       = prev(Timestamp)
+    | extend DeltaSec = iff(DeviceId == PrevDeviceId
+                            and DnsQuery == PrevDnsQuery
+                            and isnotempty(PrevTs),
+                            toreal(datetime_diff('second', Timestamp, PrevTs)),
+                            real(0));
+let PerDomain = Intervals
+    | summarize
+        QueryCount      = count(),
+        FirstSeen       = min(Timestamp),
+        LastSeen        = max(Timestamp),
+        DistinctHours   = dcount(bin(Timestamp, 1h)),
+        OffHoursHits    = countif(hourofday(Timestamp) < 6 or hourofday(Timestamp) > 22),
+        IntervalCount   = countif(DeltaSec > 0),
+        AvgDeltaSec     = avgif(DeltaSec, DeltaSec > 0),
+        StdevDeltaSec   = stdevif(DeltaSec, DeltaSec > 0),
+        ParentDomain    = any(ParentDomain)
+        by DeviceId, DeviceName, DnsQuery
+    | extend JitterCV = iff(IntervalCount >= 3 and isnotnull(AvgDeltaSec) and AvgDeltaSec > 0,
+                            round(StdevDeltaSec / AvgDeltaSec, 3),
+                            real(99));
+let WithBaseline = PerDomain
+    | join kind=leftanti Baseline30d on ParentDomain
+    | extend IsFirstSeen = true;
+let WithoutBaseline = PerDomain
+    | join kind=leftsemi Baseline30d on ParentDomain
+    | extend IsFirstSeen = false;
+let Combined = union (WithBaseline), (WithoutBaseline)
+    | extend
+        IsLowJitter    = IntervalCount >= 5 and JitterCV < 0.2,
+        IsHighRate     = QueryCount    >= 24,
+        IsSlowBeacon   = QueryCount between (6 .. 23) and IntervalCount >= 5 and JitterCV < 0.2,
+        IsNonTenant    = not(ParentDomain in~ (_xdr_TenantDomains)),
+        IsOffHours     = OffHoursHits > 0,
+        IsMalicious    = DnsQuery has_any (_xdr_MaliciousDomains);
+let Scored = Combined
+    | extend Score =
+          (iff(IsLowJitter and IsHighRate,    5, 0))
+        + (iff(IsSlowBeacon,                  3, 0))
+        + (iff(IsNonTenant,                   3, 0))
+        + (iff(IsFirstSeen,                   3, 0))
+        + (iff(IsOffHours,                    1, 0))
+        + (iff(IsMalicious,                  10, 0))
+    | where Score >= 3;
+let RankedDetail = Scored | order by Score desc, LastSeen desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "DeviceId",      DeviceId,
+            "DeviceName",    DeviceName,
+            "DnsQuery",      DnsQuery,
+            "ParentDomain",  ParentDomain,
+            "QueryCount",    QueryCount,
+            "DistinctHours", DistinctHours,
+            "JitterCV",      JitterCV,
+            "IsFirstSeen",   IsFirstSeen,
+            "IsOffHours",    IsOffHours,
+            "IsMalicious",   IsMalicious,
+            "Score",         Score), 5)
+        by DeviceId, DeviceName;
+let Agg = Scored
+    | summarize
+        BeaconingDomainCount   = count(),
+        EvidenceTotal          = count(),
+        FirstSeen              = min(FirstSeen),
+        LastSeen               = max(LastSeen),
+        MaxQueryCount          = max(QueryCount),
+        MaxDistinctHours       = max(DistinctHours),
+        MinJitterCV            = min(JitterCV),
+        NewlySeenDomainCount   = countif(IsFirstSeen),
+        OffHoursDomainCount    = countif(IsOffHours),
+        MaliciousDomainCount   = countif(IsMalicious),
+        arg_max(Score, DnsQuery)
+        by DeviceId, DeviceName
+    | project DeviceId, DeviceName, Score,
+              BeaconingDomainCount, EvidenceTotal, FirstSeen, LastSeen,
+              MaxQueryCount, MaxDistinctHours, MinJitterCV,
+              NewlySeenDomainCount, OffHoursDomainCount, MaliciousDomainCount,
+              TopDomain = DnsQuery;
+let SummaryRow = Agg
+    | join kind=leftouter TopEv on DeviceId, DeviceName
+    | join kind=leftouter SuppressedPerDevice on DeviceId, DeviceName
+    | extend SuppressedCount = coalesce(SuppressedCount, 0)
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | extend Indicators = strcat_array(pack_array(
+            iff(MinJitterCV < 0.2,             "low-jitter",   ""),
+            iff(MaxQueryCount >= 24,           "high-rate",    ""),
+            iff(NewlySeenDomainCount > 0,      "first-seen",   ""),
+            iff(OffHoursDomainCount > 0,       "off-hours",    ""),
+            iff(MaliciousDomainCount > 0,      "malicious-ioc", "")
+        ), " ")
+    | project DeviceId, DeviceName, Score, BeaconingDomainCount, MaxQueryCount, MaxDistinctHours,
+              MinJitterCV, NewlySeenDomainCount, OffHoursDomainCount, MaliciousDomainCount,
+              TopDomain, Indicators, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, FirstSeen, LastSeen, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Scored
+    | extend IsLowJitter = toint(IsLowJitter),
+             IsSlowBeacon = toint(IsSlowBeacon),
+             IsNonTenant  = toint(IsNonTenant),
+             IsFirstSeen  = toint(IsFirstSeen),
+             IsOffHours   = toint(IsOffHours),
+             IsMalicious  = toint(IsMalicious)
+    | project Timestamp = LastSeen, DeviceId, DeviceName, DnsQuery, ParentDomain,
+              QueryCount, DistinctHours, JitterCV, AvgDeltaSec, StdevDeltaSec,
+              IsLowJitter, IsSlowBeacon, IsNonTenant, IsFirstSeen, IsOffHours, IsMalicious, Score
+    | order by Score desc, Timestamp desc;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Score desc, Timestamp desc)

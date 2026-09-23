@@ -1,0 +1,1 @@
+# Tenant Domain Controller hostnames / FQDNs. Populated by hand or by future xdr enumerate.

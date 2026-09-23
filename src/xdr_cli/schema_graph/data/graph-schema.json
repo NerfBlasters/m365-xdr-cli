@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "record_types": ["field", "interpretation", "relationship", "observation", "profile"],
+  "relationship_types": [
+    "semantic-equivalent",
+    "join-compatible",
+    "transform-required",
+    "bridge",
+    "correlation-only"
+  ],
+  "relationship_statuses": ["candidate", "reviewed", "deprecated"]
+}

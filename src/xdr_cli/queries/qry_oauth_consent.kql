@@ -1,0 +1,24 @@
+-- name: qry_oauth_consent
+-- description: Who consented to an OAuth app and from where — identifies suspicious or coerced consent events
+-- tier: pivot
+-- params: app_id, start, end, mode=detail
+// CloudAppEvents has no AccountUpn column; resolve consenter from
+// RawEventData.UserId (consistent with other OAuth/CloudAppEvents queries).
+let DetailRows =
+    CloudAppEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where ActionType in ('Consent to application.', 'Add app role assignment to service principal.',
+                            'Add delegated permission grant.', 'Add OAuth2PermissionGrant.')
+    | where RawEventData has '{app_id}'
+    | extend ConsenterUpn = tostring(RawEventData.UserId)
+    | project Timestamp, AccountObjectId, ConsenterUpn, ActionType, Application, IPAddress, CountryCode, City;
+let SummaryRow =
+    DetailRows
+    | summarize
+        ConsentCount         = count(),
+        DistinctConsenters   = dcount(ConsenterUpn),
+        DistinctIPs          = dcount(IPAddress)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp asc)

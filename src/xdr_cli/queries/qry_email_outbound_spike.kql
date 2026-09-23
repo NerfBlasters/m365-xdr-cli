@@ -1,0 +1,58 @@
+-- name: qry_email_outbound_spike
+-- description: Hourly outbound email volume for a sender — rate-of-change Severity band against 7-day baseline
+-- tier: r2
+-- params: sender, start, end, mode=summary
+// 7-day baseline: max hourly sent rate for this sender in the 7 days preceding the window
+let BaselineStart = datetime({start}) - 7d;
+let BaselineEnd   = datetime({start});
+let Baseline = EmailEvents
+| where Timestamp between(BaselineStart .. BaselineEnd)
+| where SenderFromAddress =~ '{sender}'
+| where EmailDirection == 'Outbound'
+| summarize HourSent=count() by bin(Timestamp, 1h)
+| summarize BaselineMaxHourSent = max(HourSent);
+let WindowEvents = EmailEvents
+| where Timestamp between(datetime({start}) .. datetime({end}))
+| where SenderFromAddress =~ '{sender}'
+| where EmailDirection == 'Outbound';
+let HourlyRows = WindowEvents
+| summarize TotalSent=count(), UniqueRecipients=dcount(RecipientEmailAddress),
+            UniqueSubjects=dcount(Subject) by bin(Timestamp, 1h);
+let WindowSpan = WindowEvents
+    | summarize FirstSeen = min(Timestamp), LastSeen = max(Timestamp);
+let SummaryRow = HourlyRows
+    | order by TotalSent desc
+    | summarize
+        MaxHourSent      = max(TotalSent),
+        TotalSent        = sum(TotalSent),
+        UniqueRecipients = sum(UniqueRecipients),
+        UniqueSubjects   = sum(UniqueSubjects),
+        EvidenceTotal    = count(),
+        TopEvidence = make_list(pack(
+            'HourBin',          Timestamp,
+            'TotalSent',        TotalSent,
+            'UniqueRecipients', UniqueRecipients,
+            'UniqueSubjects',   UniqueSubjects), 5)
+    | extend FirstSeen = toscalar(WindowSpan | project FirstSeen)
+    | extend LastSeen  = toscalar(WindowSpan | project LastSeen)
+    | extend BaselineMaxHourSent = toscalar(Baseline | take 1 | project BaselineMaxHourSent)
+    | extend MaxHourMultipleOfBaseline = toreal(MaxHourSent) / toreal(max_of(BaselineMaxHourSent, 1))
+    | extend Score = case(
+        MaxHourMultipleOfBaseline >= 10, 10,
+        MaxHourMultipleOfBaseline >= 5,  7,
+        MaxHourMultipleOfBaseline >= 2,  4,
+        1)
+    // SuppressedCount = 0: this query has no tenant-curated row-drop filter.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(
+        MaxHourMultipleOfBaseline >= 10, 'critical',
+        MaxHourMultipleOfBaseline >= 5,  'high',
+        MaxHourMultipleOfBaseline >= 2,  'medium',
+        'low');
+let DetailRows = HourlyRows;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Timestamp asc)

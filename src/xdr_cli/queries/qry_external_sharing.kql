@@ -1,0 +1,21 @@
+-- name: qry_external_sharing
+-- description: External sharing recipients and anonymous links created by an account — data exfiltration via sharing
+-- tier: pivot
+-- params: account_oid, start, end, mode=detail
+let DetailRows =
+    CloudAppEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where AccountObjectId == '{account_oid}'
+    | where ActionType in ('FileShared', 'SharingSet', 'AnonymousLinkCreated')
+    | extend TargetUserOrGroupName = tostring(RawEventData.TargetUserOrGroupName)
+    | project Timestamp, ActionType, Application, ObjectName, TargetUserOrGroupName, IPAddress;
+let SummaryRow =
+    DetailRows
+    | summarize
+        ShareCount         = count(),
+        DistinctRecipients = dcount(TargetUserOrGroupName),
+        AnonymousLinks     = countif(ActionType has 'Anonymous')
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp asc)

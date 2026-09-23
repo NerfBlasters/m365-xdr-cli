@@ -1,0 +1,31 @@
+-- name: identity_signin_context
+-- description: Per-user sign-in history with risk / CA / token / device fields
+-- tier: r3
+-- params: account_oid, start, end, mode=detail
+let SignInEvents = EntraIdSignInEvents
+| where Timestamp between(datetime({start}) .. datetime({end}))
+| where AccountObjectId == '{account_oid}';
+let SummaryRow = SignInEvents
+    | summarize
+        SignInCount                      = count(),
+        DistinctIPs                      = dcount(IPAddress),
+        DistinctCountries                = dcount(Country),
+        MaxRiskLevel                     = max(RiskLevelDuringSignIn),
+        // ConditionalAccessStatus is the Entra enum: int (0=success/2=notApplied)
+        // in some tenants, string label in others. The string-only `!= 'success'`
+        // form silently matches every int row, inflating the count. Cast and
+        // negate-on-success across both shapes.
+        ConditionalAccessNotAppliedCount = countif(tostring(ConditionalAccessStatus) !in~ ("success", "0")),
+        AnomalousSessionCount            = countif(RiskState == 'atRisk' or RiskState == 'confirmedCompromised')
+        by AccountObjectId
+    | extend SchemaVersion = 1;
+let DetailRows = SignInEvents
+    | project Timestamp, AccountUpn, IPAddress, Country, City,
+              RiskLevelDuringSignIn, RiskLevelAggregated, RiskState, RiskEventTypes,
+              ErrorCode, Application, Browser, UserAgent, ClientAppUsed,
+              DeviceName, OSPlatform, SessionId, UniqueTokenId, TokenIssuerType,
+              AuthenticationRequirement, ConditionalAccessStatus
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail'  | order by Timestamp asc)

@@ -1,0 +1,21 @@
+-- name: ttp_lateral_targets
+-- description: Summarize successful on-prem authentication destinations for an account — identifies lateral movement targets
+-- tier: r3
+-- params: account_oid, start, end, mode=detail
+let DetailRows =
+    IdentityLogonEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where AccountObjectId == '{account_oid}'
+    | where FailureReason == ''
+    | project Timestamp, AccountUpn, ActionType, TargetDeviceName, Protocol
+    | summarize Targets=make_set(TargetDeviceName), Count=count() by AccountUpn, Protocol;
+let SummaryRow =
+    DetailRows
+    | summarize
+        LogonCount      = count(),
+        DistinctTargets = dcount(TargetDeviceName),
+        Successes       = countif(ActionType == 'LogonSuccess')
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Count desc)

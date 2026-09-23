@@ -1,0 +1,159 @@
+-- name: ttp_new_service_creation
+-- description: New service registrations (ImagePath / ServiceDll / FailureCommand) scored by parent process, binary path, signer, and 30-day rarity
+-- tier: r1
+-- params: hours=24, device_name=, account_upn=, mode=summary
+-- lists: KnownServiceAccounts, KnownGoodSigners, KnownRemoteSupportTools, KnownGoodServiceImagePaths
+let _xdr_KnownServiceAccounts        = dynamic([]);
+let _xdr_KnownGoodSigners            = dynamic([]);
+let _xdr_KnownRemoteSupportTools     = dynamic([]);
+let _xdr_KnownGoodServiceImagePaths  = dynamic([]);
+let Window = {hours}h;
+let UserWritable = dynamic([
+    "\\appdata\\", "\\users\\public\\", "\\programdata\\",
+    "\\temp\\", "\\tmp\\", "\\downloads\\", "\\windows\\temp\\"]);
+let LOLBins = dynamic([
+    "powershell.exe","pwsh.exe","cmd.exe","wscript.exe","cscript.exe",
+    "mshta.exe","rundll32.exe","regsvr32.exe","msbuild.exe","installutil.exe",
+    "regasm.exe","cmstp.exe","wmic.exe","odbcconf.exe"]);
+// 30-day prevalence baseline: a parent SHA1 seen on >= 5 devices is mass-deployed servicing.
+let MassDeployedParents = DeviceRegistryEvents
+    | where Timestamp between (ago(30d) .. ago(Window))
+    | where RegistryKey has @"\Services\"
+    | where ActionType == "RegistryValueSet"
+    | where RegistryValueName in ("ImagePath", "ServiceDll", "FailureCommand")
+    | where isnotempty(InitiatingProcessSHA1)
+    | summarize ParentSha1DeviceCount30d = dcount(DeviceId, 2) by InitiatingProcessSHA1;
+let ImagePathLeg = DeviceRegistryEvents
+    | where Timestamp > ago(Window)
+    | where RegistryKey has @"\Services\"
+    | where ActionType == "RegistryValueSet"
+    | where RegistryValueName == "ImagePath"
+    | extend RegistryLeg = "ImagePath",
+             ServiceName = tostring(split(RegistryKey, "\\")[-2]),
+             TargetPath  = tolower(extract(@"^""?([^""]+\.(?:exe|dll)|[^\s""]+\.(?:exe|dll))", 1, RegistryValueData)),
+             TargetArgs  = extract(@"^""?[^""]+\.(?:exe|dll)""?\s+(.*)$", 1, RegistryValueData);
+let ServiceDllLeg = DeviceRegistryEvents
+    | where Timestamp > ago(Window)
+    | where RegistryKey has @"\Services\"
+    | where ActionType == "RegistryValueSet"
+    | where RegistryKey endswith @"\Parameters"
+    | where RegistryValueName == "ServiceDll"
+    | extend RegistryLeg = "ServiceDll",
+             ServiceName = tostring(split(RegistryKey, "\\")[-2]),
+             TargetPath  = tolower(tostring(RegistryValueData)),
+             TargetArgs  = "";
+let FailureCommandLeg = DeviceRegistryEvents
+    | where Timestamp > ago(Window)
+    | where RegistryKey has @"\Services\"
+    | where ActionType == "RegistryValueSet"
+    | where RegistryValueName == "FailureCommand"
+    | extend RegistryLeg = "FailureCommand",
+             ServiceName = tostring(split(RegistryKey, "\\")[-1]),
+             TargetPath  = tolower(extract(@"^""?([^""]+\.exe|[^\s""]+\.exe)", 1, RegistryValueData)),
+             TargetArgs  = extract(@"^""?[^""]+\.exe""?\s+(.*)$", 1, RegistryValueData);
+let UnionLegs = union ImagePathLeg, ServiceDllLeg, FailureCommandLeg
+    | where '{device_name}' == '' or DeviceName =~ '{device_name}'
+    | where '{account_upn}' == '' or InitiatingProcessAccountUpn =~ '{account_upn}'
+                                  or InitiatingProcessAccountName =~ '{account_upn}'
+    | where isnotempty(TargetPath);
+let Enriched = UnionLegs
+    | join kind=leftouter MassDeployedParents on InitiatingProcessSHA1
+    | extend ParentSha1DeviceCount30d = coalesce(ParentSha1DeviceCount30d, 0);
+let Scored = Enriched
+    | extend
+        BinaryInUserPath        = TargetPath has_any (UserWritable),
+        EnvVarIndirection       = TargetPath has_any (dynamic(["%appdata%","%temp%","%public%","%programdata%","%localappdata%"])),
+        ParentIsLOLBin          = InitiatingProcessFileName in~ (LOLBins),
+        ParentUnsigned          = isempty(InitiatingProcessVersionInfoCompanyName),
+        ParentInUserPath        = tolower(InitiatingProcessFolderPath) has_any (UserWritable),
+        ServiceLen              = strlen(ServiceName),
+        IsLowEntropyName        = strlen(ServiceName) >= 6
+                                  and ServiceName matches regex @"^[A-Za-z0-9]+$"
+                                  and not(tolower(ServiceName) matches regex @"[aeiou]"),
+        IsServiceDllLeg         = RegistryLeg == "ServiceDll",
+        IsFailureCommandLeg     = RegistryLeg == "FailureCommand",
+        ParentMassDeployed      = ParentSha1DeviceCount30d >= 5,
+        ParentSignerKnownGood   = isnotempty(InitiatingProcessVersionInfoCompanyName)
+                                  and InitiatingProcessVersionInfoCompanyName in~ (_xdr_KnownGoodSigners),
+        TargetPathKnownGood     = isnotempty(TargetPath) and TargetPath in~ (_xdr_KnownGoodServiceImagePaths),
+        ParentIsRemoteSupport   = isnotempty(InitiatingProcessFileName)
+                                  and InitiatingProcessFileName in~ (_xdr_KnownRemoteSupportTools),
+        AccountIsKnownService   = InitiatingProcessAccountName in~ (_xdr_KnownServiceAccounts)
+    | extend Score =
+          (iff(IsServiceDllLeg,        5, 0))
+        + (iff(IsFailureCommandLeg,    5, 0))
+        + (iff(BinaryInUserPath,       5, 0))
+        + (iff(EnvVarIndirection,      4, 0))
+        + (iff(ParentIsLOLBin,         3, 0))
+        + (iff(ParentUnsigned,         3, 0))
+        + (iff(ParentInUserPath,       3, 0))
+        + (iff(IsLowEntropyName,       2, 0))
+        - (iff(ParentMassDeployed,     5, 0))
+        - (iff(ParentSignerKnownGood,  5, 0))
+        - (iff(TargetPathKnownGood,    5, 0))
+        - (iff(ParentIsRemoteSupport,  3, 0))
+        - (iff(AccountIsKnownService,  3, 0))
+    | where Score >= 4;
+let RankedDetail = Scored | order by Score desc, Timestamp desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp",                 Timestamp,
+            "Device",                    DeviceName,
+            "ServiceName",               ServiceName,
+            "RegistryLeg",               RegistryLeg,
+            "TargetPath",                TargetPath,
+            "Account",                   InitiatingProcessAccountName,
+            "ParentProcess",             InitiatingProcessFileName,
+            "ParentSigner",              InitiatingProcessVersionInfoCompanyName,
+            "ParentSha1DeviceCount30d",  ParentSha1DeviceCount30d,
+            "Score",                     Score), 5)
+        by DeviceName, ServiceName;
+let Agg = Scored
+    | summarize
+        Score                  = max(Score),
+        NewServiceCount        = count(),
+        EvidenceTotal          = count(),
+        FirstSeen              = min(Timestamp),
+        LastSeen               = max(Timestamp),
+        RegistryLeg            = strcat_array(make_set(RegistryLeg, 4), ","),
+        AnyBinaryInUserPath    = max(toint(BinaryInUserPath)),
+        AnyEnvVarIndirection   = max(toint(EnvVarIndirection)),
+        AnyParentIsLOLBin      = max(toint(ParentIsLOLBin)),
+        AnyParentUnsigned      = max(toint(ParentUnsigned)),
+        AnyParentInUserPath    = max(toint(ParentInUserPath)),
+        AnyLowEntropyName      = max(toint(IsLowEntropyName)),
+        AnyServiceDll          = max(toint(IsServiceDllLeg)),
+        AnyFailureCommand      = max(toint(IsFailureCommandLeg))
+        by DeviceName, ServiceName
+    | extend Indicators = strcat_array(pack_array(
+            iff(AnyServiceDll        == 1, "servicedll-leg",     ""),
+            iff(AnyFailureCommand    == 1, "failurecommand-leg", ""),
+            iff(AnyBinaryInUserPath  == 1, "user-writable-bin",  ""),
+            iff(AnyEnvVarIndirection == 1, "env-var-indirect",   ""),
+            iff(AnyParentIsLOLBin    == 1, "lolbin-parent",      ""),
+            iff(AnyParentUnsigned    == 1, "unsigned-parent",    ""),
+            iff(AnyParentInUserPath  == 1, "parent-user-path",   ""),
+            iff(AnyLowEntropyName    == 1, "low-entropy-name",   "")
+        ), " ");
+let SummaryRow = Agg
+    | join kind=leftouter TopEv on DeviceName, ServiceName
+    // SuppressedCount = 0: KSA / KnownGoodSigners / etc. are wired as negative-weight annotations, not row-drops.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project DeviceName, ServiceName, Score, NewServiceCount, RegistryLeg, Indicators, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, FirstSeen, LastSeen, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Scored
+    | project Timestamp, DeviceName, ServiceName, RegistryLeg, TargetPath, TargetArgs,
+              Account = InitiatingProcessAccountName,
+              ParentProcess = InitiatingProcessFileName,
+              ParentSigner  = InitiatingProcessVersionInfoCompanyName,
+              ParentSHA1    = InitiatingProcessSHA1,
+              ParentSha1DeviceCount30d,
+              Score
+    | order by Score desc, Timestamp desc;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail')

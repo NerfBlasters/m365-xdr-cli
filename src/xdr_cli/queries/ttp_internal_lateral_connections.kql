@@ -1,0 +1,22 @@
+-- name: ttp_internal_lateral_connections
+-- description: Connections from a device to private IPs on non-standard ports — lateral movement indicator
+-- tier: r3
+-- params: device_id, start, end, mode=detail
+let DetailRows =
+    DeviceNetworkEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where DeviceId == '{device_id}'
+    | where RemoteIPType == 'Private'
+    | where RemotePort !in (80, 443, 445, 135, 53)
+    | project Timestamp, RemoteIP, RemotePort, InitiatingProcessFileName
+    | summarize Connections=count() by RemoteIP, RemotePort, InitiatingProcessFileName;
+let SummaryRow =
+    DetailRows
+    | summarize
+        ConnectionCount  = count(),
+        DistinctRemotes  = dcount(RemoteIP),
+        DistinctPorts    = make_set(RemotePort)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Connections desc)

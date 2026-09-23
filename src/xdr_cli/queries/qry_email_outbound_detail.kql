@@ -1,0 +1,20 @@
+-- name: qry_email_outbound_detail
+-- description: Individual outbound emails for a sender — examines content patterns, recipients, and delivery status
+-- tier: pivot
+-- params: sender, start, end, mode=detail
+let DetailRows =
+    EmailEvents
+    | where Timestamp between(datetime({start}) .. datetime({end}))
+    | where SenderFromAddress =~ '{sender}'
+    | where EmailDirection == 'Outbound'
+    | project Timestamp, RecipientEmailAddress, Subject, DeliveryAction, DeliveryLocation;
+let SummaryRow =
+    DetailRows
+    | summarize
+        EmailCount        = count(),
+        DistinctRecipients = dcount(RecipientEmailAddress),
+        DistinctSubjects  = dcount(Subject)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail' | order by Timestamp desc)

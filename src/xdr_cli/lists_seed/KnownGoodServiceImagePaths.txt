@@ -1,0 +1,1 @@
+# Known-good service ImagePath values (canonical Windows servicing paths). Populated by hand.

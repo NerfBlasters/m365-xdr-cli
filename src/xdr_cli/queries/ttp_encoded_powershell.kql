@@ -1,0 +1,133 @@
+-- name: ttp_encoded_powershell
+-- description: Base64-encoded PowerShell with decoded payload (single + double-decode), AMSI/ETW bypass detection, format-string + char-array obfuscation heuristics, parent attribution
+-- tier: r1
+-- params: hours=24, device_name=, account_upn=, mode=summary
+-- lists: KnownGoodSigners
+let _xdr_KnownGoodSigners = dynamic([]);
+let Window = {hours}h;
+let TradecraftRegex = @"(iex|invoke-expression|downloadstring|downloadfile|webclient|frombase64string|invoke-webrequest|bypass|-hidden|-noprofile|\[reflection\.assembly\]|bitstransfer|gzipstream|bxor|\[convert\]::tobyte)";
+let AmsiRegex       = @"(amsiutils|amsiinitfailed|system\.management\.automation\.amsiutils)";
+let EtwRegex        = @"(m_enabled|\[system\.diagnostics\.eventing\.eventprovider\]\.getfield)";
+let MemoryRegex     = @"(getprocaddress|virtualalloc|loadlibrary|callwindowproc|\[runtime\.interopservices\.marshal\])";
+let Base = DeviceProcessEvents
+    | where Timestamp > ago(Window)
+    | where ActionType == "ProcessCreated"
+    | where FileName in~ ("powershell.exe","pwsh.exe")
+    | where '{device_name}' == '' or DeviceName =~ '{device_name}'
+    | where '{account_upn}' == '' or AccountUpn  =~ '{account_upn}' or AccountName =~ '{account_upn}'
+    | where ProcessCommandLine matches regex @"(?i)\s-(e|en|enc|enco|encod|encode|encoded|encodedcommand|ec)\s"
+    | extend EncodedToken = extract(@"(?i)\s-(?:e|en|enc|enco|encod|encode|encoded|encodedcommand|ec)\s+([A-Za-z0-9+/=]{20,})", 1, ProcessCommandLine)
+    | where isnotempty(EncodedToken)
+    | where (strlen(EncodedToken) % 4) != 1;   // strlen%4==1 is invalid base64
+let Decoded = Base
+    | extend PadLen = (4 - (strlen(EncodedToken) % 4)) % 4
+    | extend Padded = strcat(EncodedToken, substring("====", 0, PadLen))
+    | extend RawDecoded = make_string(base64_decode_toarray(Padded))
+    | extend Decoded1 = replace_string(RawDecoded, "\u0000", "")
+    | extend MaybeNested = extract(@"^[\s'`""]*([A-Za-z0-9+/=]{100,})[\s'`""]*$", 1, Decoded1)
+    | extend IsBase64Shape = isnotempty(MaybeNested)
+                             and (strlen(MaybeNested) % 4) == 0
+                             and MaybeNested matches regex @"^[A-Za-z0-9+/=]+$"
+    | extend IsDoubleEncoded = IsBase64Shape
+    | extend Padded2 = iff(IsDoubleEncoded,
+        strcat(MaybeNested, substring("====", 0, (4 - (strlen(MaybeNested) % 4)) % 4)),
+        "")
+    | extend Decoded2 = iff(IsDoubleEncoded,
+        replace_string(make_string(base64_decode_toarray(Padded2)), "\u0000", ""),
+        "")
+    | extend WorstDecoded = iff(IsDoubleEncoded and strlen(Decoded2) > 0, Decoded2, Decoded1)
+    | extend WorstDecodedLower = tolower(WorstDecoded)
+    | extend OuterLower = tolower(ProcessCommandLine);
+let Scored = Decoded
+    | extend
+        TradecraftHits  = array_length(extract_all(TradecraftRegex, WorstDecodedLower)),
+        IsAmsiBypass    = WorstDecodedLower matches regex AmsiRegex,
+        IsEtwBypass     = WorstDecodedLower matches regex EtwRegex,
+        HasMemoryPrim   = WorstDecodedLower matches regex MemoryRegex,
+        BacktickCount   = strlen(ProcessCommandLine) - strlen(replace_string(ProcessCommandLine, "`", "")),
+        MidWordQuotes   = strlen(ProcessCommandLine) - strlen(replace_regex(ProcessCommandLine, @"[A-Za-z]""[A-Za-z]""", "")),
+        NonPrintableLen = strlen(ProcessCommandLine) - strlen(replace_regex(ProcessCommandLine, @"[^\x20-\x7E]", "")),
+        HasFormatString = WorstDecodedLower matches regex @"\s-f\s",
+        HasCharArray    = WorstDecodedLower matches regex @"\[char\]",
+        ParentIsWebshell  = InitiatingProcessFileName =~ "w3wp.exe"
+                            or InitiatingProcessFileName startswith "MSExchange"
+                            or InitiatingProcessFileName startswith "msexchange",
+        ParentIsOffice    = InitiatingProcessFileName in~ (
+            "winword.exe","excel.exe","powerpnt.exe","outlook.exe","mspub.exe","onenote.exe"),
+        ParentSignerGood  = isnotempty(InitiatingProcessVersionInfoCompanyName)
+                            and InitiatingProcessVersionInfoCompanyName in~ (_xdr_KnownGoodSigners)
+    | extend BacktickDensity = toreal(BacktickCount) / toreal(max_of(strlen(ProcessCommandLine), 1))
+    | extend OuterObfuscationScore = toint(round(BacktickDensity * 100)) + iff(MidWordQuotes >= 4, 2, 0)
+    | extend Score =
+          (iff(IsAmsiBypass,                       6, 0))
+        + (iff(IsEtwBypass,                        6, 0))
+        + (iff(ParentIsWebshell,                   5, 0))
+        + (iff(IsDoubleEncoded,                    3, 0))
+        + (iff(ParentIsOffice,                     3, 0))
+        + min_of(TradecraftHits, 6)
+        + (iff(OuterObfuscationScore > 5,          3, 0))
+        + (iff(HasFormatString and HasCharArray,   3, 0))
+        + (iff(NonPrintableLen > 0,                2, 0))
+        + (iff(HasMemoryPrim,                      2, 0))
+        - (iff(ParentSignerGood,                   3, 0))
+    | where Score >= 4;
+let RankedDetail = Scored | order by Score desc, Timestamp desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp",     Timestamp,
+            "Device",        DeviceName,
+            "Account",       AccountName,
+            "ParentProcess", InitiatingProcessFileName,
+            "ParentSigner",  InitiatingProcessVersionInfoCompanyName,
+            "Decoded",       substring(WorstDecoded, 0, 500),
+            "Score",         Score), 5)
+        by DeviceName;
+let Agg = Scored
+    | summarize
+        EncodedExecutionCount  = count(),
+        EvidenceTotal          = count(),
+        FirstSeen              = min(Timestamp),
+        LastSeen               = max(Timestamp),
+        IsDoubleEncoded        = countif(IsDoubleEncoded) > 0,
+        IsAmsiBypass           = countif(IsAmsiBypass) > 0,
+        IsEtwBypass            = countif(IsEtwBypass) > 0,
+        OuterObfuscationScore  = max(OuterObfuscationScore),
+        NonPrintableCharCount  = max(NonPrintableLen),
+        TradecraftHits         = max(TradecraftHits),
+        WebshellParentCount    = countif(ParentIsWebshell),
+        OfficeParentCount      = countif(ParentIsOffice),
+        arg_max(Score, WorstDecoded)
+        by DeviceName
+    | extend WorstDecodedPreview = substring(tostring(WorstDecoded), 0, 500)
+    | project-away WorstDecoded;
+let SummaryRow = Agg
+    | join kind=leftouter TopEv on DeviceName
+    | extend Indicators = strcat_array(pack_array(
+            iff(IsAmsiBypass,           "amsi-bypass",     ""),
+            iff(IsEtwBypass,            "etw-bypass",      ""),
+            iff(WebshellParentCount > 0,"webshell-parent", ""),
+            iff(OfficeParentCount > 0,  "office-parent",   ""),
+            iff(IsDoubleEncoded,        "double-encoded",  ""),
+            iff(TradecraftHits > 0,     "tradecraft",      ""),
+            iff(NonPrintableCharCount > 0, "non-printable",""),
+            iff(OuterObfuscationScore > 5, "outer-obf",    "")
+        ), " ")
+    // SuppressedCount = 0: KnownGoodSigners is wired as a -3 negative-weight annotation, not a row-drop.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project DeviceName, Score, EncodedExecutionCount, Indicators, IsDoubleEncoded,
+              IsAmsiBypass, IsEtwBypass, OuterObfuscationScore, NonPrintableCharCount,
+              WorstDecodedPreview, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, FirstSeen, LastSeen, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Scored
+    | project Timestamp, DeviceName, AccountName, AccountUpn,
+              InitiatingProcessFileName, InitiatingProcessVersionInfoCompanyName,
+              ProcessCommandLine, IsDoubleEncoded, IsAmsiBypass, IsEtwBypass,
+              ParentIsWebshell, ParentIsOffice, WorstDecoded, Score
+    | order by Score desc, Timestamp desc;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc),
+    (DetailRows | where '{mode}' == 'detail')

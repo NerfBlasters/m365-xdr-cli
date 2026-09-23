@@ -1,0 +1,24 @@
+-- name: qry_oauth_app_info
+-- description: OAuth app registration details — app name, service principal ID, and owner tenant (first-party vs third-party)
+-- tier: pivot
+-- params: app_id, mode=detail
+// OAuthAppInfo schema: AppName, ServicePrincipalId, VerifiedPublisher (dynamic),
+// AppOwnerTenantId, IsAdminConsented, ConsentedUsersCount, Permissions, Tenants
+// (list), LastModifiedTime. There is no flat `PublisherName` / `TenantId`;
+// extract the publisher display name from VerifiedPublisher and the home tenant
+// from AppOwnerTenantId.
+let DetailRows =
+    OAuthAppInfo
+    | where OAuthAppId == '{app_id}'
+    | extend PublisherName = tostring(parse_json(tostring(VerifiedPublisher)).displayName)
+    | project OAuthAppId, AppName, ServicePrincipalId, PublisherName, AppOwnerTenantId, VerifiedPublisher;
+let SummaryRow =
+    DetailRows
+    | summarize
+        AppCount          = count(),
+        Publishers        = make_set(PublisherName),
+        TenantOwnerships  = make_set(AppOwnerTenantId)
+    | extend SchemaVersion = 1;
+union
+    (SummaryRow | where '{mode}' == 'summary'),
+    (DetailRows | where '{mode}' == 'detail')

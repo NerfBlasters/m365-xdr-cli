@@ -1,0 +1,110 @@
+-- name: ttp_impossible_travel
+-- description: Geographically improbable consecutive sign-ins via geo_distance + time delta + implied velocity, additive scoring with MFA / internal / known-egress suppression
+-- tier: r1
+-- params: hours=24, account_upn=, mode=summary
+-- lists: InternalSubnets, KnownEgressIPs
+-- agent_hint: EntraIdSignInEvents has no Isp/ASN column; ASN-change weight (+2 in the
+--   spec narrative) is dropped and country-change is bumped from +3 to +4 to keep the
+--   weight envelope. Max additive score: 5 (Kmh>800) + 3 (Kmh>3000) + 4 (country) = 12.
+let _xdr_InternalSubnets = dynamic([]);
+let _xdr_KnownEgressIPs  = dynamic([]);
+let Window = {hours}h;
+let MinKmh = 800.0;
+let Base = EntraIdSignInEvents
+    | where Timestamp > ago(Window)
+    | where ErrorCode == 0
+    | where '{account_upn}' == '' or AccountUpn =~ '{account_upn}'
+    | where isnotempty(IPAddress) and isnotempty(Country)
+    | where isnotnull(Latitude) and isnotnull(Longitude)
+    | project Timestamp, AccountUpn, IPAddress, Country, City, Latitude, Longitude,
+              RequestId, AuthenticationRequirement, ConditionalAccessStatus;
+// Advanced Hunting in some tenants rejects `partition by` — replace with the
+// standard "manual partition" pattern: order rows globally, serialize, pull
+// prev(*) per row, and gate adjacency on the partition key (AccountUpn).
+let Pairs = Base
+    | order by AccountUpn asc, Timestamp asc
+    | serialize
+    | extend
+        PrevAccount   = prev(AccountUpn),
+        PrevTimestamp = prev(Timestamp),
+        PrevIP        = prev(IPAddress),
+        PrevCountry   = prev(Country),
+        PrevCity      = prev(City),
+        PrevLat       = prev(Latitude),
+        PrevLon       = prev(Longitude),
+        PrevReq       = prev(RequestId),
+        PrevAuthReq   = prev(AuthenticationRequirement)
+    | where AccountUpn == PrevAccount   // restrict prev() to same account
+    | where isnotempty(PrevIP)
+    | where RequestId != PrevReq        // exclude same-request CDN/load-balancer hops
+    | where IPAddress != PrevIP
+    | extend
+        // prev() returns dynamic; geo_distance_2points needs real/double on
+        // all four coords. Cast both prev and current explicitly.
+        DistanceKm     = geo_distance_2points(todouble(PrevLon), todouble(PrevLat),
+                                              todouble(Longitude), todouble(Latitude)) / 1000.0,
+        MinutesBetween = toreal(datetime_diff('second', Timestamp, PrevTimestamp)) / 60.0
+    | extend Kmh = DistanceKm / max_of(MinutesBetween / 60.0, 0.001)
+    | extend
+        FromInternal     = ipv4_is_in_any_range(PrevIP,    _xdr_InternalSubnets),
+        ToInternal       = ipv4_is_in_any_range(IPAddress, _xdr_InternalSubnets),
+        FromKnownEgress  = ipv4_is_in_any_range(PrevIP,    _xdr_KnownEgressIPs),
+        ToKnownEgress    = ipv4_is_in_any_range(IPAddress, _xdr_KnownEgressIPs),
+        BothMfa          = AuthenticationRequirement =~ "multiFactorAuthentication"
+                        and PrevAuthReq             =~ "multiFactorAuthentication",
+        CountryChange    = isnotempty(PrevCountry) and isnotempty(Country) and PrevCountry != Country
+    | extend Score =
+          (iff(Kmh > MinKmh,                            5, 0))
+        + (iff(Kmh > 3000,                              3, 0))
+        + (iff(CountryChange,                           4, 0))
+        - (iff(BothMfa,                                 3, 0))
+        - (iff(FromInternal and ToInternal,             5, 0))
+        - (iff(FromKnownEgress and ToKnownEgress,       3, 0))
+    | where Score > 0
+    | extend
+        FromGeo = strcat(PrevCountry, iff(isempty(PrevCity), "", strcat("/", PrevCity))),
+        ToGeo   = strcat(Country,     iff(isempty(City),     "", strcat("/", City))),
+        FromTo  = strcat(PrevCountry, "->", Country);
+let RankedDetail = Pairs | order by Score desc, Timestamp desc;
+let TopEv = RankedDetail
+    | summarize TopEvidence = make_list(pack(
+            "Timestamp",       Timestamp,
+            "FromIP",          PrevIP,
+            "FromGeo",         FromGeo,
+            "ToIP",            IPAddress,
+            "ToGeo",           ToGeo,
+            "DistanceKm",      round(DistanceKm, 1),
+            "MinutesBetween",  round(MinutesBetween, 1),
+            "Kmh",             round(Kmh, 0),
+            "Score",           Score), 5)
+        by AccountUpn;
+let Agg = Pairs
+    | summarize
+        Score              = max(Score),
+        ImpossibleHopCount = count(),
+        EvidenceTotal      = count(),
+        FirstSeen          = min(Timestamp),
+        LastSeen           = max(Timestamp),
+        MaxKmh             = max(Kmh),
+        MaxDistanceKm      = max(DistanceKm),
+        FromTo             = make_set(FromTo, 5)
+        by AccountUpn;
+let SummaryRow = Agg
+    | join kind=leftouter TopEv on AccountUpn
+    // SuppressedCount = 0: InternalSubnets / KnownEgressIPs are wired as negative-weight annotations, not row-drops.
+    | extend SuppressedCount = 0
+    | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
+    | extend ListHealth = _xdr_ListHealth
+    | project AccountUpn, Score, ImpossibleHopCount, MaxKmh, MaxDistanceKm, FromTo, TopEvidence,
+              EvidenceTotal, EvidenceOmitted, SuppressedCount, FirstSeen, LastSeen, ListHealth
+    | extend SchemaVersion = 1
+    | extend Severity = case(Score >= 9, "critical", Score >= 6, "high", Score >= 3, "medium", Score >= 1, "low", "none");
+let DetailRows = Pairs
+    | project Timestamp, AccountUpn, PrevIP, IPAddress, FromGeo, ToGeo,
+              DistanceKm = round(DistanceKm, 1),
+              MinutesBetween = round(MinutesBetween, 1),
+              Kmh = round(Kmh, 0),
+              Score;
+union
+    (SummaryRow | where '{mode}' == 'summary' | order by Score desc, MaxKmh desc),
+    (DetailRows | where '{mode}' == 'detail'  | order by Score desc, Timestamp desc)
