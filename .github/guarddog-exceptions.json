@@ -51,7 +51,7 @@
     {
       "package": "setuptools",
       "version": "84.0.0",
-      "findings_sha256": "6dd6b58d9cd2441e231d19e9588cd841dcf6f77a32210e2396325a900825a4b2",
+      "findings_sha256": "6fe9a7b5dc0bd79a48ff43eb8cc53ab6489fbb9859725b3fd2dcd96d098dfa80",
       "reviewed_on": "2026-09-23",
       "expires": "2026-12-22",
       "reason": "Bundled EXEs are Windows console/GUI launchers. develop.py invokes pip for editable installs; installer.py launches the installer. Remaining filesystem/download capabilities belong to build/packaging support. This accepts only the exact reported binary hashes and code observations.",
@@ -68,6 +68,18 @@
       "reason": "The bundled ELF is the Ruff executable; __main__.py launches that executable. This exception covers only the binary hash and launcher observation in this report.",
       "evidence": [
         "https://pypi.org/project/ruff/0.16.8/"
+      ]
+    },
+    {
+      "package": "requests-toolbelt",
+      "version": "1.0.0",
+      "findings_sha256": "e84ff0dd15a0f2d667444b89e7f68d6080e355825f881f1869a4fdcbbef7d202",
+      "reviewed_on": "2026-09-23",
+      "expires": "2026-12-22",
+      "reason": "The flagged LICENSE in the exact PyPI wheel is byte-for-byte identical to LICENSE at the upstream 1.0.0 tag. Verified wheel SHA256 cccfdd665f0a24fcf4726e690f65639d272bb0637b9b92dfd91a5568ccf6bd06. The repository-integrity mismatch could not be reproduced by direct comparison. Other observations are the streaming file reader and an HTTP multipart upload documentation example; expected HTTP client functionality. Accept only this exact version and finding fingerprint.",
+      "evidence": [
+        "https://pypi.org/project/requests-toolbelt/1.0.0/",
+        "https://github.com/requests/toolbelt/blob/1.0.0/LICENSE"
       ]
     }
   ]

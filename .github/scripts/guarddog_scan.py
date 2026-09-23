@@ -60,7 +60,20 @@ def validate_scan(rows: list, expected: set[tuple[str, str]]) -> list[str]:
 
 
 def fingerprint(result: dict) -> str:
-    evidence = {"results": result["results"], "risk_score": result["risk_score"]}
+    results = dict(result["results"])
+    # GuardDog's filesystem traversal order varies between runners. Preserve
+    # every binary hash and filename, including duplicates; normalize only order.
+    binaries = results.get("bundled_binary")
+    header = "Binary file/s detected in package:\n"
+    if isinstance(binaries, str) and binaries.startswith(header):
+        lines = binaries[len(header):].splitlines()
+        matches = [re.fullmatch(r"([a-f0-9]{64}): (.+)", line) for line in lines]
+        if lines and all(matches):
+            results["bundled_binary"] = header + "\n".join(sorted(
+                f"{match[1]}: {', '.join(sorted(match[2].split(', ')))}"
+                for match in matches
+            ))
+    evidence = {"results": results, "risk_score": result["risk_score"]}
     return hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
 
 
