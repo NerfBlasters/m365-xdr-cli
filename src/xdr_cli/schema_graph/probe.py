@@ -59,7 +59,24 @@ def _property_access(expression: str, segments: tuple[str, ...]) -> str:
     return expression
 
 
-def _projection_lines(locator: FieldLocator, output: str = "__xdr_value") -> list[str]:
+def _expanded_projection(locator: FieldLocator, output: str) -> list[str]:
+    expression = locator.column
+    lines = []
+    for index, segment in enumerate(locator.json_path):
+        container = f"parse_json(tostring({expression}))"
+        if segment == "*":
+            expression = f"__xdr_nested_{index}"
+            lines.append(f"| mv-expand {expression} = {container}")
+        else:
+            expression = f'{container}["{_kql_escape(segment)}"]'
+    lines.append(f"| extend {output} = tostring({expression})")
+    return lines
+
+
+def _projection_lines(locator: FieldLocator, output: str = "__xdr_value", *,
+                      expanded_paths: bool = False) -> list[str]:
+    if expanded_paths:
+        return _expanded_projection(locator, output)
     if not locator.json_path:
         return [f"| extend {output} = tostring({locator.column})"]
     wildcard_indexes = [index for index, segment in enumerate(locator.json_path) if segment == "*"]
@@ -79,13 +96,15 @@ def _projection_lines(locator: FieldLocator, output: str = "__xdr_value") -> lis
     ]
 
 
-def _scalar_projection_expression(locator: FieldLocator) -> str:
+def _scalar_projection_expression(locator: FieldLocator, *, expanded_paths=False) -> str:
     """Return one scalar KQL expression, rejecting array-expanding locators."""
 
     if "*" in locator.json_path:
         raise GraphValidationError("array-wildcard probe targets require an isolated query")
     if not locator.json_path:
         return f"tostring({locator.column})"
+    if expanded_paths:
+        return _expanded_projection(locator, "__xdr_value")[-1].split(" = ", 1)[1]
     root = f"parse_json(tostring({locator.column}))"
     return f"tostring({_property_access(root, locator.json_path)})"
 
@@ -227,6 +246,7 @@ def compile_target_context_query(
     lookback: str = "30d",
     limit: int = 20,
     available_columns: dict[str, set[str]] | None = None,
+    expanded_paths: bool = False,
 ) -> CompiledProbeQuery:
     """Compile a bounded private row-context query for one candidate review."""
 
@@ -239,7 +259,7 @@ def compile_target_context_query(
     normalized = _normalized_seeds(interpretation.normalizer, seeds)
     rendered = ",".join(f'"{_kql_escape(value)}"' for value in normalized)
     lines = [locator.table, *_time_filter(locator.table, lookback, available_columns)]
-    lines.extend(_projection_lines(locator))
+    lines.extend(_projection_lines(locator, expanded_paths=expanded_paths))
     lines.extend(
         [
             f"| extend __xdr_normalized = {_normalized_expression(interpretation.normalizer)}",
@@ -284,13 +304,14 @@ def _target_probe_leg(
     seed_expression: str,
     lookback: str,
     available_columns: dict[str, set[str]] | None,
+    expanded_paths: bool = False,
 ) -> list[str]:
     if interpretation.constraints:
         raise GraphValidationError(
             "probe compiler cannot yet enforce this interpretation's constraints"
         )
     lines = [locator.table, *_time_filter(locator.table, lookback, available_columns)]
-    lines.extend(_projection_lines(locator))
+    lines.extend(_projection_lines(locator, expanded_paths=expanded_paths))
     lines.extend(
         [
             f"| extend __xdr_normalized = {_normalized_expression(interpretation.normalizer)}",
@@ -312,6 +333,7 @@ def compile_target_probe_batches(
     lookback: str = "30d",
     batch_size: int = 20,
     available_columns: dict[str, set[str]] | None = None,
+    expanded_paths: bool = False,
 ) -> tuple[CompiledProbeBatch, ...]:
     """Compile table-aware target tasks below a strict request byte budget.
 
@@ -366,7 +388,7 @@ def compile_target_probe_batches(
         ]
         aliases: list[tuple[str, str, str]] = []
         for index, (interpretation, locator) in enumerate(chunk):
-            raw_expression = _scalar_projection_expression(locator)
+            raw_expression = _scalar_projection_expression(locator, expanded_paths=expanded_paths)
             normalized_expression = _normalized_expression(
                 interpretation.normalizer, raw_expression
             )
@@ -418,6 +440,7 @@ def compile_target_probe_batches(
             seed_expression="_xdr_seeds",
             lookback=lookback,
             available_columns=available_columns,
+            expanded_paths=expanded_paths,
         )
         kql = f"let _xdr_seeds = dynamic([{rendered}]);\n" + "\n".join(leg)
         return make_batch(locator.table, [target], kql)

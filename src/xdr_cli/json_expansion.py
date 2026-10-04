@@ -44,10 +44,10 @@ def expand_json_string_columns(rows: list[dict[str, Any]]) -> list[dict[str, Any
             if col not in new_row:
                 continue
             value = new_row[col]
-            if not isinstance(value, str) or value == "":
+            if not isinstance(value, str) or value == "" or len(value) > 262144:
                 continue
             # fail-soft: keep raw string on parse failure
-            with contextlib.suppress(json.JSONDecodeError):
+            with contextlib.suppress(ValueError, RecursionError):
                 new_row[col] = json.loads(value)
         out.append(new_row)
     return out

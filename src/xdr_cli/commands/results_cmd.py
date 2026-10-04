@@ -341,10 +341,13 @@ def _verified_candidate_proposal_references(
     return references, str(proposal_path), is_legacy
 
 
-def _schema_evidence_references() -> _EvidenceReferences:
+def _schema_evidence_references(cutoff: datetime | None = None) -> _EvidenceReferences:
     """Return verified result IDs retained by overlays and live proposals."""
 
     schema_root = get_config_home() / "schema"
+    from xdr_cli.schema_graph.retention import index_result_metadata, retired_observation
+
+    metadata_paths = index_result_metadata(_results_root()) if cutoff else None
     overlay_run_ids: set[str] = set()
     observation_ids: set[str] = set()
     if schema_root.exists():
@@ -371,11 +374,12 @@ def _schema_evidence_references() -> _EvidenceReferences:
                     help_command="xdr schema repair-overlay --all-local --yes",
                 )
             for record in overlay.observations:
-                observation_ids.add(record.observation_id)
-                for run_id in (
-                    record.source_artifact_run_id,
-                    record.target_artifact_run_id,
+                if retired_observation(
+                    record, cutoff, _results_root(), metadata_paths=metadata_paths
                 ):
+                    continue
+                observation_ids.add(record.observation_id)
+                for run_id in record.evidence_run_ids:
                     if isinstance(run_id, str):
                         overlay_run_ids.add(run_id)
     proposal_run_ids: set[str] = set()
@@ -416,7 +420,7 @@ def _results_prune_plan(
     """Build a prune plan; caller holds the schema evidence-reference lock."""
 
     targets: list[tuple[Path, Path | None]] = []
-    references = _schema_evidence_references()
+    references = _schema_evidence_references(cutoff)
     protected_bundles = 0
     protected_overlay_bundles = 0
     protected_proposal_bundles = 0
@@ -893,14 +897,15 @@ def results_prune(
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm deletion."),
 ) -> None:
-    """Delete old unreferenced result bundles; preserve schema/proposal evidence.
+    """Delete old results; retire automatic evidence and preserve explicit pins.
 
     Example: `xdr results prune --older-than 90 --yes`
 
-    Bundles referenced by the tenant schema graph or an extant candidate
-    proposal are skipped after their integrity bindings are verified. Any
-    proposal mismatch stops pruning. Prune stale overlay evidence, and delete
-    merged or abandoned proposal JSONL drafts, before rerunning this command.
+    Automatic discovery references are retired at the cutoff before deleting
+    bytes. Explicit observations and extant candidate proposals retain their
+    evidence. A proposal mismatch stops pruning. Retire explicit observations
+    with schema prune-evidence and delete merged or abandoned proposal drafts
+    before pruning their evidence.
     """
 
     app_ctx: AppContext = ctx.obj
@@ -938,6 +943,23 @@ def results_prune(
                 "the new plan and rerun the command.",
                 help_command="xdr results prune --help",
             )
+        if approved:
+            from xdr_cli._lock import exclusive_lock
+            from xdr_cli.schema_graph.model import Graph
+            from xdr_cli.schema_graph.overlay import _publish_tenant_overlay_locked
+
+            # Publish retirement before deleting bytes. Generation checks and
+            # the global evidence lock prevent a concurrent collector repinning
+            # old results, including ones still protected by a proposal.
+            for overlay_root in local_overlay_roots():
+                with exclusive_lock(overlay_root / ".semantic"):
+                    current = load_tenant_overlay_from_root(overlay_root)
+                    _publish_tenant_overlay_locked(
+                        overlay_root, graph=Graph(), observations=(),
+                        replace_observations=False,
+                        expected_generation=current.metadata.get("generation"),
+                        discovery_retired_before=cutoff.isoformat(),
+                    )
         try:
             for meta_path, data_path in targets:
                 for path in (data_path, meta_path):

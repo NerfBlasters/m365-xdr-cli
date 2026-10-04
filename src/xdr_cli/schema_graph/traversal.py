@@ -1,4 +1,4 @@
-"""Deterministic reviewed-by-default traversal over the semantic graph."""
+"""Deterministic evidence-first traversal over the semantic graph."""
 
 from __future__ import annotations
 
@@ -61,18 +61,23 @@ class GraphStep:
     target_availability: str
 
     @property
+    def evidence_rank(self) -> int:
+        # A saved-result overlap is useful but has not been independently
+        # tested. Prefer route semantics when it competes with authored routes.
+        if self.evidence_level == "observed" and self.confidence == "low":
+            return 2
+        return {"validated": 0, "observed": 1, "reviewed": 2, "candidate": 3}.get(
+            self.evidence_level, 3
+        )
+
+    @property
     def weight(self) -> int:
         unavailable = 50 if not self.source_available or not self.target_available else 0
         unobserved = 15 * sum(
             state == "outer-available-unobserved"
             for state in (self.source_availability, self.target_availability)
         )
-        evidence = {
-            "reviewed": 0,
-            "validated": 20,
-            "observed": 60,
-            "candidate": 100,
-        }.get(self.evidence_level, 100)
+        evidence = (0, 20, 60, 100)[self.evidence_rank]
         lossy = 10 if self.transform in _LOSSY_TRANSFORMS else 0
         cardinality = _CARDINALITY_PENALTY[self.cardinality]
         confidence = _CONFIDENCE_PENALTY[self.confidence]
@@ -93,12 +98,7 @@ class GraphStep:
         """Documented deterministic preference dimensions for one edge."""
 
         return (
-            {
-                "reviewed": 0,
-                "validated": 1,
-                "observed": 2,
-                "candidate": 3,
-            }.get(self.evidence_level, 3),
+            self.evidence_rank,
             _RELATION_WEIGHT[self.relationship],
             int(self.transform in _LOSSY_TRANSFORMS),
             _CARDINALITY_PENALTY[self.cardinality],
@@ -122,16 +122,11 @@ class GraphPath:
 
     @property
     def rank(self) -> tuple:
-        """Prefer reviewed, strong, short, selective, available routes."""
+        """Prefer empirical evidence, then strong, short, available routes."""
 
         return (
-            sum(
-                {
-                    "reviewed": 0,
-                    "validated": 1,
-                    "observed": 2,
-                    "candidate": 3,
-                }.get(step.evidence_level, 3)
+            max(
+                step.evidence_rank
                 for step in self.steps
             ),
             max(_RELATION_WEIGHT[step.relationship] for step in self.steps),

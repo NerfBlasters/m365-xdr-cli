@@ -22,7 +22,6 @@ from xdr_cli.schema_graph.bundle import (
     export_bundle,
     import_bundle,
     inspect_bundle,
-    validate_collection_checkpoint,
 )
 from xdr_cli.schema_graph.model import (
     Cardinality,
@@ -125,380 +124,54 @@ def test_bundle_relocates_result_sidecars_and_preserves_evidence_bindings(
     assert overlay.observations[0].source_artifact_run_id == run_id
 
 
-def test_bundle_preserves_resumable_collection_checkpoint_and_source_evidence(
+def test_bundle_export_omits_retired_collection_checkpoints_and_their_only_evidence(
     tmp_path, monkeypatch
 ):
-    tenant, source_home, _archive, run_id = _portable_state(tmp_path, monkeypatch)
+    tenant, source_home, _archive, active_run = _portable_state(tmp_path, monkeypatch)
     tenant_key = hashlib.sha256(tenant.encode()).hexdigest()[:12]
-    resume_id = "collect-0123456789abcdef01234567"
-    checkpoint_root = (
-        source_home / "schema" / tenant_key / "collection-checkpoints"
+    retired_result = write_result(
+        [{"SyntheticId": "retired-checkpoint-only"}],
+        command="test synthetic",
+        tenant_id=tenant,
     )
-    checkpoint_root.mkdir()
-    checkpoint = {
-        "schema_version": 1,
-        "tenant_fingerprint": hashlib.sha256(tenant.encode()).hexdigest(),
-        "resume_id": resume_id,
-        "state": "paused",
-        "created_at": "2026-08-12T00:00:00Z",
-        "updated_at": "2026-08-12T00:01:00Z",
-        "plan": {
-            "selected_sources": ["SourceTable.DeviceId"],
-            "using_default_sources": False,
-            "lookback": "30d",
-            "samples": 5,
-            "batch_size": 20,
-            "max_targets": 40,
-            "exhaustive": False,
-            "timeout": 120,
-            "max_queries_per_page": 20,
-            "schema_generation": "generation-1",
-            "semantic_contract_sha256": "0" * 64,
-        },
-        "pending_commands": [
-            [
-                "schema",
-                "observe",
-                "SourceTable.DeviceId",
-                "--lookback",
-                "30d",
-                "--samples",
-                "5",
-                "--batch-size",
-                "20",
-                "--timeout",
-                "120",
-                "--max-queries",
-                "20",
-                "--max-targets",
-                "40",
-                "--from-run",
-                run_id,
-                "--start-query",
-                "20",
-                "--schema-generation",
-                "generation-1",
-            ]
-        ],
-        "rows": [],
-        "seen_continuations": [],
-    }
-    (checkpoint_root / f"{resume_id}.json").write_text(
-        json.dumps(checkpoint, separators=(",", ":")) + "\n"
-    )
-    archive = tmp_path / "checkpoint-state.tar.gz"
+    checkpoints = source_home / "schema" / tenant_key / "collection-checkpoints"
+    checkpoints.mkdir()
+    checkpoint = checkpoints / "collect-0123456789abcdef01234567.json"
+    checkpoint.write_text(json.dumps({"source_artifact_run_id": retired_result.receipt.run_id}))
+    original = checkpoint.read_bytes()
+    archive = tmp_path / "current-state.tar.gz"
+
     export_bundle(source_home, tenant, archive)
-
     inspected = inspect_bundle(archive)
-    checkpoint_member = (
-        f"schema/{tenant_key}/collection-checkpoints/{resume_id}.json"
+
+    assert inspected.manifest["referenced_result_ids"] == [active_run]
+    assert all("collection-checkpoints" not in name for name in inspected.member_names)
+    assert all(retired_result.receipt.run_id not in name for name in inspected.member_names)
+    assert checkpoint.read_bytes() == original
+    # Retired files are not opened or parsed, including malformed JSON.
+    checkpoint.write_text("not JSON")
+    export_bundle(source_home, tenant, tmp_path / "with-invalid-retired-checkpoint.tar.gz")
+
+
+def test_bundle_rejects_retired_collection_members_before_activation(tmp_path, monkeypatch):
+    tenant, _source_home, archive, _run_id = _portable_state(tmp_path, monkeypatch)
+    tenant_key = hashlib.sha256(tenant.encode()).hexdigest()[:12]
+    legacy = tmp_path / "retired-checkpoint.tar.gz"
+    _extend_bundle(
+        archive,
+        legacy,
+        name=f"schema/{tenant_key}/collection-checkpoints/collect-0123456789abcdef01234567.json",
+        value=b"{}\n",
+        sensitivity="value-free-schema",
     )
-    assert checkpoint_member in inspected.member_names
-    destination = tmp_path / "checkpoint-destination"
+    destination = tmp_path / "destination"
     destination.mkdir()
-    import_bundle(destination, tenant, archive)
-    imported = destination / checkpoint_member
-    imported_arguments = json.loads(imported.read_text())["pending_commands"][0]
-    assert imported_arguments[imported_arguments.index("--from-run") + 1] == run_id
-    meta_path = next((destination / "results").glob(f"*/{run_id}.meta.json"))
-    data_path = next((destination / "results").glob(f"*/{run_id}.jsonl"))
-    metadata = json.loads(meta_path.read_text())
-    assert metadata["meta_path"] == str(meta_path.resolve())
-    assert metadata["data_path"] == str(data_path.resolve())
-    assert json.loads(data_path.read_text())["SyntheticId"] == "fabricated-value"
 
-
-def test_collection_checkpoint_rejects_non_schema_child_command():
-    tenant_hash = hashlib.sha256(b"tenant").hexdigest()
-    resume_id = "collect-0123456789abcdef01234567"
-    checkpoint = {
-        "schema_version": 1,
-        "tenant_fingerprint": tenant_hash,
-        "resume_id": resume_id,
-        "state": "paused",
-        "plan": {
-            "selected_sources": ["SourceTable.DeviceId"],
-            "using_default_sources": False,
-            "lookback": "30d",
-            "samples": 5,
-            "batch_size": 20,
-            "max_targets": 40,
-            "exhaustive": False,
-            "timeout": 120,
-            "max_queries_per_page": 20,
-            "semantic_contract_sha256": "0" * 64,
-        },
-        "pending_commands": [
-            ["incidents", "update", "155278", "--status", "resolved", "--yes"]
-        ],
-        "rows": [],
-        "seen_continuations": [],
-    }
-
-    with pytest.raises(ValueError, match="child command is unsafe"):
-        validate_collection_checkpoint(
-            checkpoint,
-            filename=f"{resume_id}.json",
-            tenant_hash=tenant_hash,
-        )
-
-
-@pytest.mark.parametrize(
-    ("flag", "replacement"),
-    [
-        ("--lookback", "7d"),
-        ("--samples", "6"),
-        ("--batch-size", "21"),
-        ("--max-targets", "41"),
-        ("--timeout", "121"),
-        ("--max-queries", "21"),
-    ],
-)
-def test_collection_checkpoint_rejects_child_that_diverges_from_plan(flag, replacement):
-    tenant_hash = hashlib.sha256(b"tenant").hexdigest()
-    resume_id = "collect-0123456789abcdef01234567"
-    arguments = [
-        "schema",
-        "observe",
-        "SourceTable.DeviceId",
-        "--lookback",
-        "30d",
-        "--samples",
-        "5",
-        "--batch-size",
-        "20",
-        "--timeout",
-        "120",
-        "--max-queries",
-        "20",
-        "--max-targets",
-        "40",
-        "--schema-generation",
-        "generation-1",
-    ]
-    arguments[arguments.index(flag) + 1] = replacement
-    checkpoint = {
-        "schema_version": 1,
-        "tenant_fingerprint": tenant_hash,
-        "resume_id": resume_id,
-        "state": "paused",
-        "plan": {
-            "selected_sources": ["SourceTable.DeviceId"],
-            "using_default_sources": False,
-            "lookback": "30d",
-            "samples": 5,
-            "batch_size": 20,
-            "max_targets": 40,
-            "exhaustive": False,
-            "timeout": 120,
-            "max_queries_per_page": 20,
-            "semantic_contract_sha256": "0" * 64,
-            "schema_generation": "generation-1",
-        },
-        "pending_commands": [arguments],
-        "rows": [],
-        "seen_continuations": [],
-    }
-
-    with pytest.raises(ValueError, match="diverges from its declared plan"):
-        validate_collection_checkpoint(
-            checkpoint,
-            filename=f"{resume_id}.json",
-            tenant_hash=tenant_hash,
-        )
-
-
-def test_collection_checkpoint_rejects_excessive_declared_resource_budget():
-    tenant_hash = hashlib.sha256(b"tenant").hexdigest()
-    resume_id = "collect-0123456789abcdef01234567"
-    checkpoint = {
-        "schema_version": 1,
-        "tenant_fingerprint": tenant_hash,
-        "resume_id": resume_id,
-        "state": "paused",
-        "plan": {
-            "selected_sources": ["SourceTable.DeviceId"],
-            "using_default_sources": False,
-            "lookback": "30d",
-            "samples": 5,
-            "batch_size": 20,
-            "max_targets": 40,
-            "exhaustive": False,
-            "timeout": 3_601,
-            "max_queries_per_page": 20,
-            "semantic_contract_sha256": "0" * 64,
-            "schema_generation": "generation-1",
-        },
-        "pending_commands": [
-            [
-                "schema",
-                "observe",
-                "SourceTable.DeviceId",
-                "--lookback",
-                "30d",
-                "--samples",
-                "5",
-                "--batch-size",
-                "20",
-                "--timeout",
-                "3601",
-                "--max-queries",
-                "20",
-                "--max-targets",
-                "40",
-                "--schema-generation",
-                "generation-1",
-            ]
-        ],
-        "rows": [],
-        "seen_continuations": [],
-    }
-
-    with pytest.raises(ValueError, match="plan is invalid"):
-        validate_collection_checkpoint(
-            checkpoint,
-            filename=f"{resume_id}.json",
-            tenant_hash=tenant_hash,
-        )
-
-
-def test_collection_checkpoint_rejects_excessive_source_matrix():
-    tenant_hash = hashlib.sha256(b"tenant").hexdigest()
-    resume_id = "collect-0123456789abcdef01234567"
-    sources = [f"Table{index}.DeviceId" for index in range(101)]
-    checkpoint = {
-        "schema_version": 1,
-        "tenant_fingerprint": tenant_hash,
-        "resume_id": resume_id,
-        "state": "paused",
-        "plan": {
-            "selected_sources": sources,
-            "using_default_sources": False,
-            "lookback": "30d",
-            "samples": 5,
-            "batch_size": 20,
-            "max_targets": 40,
-            "exhaustive": False,
-            "timeout": 120,
-            "max_queries_per_page": 20,
-            "semantic_contract_sha256": "0" * 64,
-        },
-        "pending_commands": [
-            [
-                "schema",
-                "observe",
-                sources[0],
-                "--lookback",
-                "30d",
-                "--samples",
-                "5",
-                "--batch-size",
-                "20",
-                "--timeout",
-                "120",
-                "--max-queries",
-                "20",
-                "--max-targets",
-                "40",
-            ]
-        ],
-        "rows": [],
-        "seen_continuations": [],
-    }
-
-    with pytest.raises(ValueError, match="plan is invalid"):
-        validate_collection_checkpoint(
-            checkpoint,
-            filename=f"{resume_id}.json",
-            tenant_hash=tenant_hash,
-        )
-
-
-def test_collection_checkpoint_rejects_attacker_generation_before_refresh():
-    tenant_hash = hashlib.sha256(b"tenant").hexdigest()
-    resume_id = "collect-0123456789abcdef01234567"
-    checkpoint = {
-        "schema_version": 1,
-        "tenant_fingerprint": tenant_hash,
-        "resume_id": resume_id,
-        "state": "paused",
-        "plan": {
-            "selected_sources": ["SourceTable.DeviceId"],
-            "using_default_sources": False,
-            "lookback": "30d",
-            "samples": 5,
-            "batch_size": 20,
-            "max_targets": 40,
-            "exhaustive": False,
-            "timeout": 120,
-            "max_queries_per_page": 20,
-            "semantic_contract_sha256": "0" * 64,
-        },
-        "pending_commands": [
-            ["schema", "refresh"],
-            [
-                "schema",
-                "observe",
-                "SourceTable.DeviceId",
-                "--lookback",
-                "30d",
-                "--samples",
-                "5",
-                "--batch-size",
-                "20",
-                "--timeout",
-                "120",
-                "--max-queries",
-                "20",
-                "--max-targets",
-                "40",
-                "--schema-generation",
-                "attacker-generation",
-            ],
-        ],
-        "rows": [],
-        "seen_continuations": [],
-    }
-
-    with pytest.raises(ValueError, match="pre-pinned"):
-        validate_collection_checkpoint(
-            checkpoint,
-            filename=f"{resume_id}.json",
-            tenant_hash=tenant_hash,
-        )
-
-
-def test_collection_checkpoint_rejects_false_default_source_claim():
-    tenant_hash = hashlib.sha256(b"tenant").hexdigest()
-    resume_id = "collect-0123456789abcdef01234567"
-    checkpoint = {
-        "schema_version": 1,
-        "tenant_fingerprint": tenant_hash,
-        "resume_id": resume_id,
-        "state": "paused",
-        "plan": {
-            "selected_sources": ["AttackerTable.DeviceId"],
-            "using_default_sources": True,
-            "lookback": "30d",
-            "samples": 5,
-            "batch_size": 20,
-            "max_targets": 40,
-            "exhaustive": False,
-            "timeout": 120,
-            "max_queries_per_page": 20,
-            "semantic_contract_sha256": "0" * 64,
-        },
-        "pending_commands": [["schema", "refresh"]],
-        "rows": [],
-        "seen_continuations": [],
-    }
-
-    with pytest.raises(ValueError, match="plan is invalid"):
-        validate_collection_checkpoint(
-            checkpoint,
-            filename=f"{resume_id}.json",
-            tenant_hash=tenant_hash,
-        )
+    with pytest.raises(ValueError, match="portable namespace"):
+        inspect_bundle(legacy)
+    with pytest.raises(ValueError, match="portable namespace"):
+        import_bundle(destination, tenant, legacy)
+    assert list(destination.iterdir()) == []
 
 
 def test_bundle_rejects_foreign_tenant_activation(tmp_path, monkeypatch):

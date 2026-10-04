@@ -37,32 +37,20 @@ Preview collection before making tenant calls:
 
 ```bash
 xdr schema collect --plan-only
-xdr schema collect --plan-only --exhaustive
+xdr schema collect --explore --plan-only
 ```
 
-Run routine or exhaustive collection:
+Run routine collection or active exploration:
 
 ```bash
 xdr schema collect
-xdr schema collect --exhaustive
+xdr schema collect --explore
 ```
 
-Collection prints a private checkpoint ID to stderr before the tenant work.
-It checkpoints after bounded pages and normally continues those pages itself.
-If an authentication, rate-limit, network, or process failure stops the run,
-resume the exact stored plan:
-
-```bash
-xdr schema collect --resume collect-0123456789abcdef01234567
-```
-
-Do not add source or planning flags to `--resume`; the tenant-bound checkpoint
-already contains the source matrix, limits, timeout, and remaining commands.
-The refreshed physical schema generation is pinned before the first observe
-page, and source evidence is pinned by every continuation, so a changed cache
-fails closed instead of mixing generations. Resume and bundle import validate
-the complete checkpoint contract; a checkpoint may invoke only `schema
-refresh`, its bounded `schema observe` pages, and `schema discoveries`.
+Active discovery saves each completed query, including empty results, as private
+evidence. Rerun the same command after a query-budget pause (exit 14); recent,
+verified searches are reused and only remaining work is queried. Changing the
+lookback, table scope, JSON depth, or result limit creates a different search.
 
 Inspect learned routes and use them during an investigation:
 
@@ -74,54 +62,108 @@ xdr schema path DeviceNetworkEvents DeviceProcessEvents
 
 `xdr schema candidates` remains a compatibility alias for `discoveries`.
 
-## What collection scans
-
-The default source matrix is:
-
-```text
-DeviceNetworkEvents.DeviceId
-EntraIdSignInEvents.AccountUpn
-EntraIdSignInEvents.AccountObjectId
-DeviceFileEvents.SHA256
-EmailEvents.NetworkMessageId
-CloudAppEvents.RawEventData#/UserId
-```
-
-Those are six reviewed source locators across five tables. They are not a
-target-table allowlist. For each source, target planning considers eligible
-string/dynamic locators across every table present in the tenant’s physical
-cache. The curated physical catalog currently documents 80 tables, but a
-tenant may expose fewer. A target table must have `Timestamp` or
-`TimeGenerated`; that column independently bounds the scan window and is never
-the correlation key.
-
-Routine collection intentionally caps each source at 40 prioritized targets.
-That makes it safe for recurring automation, but it is not full-catalog
-coverage. `--plan-only --exhaustive` reports the full eligible target set;
-`--exhaustive` crawls it.
-
-Replace the source matrix with repeatable `--source` options:
+## Local-first collection
 
 ```bash
-xdr schema collect \
+xdr schema collect --plan-only
+xdr schema collect --local-only
+xdr schema collect
+```
+
+`schema collect` first mines saved hunt/library artifacts for shared identifier
+values, recovering physical field origins from their saved KQL. Supported queries
+include single-table projections, renames, direct nested-property access, and
+summary grouping keys. Aggregate/calculated outputs are excluded. Joins, unions,
+invoked functions, and unsupported let bindings are reported as coverage gaps.
+The saved query remains the source of truth for both old and new artifacts.
+
+`--plan-only` performs local indexing and plans focused validation without tenant
+queries or publishing graph observations. `--local-only` also publishes the local
+overlap observations, with no tenant queries. With no local overlaps, collection
+does not silently run broad discovery. Use `--explore` to request that explicitly.
+
+The private, per-tenant SQLite index stores keyed identifier fingerprints and
+artifact references, not a second copy of identifier values. Unchanged files are
+still streamed for integrity checks, but are not reparsed or reindexed. Changed,
+missing, corrupt, and wrong-tenant evidence is removed from the derived index.
+Unsupported nested keys are counted as excluded instead of leaking possible
+identifier values into graph field names. Common-value fanout above 100 fields is
+suppressed and counted. Absence from filtered results is not a negative finding.
+
+Local observations retain their original timestamps and are historical evidence.
+They are not current-tenant validation or assertions that every value in either
+field has the same meaning. Live validation checks sampled shared identifiers in
+eligible target fields with an explicit time window. The planner deduplicates
+field pairs, batches compatible fields, and reuses verified validations for one
+day, including no-match outcomes. A no-match result does not erase historical
+positive evidence; inspect both when deciding whether a pivot is useful.
+
+The default validation budget is 20 queries per invocation. Each successful
+validation is saved; exit 14 indicates useful partial completion. Rerun the same
+command to re-plan remaining work. Local-only/plan-only can work without a physical
+cache; validation needs cached target fields and Timestamp or TimeGenerated.
+Refresh a missing/stale cache explicitly with `xdr schema refresh`.
+
+Local-derived pivots appear in normal navigation and support private
+`candidate-review` context queries. They do not use `candidate-proposal`'s
+legacy active-probe-to-core promotion workflow; their generic identifier
+interpretations are empirical occurrence hypotheses, not authored entity claims.
+No background scheduler is installed.
+
+Collection reuses a recent validation only when its time window matches and its
+sampled identifiers cover the newly selected sample. Different uncovered samples
+of the same field pair remain separate planned work; already-covered samples do
+not hide them. Concurrent local-first
+collectors for the same tenant return a conflict instead of executing duplicate
+queries; rerun after the current collection finishes. A later invocation plans
+again under the tenant lock.
+
+Malformed identifiers are counted under `rejected_identifier_cells` and skipped.
+Invalid local validation evidence is retired during collection. Discovery reads
+reuse verified evidence within one operation, then discard that snapshot; the
+next command verifies the original files again. Scalar JSON decoding is not
+attributed to a raw column when a probe cannot reproduce that transformation.
+
+
+## Explicit active exploration
+
+`schema collect --explore` takes eligible identifiers from every supported saved
+hunt/library artifact. There is no fixed starter-field matrix or target-field
+sweep. Searches use cached tables with `Timestamp` or `TimeGenerated` and report
+tables excluded for lacking a time column. Refresh stale physical availability
+explicitly with `schema refresh`.
+
+Each query searches a batch of identifiers across a group of tables, expands
+nested JSON containers, and returns explicit table, column, path, matched value,
+and count fields. Substring matching narrows the scan; only exact normalized
+leaf-value matches become observations. Unsupported paths, depth limits, and
+result caps are reported as coverage gaps, never evidence of absence. Concrete
+values and query text stay in private artifacts.
+
+Optionally restrict which saved fields supply identifiers:
+
+```bash
+xdr schema collect --explore \
   --source DeviceNetworkEvents.DeviceId \
   --source IdentityInfo.AccountObjectId
 ```
 
-Routine defaults are a 30-day lookback, five rare valid source identifiers,
-20 target locators per compiler chunk, 40 targets per source, a 120-second
-per-query timeout, and a checkpoint page of 20 table queries. Override the page
-size without changing semantic coverage:
+Defaults are a 30-day lookback, 20 identifiers per query batch, six JSON expansion
+levels, 2,000 result rows per query, a 120-second timeout, and 20 queries per
+invocation. Tables are grouped into batches of at most 100. Batching and the
+invocation budget divide work; they do not silently discard the remaining
+identifiers or eligible tables. `--samples` controls focused local validation,
+not active discovery. Use `--max-json-depth` (up to 12) or
+`--discovery-row-limit` (up to 10,000) when the receipt reports those gaps.
 
 ```bash
-xdr schema collect --max-queries-per-page 10
+xdr schema collect --explore --seed-batch-size 20 --max-queries-per-page 10
 ```
 
-Executable budgets are bounded even in imported checkpoints: target caps are
-1-10,000, source matrices contain at most 100 locators, per-query timeouts are
-1-3,600 seconds, checkpoint pages are 1-1,000 target-table queries, and resume
-cursors cannot exceed 10,000. `--exhaustive` remains bounded by the eligible
-locators in the pinned physical catalog.
+Saved search evidence is verified against its originating artifacts before reuse.
+A successful search can directly add an observed pivot to a previously unknown
+field, without a redundant follow-up probe. With no eligible saved identifiers,
+exploration reports no work rather than starting a blind scan.
 
 ## How observe compiles and crawls
 
@@ -160,10 +202,8 @@ positive and no-match observations keep their real outcomes. Authentication
 and rate-limit failures still stop globally because continuing would either be
 impossible or violate retry guidance.
 
-A finished run reports `collection_outcome=complete` or
-`complete-with-gaps`; an operationally paused checkpoint reports `incomplete`.
-Status retains the quarantined table list instead of presenting a gapped crawl
-as full coverage.
+The observation receipt retains the quarantined table list and retry commands.
+Partial completion returns exit 14 so gaps remain explicit.
 
 Manually page one observation run:
 
@@ -202,8 +242,12 @@ The lifecycle is evidence strength, not a synonym for join safety:
 | `reviewed` | Repository-reviewed semantic contract | Yes | Only when the edge says so |
 | `deprecated` | Retained historical contract, not traversed | No | No |
 
-A completed positive observation immediately creates a bidirectional,
-correlation-only `observed` investigation pivot. It is useful for discovering a
+A completed eligible live observation creates a bidirectional,
+correlation-only `observed` investigation pivot. Local-only overlap needs at least
+three distinct eligible shared identifiers; weaker overlaps stay candidates.
+Private-address-only matches remain candidates because separate networks reuse
+those addresses. Built-in principals and the configured tenant GUID are excluded
+as discovery seeds. It is useful for discovering a
 next table even though it does not authorize a raw equality join. No-match,
 partial, unavailable, and malformed target results create no route.
 
@@ -216,7 +260,7 @@ conditions hold:
 - every target artifact is digest/row-count verified and bound to the exact
   source artifact, seed count, target locator, interpretation, and aggregate;
 - at least two distinct source artifacts and two distinct target artifacts;
-- at least two distinct sampled seed cohorts containing at least six distinct
+- at least two disjoint sampled seed cohorts containing at least six distinct
   normalized identifiers in total;
 - each counted run tested at least three seeds and matched at least two; and
 - aggregate matched/tested seed ratio is at least 80 percent.
@@ -268,8 +312,10 @@ included by default; only true `candidate` hypotheses require
 `--include-candidates`.
 
 Rows expose `EvidenceLevel`, `Observed`, `Validated`, `Candidate`, and
-`JoinSafe`. Route ranking prefers reviewed, then validated, then observed, then
-candidate edges. Per-step output includes transform, cardinality, temporal
+`JoinSafe`. Route ranking prefers validated, then live-observed evidence. Untested
+saved-result overlaps have low confidence and share the authored-route evidence
+tier, where stronger route semantics rank first. Candidates remain last.
+Per-step output includes transform, cardinality, temporal
 guidance, confidence, provenance, entity kind, namespace, role, and physical
 availability.
 
@@ -582,6 +628,11 @@ value-free fields, interpretations, stable IDs, aggregate observations, and
 evidence references. `--private-debug-output` is deliberately sensitive and
 must not be committed or shared.
 
+Active automatic evidence references the original hunt/library bundles, including
+their complete private results. Portable exports include those referenced bundles;
+they can be large and contain user identifiers. Retirement removes automatic pins
+before normal result pruning, rather than silently keeping old hunts forever.
+
 Retire old observations before pruning their referenced results:
 
 ```bash
@@ -589,9 +640,20 @@ xdr schema prune-evidence --older-than 90 --yes
 xdr results prune --older-than 90 --yes
 ```
 
-Result pruning protects artifacts referenced by active observations,
-candidate-review artifacts, and active candidate proposals. Integrity failures
-stop pruning rather than silently discarding evidence.
+Result pruning retires automatic overlap, validation, and discovery observations
+that reference artifacts older than the requested cutoff before deleting those
+artifacts. A persistent tenant cutoff prevents subsequent collection from mining
+retired artifacts again, even if a proposal still protects their bytes. Explicit
+observation and live proposal pins remain protected. `prune-evidence` also
+persists the cutoff, including when no observations have been collected yet. Integrity failures stop pruning.
+
+Automatic discovery accepts structured identifiers and sufficiently varied
+opaque identifiers, excluding generic words, process names, control characters,
+and multicast addresses. Private IPs remain correlation evidence. Nested paths
+use simple property names and array wildcards; dotted and SID-shaped dictionary
+keys are excluded. Unsupported data contributes coverage gaps, not graph labels.
+These heuristics reduce accidental value disclosure; property names supplied by
+arbitrary JSON can themselves be sensitive, so tenant overlays remain private.
 
 ## Portable state bundles
 
@@ -608,17 +670,14 @@ the configured tenant fingerprint and tenant key to match, a trusted archive
 source, and collision-free destinations. The manifest and SHA-256 bindings
 prove content integrity and routing, not authorship.
 
-Bundles include active physical/semantic generations, collection checkpoints,
-and referenced evidence needed by a pending `--from-run` continuation.
+Bundles include active physical/semantic generations and referenced evidence.
 They exclude configuration, tokens, cookies, query libraries, active-session
 markers, locks, audit logs, and other machine-local state. Import permits
 tenant-local persisted relationships only as candidates, validates evidence
 references and session contracts, relocates absolute result/proposal paths,
 and never overwrites existing files. Imported observations are useful, but
 automatic validation still reopens the imported artifacts and enforces the
-same source/target contracts described above. Imported checkpoints are also
-restricted to the read-only schema child-command allowlist described in the
-collection section.
+same source/target contracts described above.
 
 ## Diagnostics and recovery
 
@@ -628,13 +687,8 @@ xdr schema diagnostics
 
 `schema status` is cache-only and reports physical-cache state, overlay
 integrity/compatibility, collection-marker age, evidence-growth counts, and an
-exact `next_command`. A checkpoint pinned to a missing/replaced physical
-generation is reported as incompatible rather than recommended in a resume
-loop; a checkpoint older than a later completed collection is superseded for
-status purposes. The command shipped after the original 0.8.0 feature
-build; if an installed 0.8.0 reports `CLI_UNKNOWN_COMMAND`, use `schema
-diagnostics` on a current build or update/reinstall before following this
-workflow.
+exact `next_command`. Collection progress lives in verified query artifacts;
+rerun the same collection command to continue remaining work.
 
 Diagnostics is also cache-only. It reports package/build identity, registered
 schema capabilities, physical-cache state, overlay integrity/compatibility,
@@ -667,9 +721,10 @@ suppresses them; `--no-quiet` forces them even when stdout is piped.
 | `schema diagnostics` | No | Build, capability, cache, overlay, and collection summary |
 | `schema refresh` | Yes | Replace the tenant physical-schema cache |
 | `schema tables`, `schema show` | No | Browse cached tables and fields |
-| `schema collect --plan-only` | No | Preview every configured source plan |
-| `schema collect` | Yes | Refresh, crawl, checkpoint, validate, and report discoveries |
-| `schema collect --resume ID` | Yes | Continue an interrupted stored plan |
+| `schema collect --plan-only` | No | Index saved results and preview focused validation |
+| `schema collect --local-only` | No | Publish saved-result overlaps |
+| `schema collect` | When candidates exist | Mine saved results and validate focused targets |
+| `schema collect --explore` | When work remains | Find saved identifiers in new fields and nested paths |
 | `schema observe --plan-only` | No | Preview one source’s targets and request estimate |
 | `schema observe` | Yes | Sample/reuse identifiers and crawl target tables |
 | `schema discoveries` | No | Report observed/validated routes and policy decisions |
@@ -682,3 +737,28 @@ suppresses them; `--no-quiet` forces them even when stdout is piped.
 | `schema repair-overlay`, `schema migrate-cache` | No | Repair compatible local state |
 | `schema bundle inspect/export/import` | No | Inspect or move portable schema state |
 | `schema prune-evidence` | No | Retire stale observations before result pruning |
+
+Explicit session end refreshes a missing/stale physical cache, runs local-first
+collection, and explores new identifier locations. The exploration budget is
+`schema_explore_max_queries = 5` by default, separate from focused validation's
+20-query budget. `schema_collect_on_session_end = false` disables all stages;
+refresh and exploration also have individual off switches. Completed work is
+reused at subsequent explicit ends; idle expiry and rotation never trigger it.
+See [session maintenance](sessions.md).
+
+Collection receipts distinguish pending work from excluded scope. Cached tables
+without a usable time column, unavailable targets, and unsupported property paths
+are recorded in `excluded_scope`. Completing eligible work can return success
+while reporting those exclusions. Budget exhaustion, output truncation, depth
+limits, and upstream failures remain partial. A valid source selector
+with no saved identifiers returns not-found. Completion history outlives the
+one-day refresh interval: never-tested cohorts run first, followed by the oldest
+verified cohorts. Old evidence can guide scheduling without satisfying the
+30-day freshness requirement for promotion.
+
+Encoded JSON strings are expanded only for the documented physical JSON-string
+columns; native dynamic objects remain traversable. Free-text strings do not
+create nested schema fields merely because their content resembles JSON.
+Address exploration currently supports ASCII addresses only; receipts expose
+that normalization scope. It does not claim Python casefold/IDNA equivalence
+with KQL `tolower` for non-ASCII values.

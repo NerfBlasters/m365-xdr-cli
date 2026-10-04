@@ -122,7 +122,20 @@ def usage_error_from_click(
     elif option_match:
         value = option_match.group(1).rstrip(".")
         invalid = {"kind": "option", "value": value}
-        if value in _REMOVED_OPTIONS:
+        if _command_path(exc.ctx) == "xdr schema collect" and value in {
+            "--resume", "--exhaustive"
+        }:
+            code = "CLI_REMOVED_OPTION"
+            message = f"{value} was removed from schema collect."
+            suggestions.append({
+                "reason": "removed_option",
+                "message": (
+                    "Rerun 'xdr schema collect' to continue pending validation. "
+                    "Use 'xdr schema collect --explore' for identifier-led discovery."
+                ),
+                "confidence": "exact",
+            })
+        elif value in _REMOVED_OPTIONS:
             code = "CLI_REMOVED_OPTION"
             suggestions.append(_REMOVED_OPTIONS[value])
             corrected_argv = ["xdr", *_remove_option(raw_argv, value)]

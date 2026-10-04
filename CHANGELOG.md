@@ -10,6 +10,80 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.11.0] - 2026-10-04
+
+### Added
+
+- Explicit session end refreshes missing/stale physical schema, validates saved
+  overlaps, and explores new locations in the foreground. Exploration defaults
+  to `schema_explore_max_queries = 5` per end; refresh and exploration have
+  individual switches. `schema_collect_on_session_end = false` disables all
+  stages. Automatic retirement never collects, and maintenance failures leave
+  the session safely closed.
+- Local-first schema discovery recovers field origins from saved KQL and indexes
+  identifier overlap across differently named fields in private tenant artifacts.
+- `schema collect --local-only` publishes local evidence without tenant queries;
+  focused validation reuses saved identifiers and recent results.
+- Saved result metadata includes recoverable per-column lineage.
+- Identifier-led exploration discovers new fields and nested JSON paths using
+  typed query results, exact value matches, and reusable private evidence.
+
+### Changed
+
+- Removed `session end --prompt-feedback`; use the closure receipt's feedback
+  command. `schema collect --source` now requires `--explore`, and
+  `--max-queries-per-page` is a total per-invocation query budget.
+- Session-end cancellation returns 130 after durable closure. Expected scope
+  exclusions are reported separately from incomplete or failed eligible work.
+- Session end flushes closure and feedback instructions before maintenance, then
+  emits a separate terminal maintenance record; incomplete upkeep returns exit
+  14. Added `--no-maintenance` and a configurable 90-second overall deadline
+  capped at 3,600 seconds. Progress respects automatic quiet mode for pipes.
+- Automatic evidence retirement now follows explicit result-pruning cutoffs and
+  cannot be recreated by mining the same old artifacts. Explicit observation and
+  proposal evidence remains protected.
+- Untested local overlaps have low confidence. Generic vocabulary and malformed
+  seeds are excluded, while strong empirical evidence retains ranking priority.
+- Pending discovery work runs before stale refreshes across daily budget windows;
+  KQL verbatim strings preserve projection lineage and malformed literals fail
+  closed. Oversized seed batches split instead of aborting all discovery.
+- `schema collect` now mines local artifacts before querying the tenant. Broad
+  identifier-led exploration requires `--explore`. Local validation saves progress
+  after each bounded query batch.
+- Removed `schema collect --exhaustive`; use `--explore` for identifier-led
+  discovery, replacing the six-field starter matrix and target-field sweep.
+  Query budgets pause remaining work; result caps and depth limits are explicit
+  coverage gaps.
+- Removed `schema collect --resume`, the legacy collection executor, checkpoint
+  status, and checkpoint bundle support. Rerunning current collection commands
+  continues remaining work using their saved query evidence.
+- Navigation prioritizes empirically validated and observed pivots over authored
+  catalog status. Overlap remains correlation evidence, not a join assertion.
+
+### Fixed
+
+- Expected timeless tables and unsupported paths no longer force every session
+  end to return partial success. Validation can reverse a pair when only its
+  other endpoint supports a time bound.
+- Single coincidental overlaps remain candidates; tenant-wide and built-in
+  constants are excluded from discovery. Overlapping cohorts cannot count twice
+  toward validation, and future-dated artifacts cannot establish freshness.
+- Bounded JSON and KQL lineage handling preserve useful hunt results when
+  optional discovery parsing cannot process a cell or expression. Free-text JSON
+  no longer manufactures dynamic fields.
+- Retention indexes metadata once per publication and contains malformed
+  automatic references without weakening explicit observation/proposal pins.
+- Opposite-direction observations now aggregate into a single bidirectional pivot
+  rather than preventing tenant graph composition.
+- Preserve reproducible column lineage through JSON expressions and skip malformed
+  identifiers without aborting local discovery.
+- Revalidate changed time windows or seed cohorts, retire invalid local evidence,
+  and support projected evidence in candidate review.
+- Reuse verified evidence within each discovery report and serialize tenant
+  collection to avoid redundant reads and concurrent duplicate queries.
+- Preserve underlying authentication recovery details in session-end receipts.
+
+
 ## [0.10.0] - 2026-09-30
 
 BloodHound readability update for the OpenGraph schema export.

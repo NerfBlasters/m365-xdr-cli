@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from xdr_cli.schema_graph.loader import load_packaged_graph
 from xdr_cli.schema_graph.model import (
     Cardinality,
@@ -18,6 +20,14 @@ from xdr_cli.schema_graph.model import (
     relationship_id,
 )
 from xdr_cli.schema_graph.traversal import GraphPath, pivot, table_paths
+
+
+def test_empirical_evidence_ranks_before_authored_status():
+    step = pivot(load_packaged_graph(), "DeviceInfo.DeviceId")[0]
+    validated = replace(step, evidence_level="validated")
+    observed = replace(step, evidence_level="observed")
+    assert validated.rank < observed.rank < step.rank
+    assert GraphPath((validated,)).rank < GraphPath((observed,)).rank < GraphPath((step,)).rank
 
 
 def _add_candidate(graph):
@@ -95,9 +105,7 @@ def test_packaged_event_and_attachment_routes_have_source_relative_cardinality()
         for step in pivot(graph, source)
     }
 
-    assert routes[("DeviceImageLoadEvents.DeviceId", "DeviceInfo.DeviceId")] == (
-        "many-to-one"
-    )
+    assert routes[("DeviceImageLoadEvents.DeviceId", "DeviceInfo.DeviceId")] == ("many-to-one")
     assert routes[("EmailAttachmentInfo.NetworkMessageId", "EmailEvents.NetworkMessageId")] == (
         "many-to-one"
     )
@@ -166,3 +174,12 @@ def test_relationship_constructor_rejects_noncanonical_bidirectional_order():
         assert "endpoints must be sorted" in str(exc)
     else:
         raise AssertionError("noncanonical endpoints were accepted")
+
+
+def test_unvalidated_overlap_does_not_hide_a_stronger_route():
+    step = pivot(load_packaged_graph(), 'DeviceInfo.DeviceId')[0]
+    overlap = replace(step, evidence_level='observed', confidence='low',
+                      relationship=RelationshipKind.CORRELATION_ONLY)
+    validated = replace(overlap, evidence_level='validated', confidence='high')
+    assert validated.rank < step.rank < overlap.rank
+    assert GraphPath((validated,)).rank < GraphPath((step,)).rank < GraphPath((overlap,)).rank

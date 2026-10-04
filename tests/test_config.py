@@ -147,3 +147,119 @@ def test_load_config_ignores_legacy_default_format(tmp_path, monkeypatch):
     cfg = load_config()
     assert cfg.tenant_id == "t"
     assert not hasattr(cfg, "default_format")
+
+
+def test_session_collection_default_and_opt_out(config_dir):
+    assert load_config().schema_collect_on_session_end is True
+    save_config(Config(schema_collect_on_session_end=False))
+    assert load_config().schema_collect_on_session_end is False
+
+
+def test_session_collection_requires_boolean(config_dir):
+    from xdr_cli.exceptions import ConfigError
+
+    config_dir.mkdir()
+    (config_dir / "config.toml").write_text('schema_collect_on_session_end = "false"\n')
+    with pytest.raises(ConfigError, match="TOML boolean"):
+        load_config(validate_maintenance=True)
+
+
+def test_session_schema_defaults_and_configured_round_trip(config_dir):
+    default = load_config()
+    assert default.schema_collect_on_session_end is True
+    assert default.schema_refresh_on_session_end is True
+    assert default.schema_explore_on_session_end is True
+    assert default.schema_explore_max_queries == 5
+    assert default.schema_maintenance_timeout_seconds == 90
+    save_config(Config(
+        schema_refresh_on_session_end=False,
+        schema_explore_on_session_end=False,
+        schema_explore_max_queries=17,
+        schema_stale_seconds=0,
+    ))
+    configured = load_config()
+    assert configured.schema_collect_on_session_end is True
+    assert configured.schema_refresh_on_session_end is False
+    assert configured.schema_explore_on_session_end is False
+    assert configured.schema_explore_max_queries == 17
+    assert configured.schema_stale_seconds == 0
+
+
+@pytest.mark.parametrize("key", [
+    "schema_collect_on_session_end", "schema_refresh_on_session_end",
+    "schema_explore_on_session_end",
+])
+@pytest.mark.parametrize("value", ['"false"', "0", "1", "[]"])
+def test_session_schema_toggles_reject_non_booleans_in_toml(config_dir, key, value):
+    from xdr_cli.exceptions import ConfigError
+
+    config_dir.mkdir()
+    (config_dir / "config.toml").write_text(f"{key} = {value}\n")
+    with pytest.raises(ConfigError, match=key):
+        load_config(validate_maintenance=True)
+
+
+@pytest.mark.parametrize("value", ["true", "false", "0", "-1", "1001", '"5"', "5.0"])
+def test_session_explore_budget_rejects_invalid_toml(config_dir, value):
+    from xdr_cli.exceptions import ConfigError
+
+    config_dir.mkdir()
+    (config_dir / "config.toml").write_text(f"schema_explore_max_queries = {value}\n")
+    with pytest.raises(ConfigError, match="schema_explore_max_queries"):
+        load_config(validate_maintenance=True)
+
+
+@pytest.mark.parametrize("value", [
+    "true", "false", "-1", '"86400"', "1.5", "inf", "-inf", "nan",
+])
+def test_schema_refresh_age_rejects_invalid_toml(config_dir, value):
+    from xdr_cli.exceptions import ConfigError
+
+    config_dir.mkdir()
+    (config_dir / "config.toml").write_text(f"schema_stale_seconds = {value}\n")
+    with pytest.raises(ConfigError, match="schema_stale_seconds"):
+        load_config(validate_maintenance=True)
+
+
+@pytest.mark.parametrize("value", [1, 5, 1000])
+def test_session_explore_budget_accepts_inclusive_bounds(config_dir, value):
+    save_config(Config(schema_explore_max_queries=value))
+    assert load_config().schema_explore_max_queries == value
+
+
+@pytest.mark.parametrize("value", [0, 86400, 3600.0, 0.0])
+def test_schema_refresh_age_accepts_zero_and_positive_seconds(config_dir, value):
+    save_config(Config(schema_stale_seconds=value))
+    assert load_config().schema_stale_seconds == value
+    assert type(load_config().schema_stale_seconds) is int
+
+
+@pytest.mark.parametrize("value", [0.05, 90, 3600.0])
+def test_session_maintenance_deadline_round_trip(config_dir, value):
+    save_config(Config(schema_maintenance_timeout_seconds=value))
+    assert load_config().schema_maintenance_timeout_seconds == value
+
+
+@pytest.mark.parametrize("value", [
+    True, False, 0, -1, 3600.01, 3601, 1e308, float("inf"), float("nan"), "90",
+])
+def test_session_maintenance_deadline_rejects_invalid_values(value):
+    from xdr_cli.exceptions import ConfigError
+
+    with pytest.raises(ConfigError, match="schema_maintenance_timeout_seconds"):
+        Config(schema_maintenance_timeout_seconds=value)
+
+
+@pytest.mark.parametrize("options", [
+    {"schema_refresh_on_session_end": 1},
+    {"schema_explore_on_session_end": "true"},
+    {"schema_explore_max_queries": True},
+    {"schema_explore_max_queries": 0},
+    {"schema_stale_seconds": False},
+    {"schema_stale_seconds": -1},
+])
+def test_direct_config_construction_enforces_schema_option_types(options):
+    from xdr_cli.exceptions import ConfigError
+
+    with pytest.raises(ConfigError):
+        Config(**options)

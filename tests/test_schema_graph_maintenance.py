@@ -87,3 +87,12 @@ def test_maintenance_status_detects_content_corrupt_physical_cache(
     assert corrupt["physical_cache"]["state"] == "invalid"
     assert "physical-cache-invalid" in corrupt["reasons"]
     assert corrupt["next_command"] == "xdr schema refresh"
+
+
+def test_saved_gaps_are_not_reported_as_complete(tmp_path, monkeypatch):
+    monkeypatch.setenv('XDR_CLI_HOME', str(tmp_path))
+    mark_collection_complete('tenant', {'quarantined_tables': ['MissingTable']})
+    status = maintenance_status('tenant', cache_stale_seconds=86400,
+                                collection_stale_seconds=604800)
+    assert status['semantic_collection']['outcome'] == 'complete-with-gaps'
+    assert 'semantic-collection-incomplete' in status['reasons']
