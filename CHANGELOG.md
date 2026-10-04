@@ -32,6 +32,8 @@ BloodHound readability update for the OpenGraph schema export.
 
 ### Fixed
 
+- Updated locked PyJWT from 2.14.0 to 2.15.0 to address
+  GHSA-42vr-xj54-vc7v, an unhandled exception when parsing certain JWT payloads.
 - Both OpenGraph output files are staged before either is published. A later
   styling-publication failure reports the saved graph and failed path with
   partial-success exit 14.
