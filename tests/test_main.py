@@ -994,71 +994,77 @@ def test_annotate_does_not_re_gate_actor(home, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_audit_log_matches_multi_token_write_command(tmp_path, monkeypatch):
-    """`xdr lists init` is a multi-token entry in _WRITE_COMMANDS — the
-    matcher must do a contiguous-subsequence check on argv, not the default
-    token-membership check (which would never match a string with a space).
+def _run_cli(monkeypatch, *argv):
+    monkeypatch.setattr(sys, "argv", ["xdr", *argv])
+    with pytest.raises(SystemExit) as exited:
+        run()
+    return exited.value.code
 
-    Verifies the fix for the silent audit-log regression: prior to the fix,
-    `"lists init" in sys.argv` was always False because sys.argv splits the
-    command into separate tokens.
-    """
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["device", "isolate", "abc", "--comment", "x", "--dry-run"],
+        # Syntax Click accepts that a raw-argv matcher can misread.
+        ["-q", "--", "device", "isolate", "abc", "--comment", "x", "--dry-run"],
+        ["--rationale=why", "-q", "device", "isolate", "abc", "--comment", "x", "--dry-run"],
+        ["--rationale", "update", "device", "isolate", "abc", "-yc", "note", "--dry-run"],
+    ],
+)
+def test_audit_log_records_dispatched_write_commands(tmp_path, monkeypatch, argv):
+    """The audit entry is keyed on Click's resolved command chain."""
     monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / ".xdr-cli"))
     monkeypatch.delenv("XDR_SESSION", raising=False)
     monkeypatch.delenv("XDR_ACTOR", raising=False)
-    monkeypatch.setattr(sys, "argv", ["xdr", "lists", "init", "--help"])
 
-    # `--help` short-circuits Typer with SystemExit(0); the audit emission
-    # at the top of run() fires before app() is invoked.
-    with pytest.raises(SystemExit):
-        run()
-
-    audit_path = tmp_path / ".xdr-cli" / "audit.log"
-    assert audit_path.exists(), "audit.log should be created on write-command invocation"
-    audit = audit_path.read_text()
-    assert "CMD: lists init" in audit, (
-        f"expected multi-token 'lists init' to be audit-logged, got: {audit!r}"
-    )
+    assert _run_cli(monkeypatch, *argv) == 0
+    audit = (tmp_path / ".xdr-cli" / "audit.log").read_text()
+    assert f"CMD: {' '.join(argv)}" in audit
 
 
-def test_audit_log_matches_single_token_write_command(tmp_path, monkeypatch):
-    """Regression guard: single-token entries (`isolate`, etc.) still match.
-    The matcher's single-token branch preserves the prior `cmd in argv` behavior.
-    """
+def test_audit_log_records_multi_token_write_command(tmp_path, monkeypatch):
     monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / ".xdr-cli"))
     monkeypatch.delenv("XDR_SESSION", raising=False)
     monkeypatch.delenv("XDR_ACTOR", raising=False)
-    monkeypatch.setattr(sys, "argv", ["xdr", "device", "isolate", "--help"])
 
-    with pytest.raises(SystemExit):
-        run()
+    assert _run_cli(monkeypatch, "lists", "init") == 0
+    assert "CMD: lists init" in (tmp_path / ".xdr-cli" / "audit.log").read_text()
 
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        # An argument equal to a write command's name is not that command.
+        ["hunt", "library-show", "update"],
+        ["--rationale", "isolate", "lists", "show"],
+        # Help and parse failures never dispatch a command.
+        ["device", "isolate", "--help"],
+        ["device", "isolate", "abc"],
+    ],
+)
+def test_audit_log_skips_commands_that_do_not_dispatch_a_write(
+    tmp_path, monkeypatch, argv
+):
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / ".xdr-cli"))
+    monkeypatch.delenv("XDR_SESSION", raising=False)
+    monkeypatch.delenv("XDR_ACTOR", raising=False)
+
+    _run_cli(monkeypatch, *argv)
     audit_path = tmp_path / ".xdr-cli" / "audit.log"
-    assert audit_path.exists()
-    audit = audit_path.read_text()
-    assert "CMD: device isolate" in audit, (
-        f"expected single-token 'isolate' to be audit-logged, got: {audit!r}"
-    )
+    assert "CMD:" not in (audit_path.read_text() if audit_path.exists() else "")
 
 
-def test_matches_write_command_helper_unit():
-    """Direct unit test for the helper — covers the contiguous-subsequence
-    semantics without spinning up the full CLI."""
-    from xdr_cli.main import _matches_write_command
+def test_audit_log_redacts_secret_flags(caplog):
+    from xdr_cli.main import _audit_dispatched_command
 
-    # Single-token entries: token-membership.
-    assert _matches_write_command("isolate", ["xdr", "device", "isolate"])
-    assert not _matches_write_command("isolate", ["xdr", "alerts", "list"])
-
-    # Multi-token entries: contiguous subsequence.
-    assert _matches_write_command("lists init", ["xdr", "lists", "init"])
-    assert _matches_write_command("lists init", ["xdr", "lists", "init", "--force"])
-    # Tokens present but NOT contiguous → no match.
-    assert not _matches_write_command(
-        "lists init", ["xdr", "lists", "show", "init"]
-    )
-    # Multi-token entry must not match if argv is shorter than the entry.
-    assert not _matches_write_command("lists init", ["xdr", "lists"])
+    with caplog.at_level("INFO", logger="xdr.audit"):
+        _audit_dispatched_command(
+            "device isolate", ["device", "isolate", "abc", "--refresh-token", "SECRET"]
+        )
+        _audit_dispatched_command("device timeline", ["device", "timeline", "h"])
+    assert [r.getMessage() for r in caplog.records] == [
+        "CMD: device isolate abc --refresh-token ***REDACTED***"
+    ]
 
 
 def test_redact_argv_space_separated_form():
@@ -1109,3 +1115,42 @@ def test_redact_argv_empty_list():
     from xdr_cli.main import _redact_argv
 
     assert _redact_argv([]) == []
+
+
+def test_learning_gate_refusal_does_not_become_the_annotation_target(
+    gate_home, monkeypatch, capsys
+):
+    """A command refused by the gate is recorded, but it must not displace
+    the invocation the gate is waiting on: the next `annotate` clears the
+    original command and the gate opens."""
+    async def _empty_async_gen(*args, **kwargs):
+        if False:
+            yield  # pragma: no cover
+
+    _seed_learning_session(gate_home)
+    _seed_invocation(gate_home, actor="operator", seq=1)
+    monkeypatch.setenv("XDR_SESSION", "jd-1")
+
+    def invoke(*argv):
+        monkeypatch.setattr(sys, "argv", ["xdr", *argv])
+        with pytest.raises(SystemExit) as exited:
+            run()
+        return exited.value.code
+
+    assert invoke("alerts", "list") == 13
+    capsys.readouterr()
+    assert invoke("annotate", "the alert list was empty") == 0
+    assert "annotated seq=1" in capsys.readouterr().out
+
+    with patch("xdr_cli.commands.alerts_cmd.list_alerts", _empty_async_gen):
+        assert invoke("alerts", "list") == 0
+
+    records = [
+        json.loads(line)
+        for line in (gate_home / "sessions" / "jd-1.jsonl").read_text().splitlines()
+    ]
+    refused = [
+        r for r in records
+        if r.get("kind") == "invocation" and r.get("learning_gate_refused")
+    ]
+    assert [r["exit_code"] for r in refused] == [13]

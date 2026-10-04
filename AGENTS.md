@@ -47,8 +47,8 @@ Otherwise proceed with the CLI reference below.
    from memory of MDE or Sentinel documentation.
 6. Parse the receipt's `data_path`, then inspect the saved JSONL with `rg`,
    `Select-String`, or `jq -s`. Each physical line is one complete JSON row.
-7. `--fields`, native `--jq`/JMESPath, and hunt `--limit` were removed in
-   0.7. Filter/project with KQL when the shape is known; otherwise run once,
+7. There is no `--fields`, native `--jq`/JMESPath, or hunt `--limit`.
+   Filter/project with KQL when the shape is known; otherwise run once,
    inspect the two previews or `xdr results shape <run-id>`, and filter the
    artifact locally.
 8. On `AuthError` (exit code 2), surface to the human. Do **not** loop-retry `xdr auth login` — the login flow is interactive and will not succeed in an agent subprocess.

@@ -681,14 +681,17 @@ and never overwrites existing files. Imported observations are useful, but
 automatic validation still reopens the imported artifacts and enforces the
 same source/target contracts described above.
 
-Inspection streams a strict portable-member allowlist and rejects an archive
-whose uncompressed size exceeds 256 MiB. Credentials, configuration, cookies,
-locks, active-session markers, and audit logs are rejected if they are
-injected into an archive, not merely skipped. Import refuses collisions
-without relying on hard-link support, so the no-overwrite guarantee holds on
-filesystems that limit or forbid hard links, and it coordinates imported
-session IDs with the local per-initials session counters so relocated
-history cannot collide with sessions started later on the destination.
+Inspection streams every member, checking its type, size, and digest, and
+rejects an archive whose uncompressed size exceeds 256 MiB; the member list
+is then checked against a strict portable-namespace allowlist. Credentials,
+configuration, cookies, locks, active-session markers, and audit logs are
+rejected if they are injected into an archive, not merely skipped. Import
+refuses collisions without relying on hard-link support, so the
+no-overwrite guarantee holds on filesystems that limit or forbid hard links.
+Imported session IDs are never renumbered: import refuses any session whose
+number is at or below the destination's local per-initials counter, and
+otherwise advances that counter so sessions started later cannot collide
+with relocated history.
 Exported archives and every staged member are owner-only (`0600`) on POSIX,
 and a failed validation leaves no published output.
 

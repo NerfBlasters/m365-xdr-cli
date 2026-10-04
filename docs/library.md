@@ -32,7 +32,18 @@ Notes:
   a scoped hunt into a tenant-wide sweep.
 - A required parameter has no default; omitting it fails before any API
   call. Omit an optional parameter to use its declared default. An explicit
-  empty value still undergoes validation (`-p mode=` is invalid). Empty scope
+  empty value still undergoes validation (`-p mode=` is invalid).
+- `hunt library-show` validates parameters exactly as `library run` does, so
+  the KQL it renders is the KQL a run would send.
+- Parameter problems fail with exit 5 and one of these codes:
+  `LIBRARY_UNKNOWN_ENTRY` (no such query; `suggestions` lists near matches),
+  `LIBRARY_UNKNOWN_PARAM` (undeclared name, or an item without `=`),
+  `LIBRARY_MISSING_PARAM` (a required parameter was omitted), or
+  `LIBRARY_INVALID_PARAM` (the value fails its type or format check, including
+  dates, durations, and integers). Each carries a `help_command` pointing at
+  `xdr library show NAME`. Problems in a query file's own KQL, such as a
+  placeholder placed inside a comment or a verbatim literal, are authoring
+  errors rather than parameter errors and are reported as `QUERY_ERROR`. Empty scope
   defaults only mean "match all" when the query implements that condition;
   declaring a default alone does not change how the KQL filters rows.
 - `library list` and `library run` both print a JSON receipt first; the
@@ -61,7 +72,7 @@ methodology contract tests in `tests/test_queries_methodology.py`:
 | `r3` | Projects `SchemaVersion`; no `Severity` band required. In the shipped catalog the `r3` entries are entity-scoped queries, most anchored with `start=`/`end=` and defaulting to `mode=detail` (the two `identity_signin_*` summaries are the exceptions). |
 | `pivot` | Projects `SchemaVersion`; exempt from the `Severity` requirement. In the shipped catalog these are entity-scoped lookups (by message ID, hash, app ID, device, remote, ...) that default to `mode=detail`. |
 | `utility` | Exempt from all methodology checks. Currently only `sys_schema_probe`. |
-| `deprecated` | An alias shim. The file must also declare `-- alias_of: <target>`; `library run` loads the target's body instead and prints a stderr warning. |
+| `deprecated` | An alias shim. The file must also declare `-- alias_of: <target>`; `library run` loads the target's body instead, accepts and validates the target's parameters, and prints a stderr warning. `library show` and `library list` keep the alias's name and description but report the target's parameters, tables, and cost hint. |
 | `beta` | Treated as a finding tier by the tests; the shipped entries prefix their description with `(beta)`. |
 
 There is no documented definition of what distinguishes `r1` from `r2`
@@ -122,8 +133,8 @@ the query declares them.
 | `qry_file_access_detail` | pivot | Specific files downloaded or synced by an account — identifies targeted access to sensitive content | `account_oid`*, `start`*, `end`*, `mode` =detail |
 | `qry_file_hash_scope` | pivot | Find all devices with a specific file hash | `sha256`*, `hours` =720, `mode` =detail |
 | `qry_inbox_rule_activity` | r1 | Exchange rule changes (inbox + transport + mailbox forwarding) with extracted predicates, forwarding-destination classification, and BEC-specific scoring | `hours` =168, `account_upn`, `mode` =summary |
-| `qry_inbox_rule_audit` | **deprecated** (alias of `qry_inbox_rule_activity`) | Deprecated alias; forwards to `qry_inbox_rule_activity`. | — |
-| `qry_inbox_rule_triggers` | **deprecated** (alias of `qry_inbox_rule_activity`) | Deprecated alias; forwards to `qry_inbox_rule_activity`. | — |
+| `qry_inbox_rule_audit` | **deprecated** (alias of `qry_inbox_rule_activity`) | Deprecated; use qry_inbox_rule_activity. | — |
+| `qry_inbox_rule_triggers` | **deprecated** (alias of `qry_inbox_rule_activity`) | Deprecated; use qry_inbox_rule_activity. | — |
 | `qry_mailbox_delegation` | n | Exchange mailbox delegation grants — FullAccess / SendAs / SendOnBehalf, with internal/external delegate classification | `hours` =168, `account_upn`, `mode` =summary |
 | `qry_oauth_app_info` | pivot | OAuth app registration details — app name, service principal ID, and owner tenant (first-party vs third-party) | `app_id`*, `mode` =detail |
 | `qry_oauth_consent` | pivot | Who consented to an OAuth app and from where — identifies suspicious or coerced consent events | `app_id`*, `start`*, `end`*, `mode` =detail |
@@ -189,7 +200,7 @@ KQL context (`_render_parameters`).
 | `integer` | `hours`, `threshold` | positive integer (`1`, `24`, `720`) | outside quotes |
 | `datetime` | `start`, `end` | ISO-8601 date or timestamp (`2026-10-01`, `2026-10-01T08:00:00Z`) | outside quotes |
 | `duration` | `lookback` | KQL duration literal (`30m`, `6h`, `7d`) | outside quotes |
-| `string` | everything else (`account_upn`, `device_name`, `sha256`, `ip`, `*_id`, ...) | any text without control characters | inside a quoted literal |
+| `string` | everything else (`account_upn`, `device_name`, `sha256`, `ip`, `*_id`, ...) | any text without control characters; `sha256` must be exactly 64 hex characters and `ip`/`source_ip` a valid IPv4 or IPv6 address | inside a quoted literal |
 
 Rules the renderer enforces:
 
@@ -207,12 +218,10 @@ Rules the renderer enforces:
 - Placeholders are not substituted inside `//` or `/* */` comments, are
   refused inside verbatim (`@"..."`) literals, and are refused inside
   multiline (` ``` `) literals.
-- A declared placeholder that is never substituted fails the run.
-
-The README summarises the same contract: library string parameters are
-escaped as KQL literal data; typed duration, integer, datetime and enum
-parameters are validated before a query is sent; custom-query string
-placeholders must appear inside an ordinary quoted KQL string literal.
+- A placeholder that appears in the KQL but is never substituted (for
+  example, one that occurs only inside a comment) fails the run. A declared
+  parameter whose placeholder does not appear in the body at all is
+  accepted and has no effect.
 
 ## Custom queries
 
@@ -254,7 +263,9 @@ value should mean "match all". The `hours` parameter controls the explicit
 A malformed file (missing `-- tier:`, an unknown tier, or `tier:
 deprecated` without `alias_of`) is skipped with a stderr warning rather
 than aborting the whole command, so one bad file never hides the rest of
-the library. The skipped query simply does not appear in `library list`.
+the library. A skipped file with a new name does not appear in `library
+list`; a skipped file that shares a builtin's name leaves the builtin in
+effect, so check stderr if your override seems to be ignored.
 
 ## Reference lists
 

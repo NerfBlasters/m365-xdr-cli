@@ -54,7 +54,7 @@ async def test_run_query_falls_back_to_mde_on_404(client):
         status_code=404, json={"error": {"code": "NotFound", "message": "n/a"}}
     )
     mde_route = respx.post(
-        "https://api.security.microsoft.com/api/advancedhunting/run"
+        "https://api.security.microsoft.com/api/advancedqueries/run"
     ).respond(
         json={
             "Schema": [{"Name": "Timestamp", "Type": "DateTime"}],
@@ -77,7 +77,7 @@ async def test_run_query_falls_back_to_mde_on_403(client):
     respx.post("https://graph.microsoft.com/v1.0/security/runHuntingQuery").respond(
         status_code=403, json={"error": {"code": "Forbidden", "message": "n/a"}}
     )
-    respx.post("https://api.security.microsoft.com/api/advancedhunting/run").respond(
+    respx.post("https://api.security.microsoft.com/api/advancedqueries/run").respond(
         json={"Schema": [], "Results": [], "Stats": {}}
     )
     result = await run_query(client, "DeviceEvents | take 1")

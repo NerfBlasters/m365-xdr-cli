@@ -159,7 +159,7 @@ def portal_login(
     the Microsoft Azure CLI client ID (FOCI) and may not succeed in every
     tenant. If it does, sign-ins are *intended* to attribute to "Microsoft
     Azure CLI" (the FOCI client), not to xdr-cli — but this has not been
-    confirmed. See README §"Device Timeline".
+    confirmed. See docs/device_timeline.md.
     """
     app_ctx: AppContext = ctx.obj
     if tenant_id:

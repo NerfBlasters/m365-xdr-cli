@@ -74,6 +74,21 @@ class Config:
                 "schema_maintenance_timeout_seconds must be finite positive seconds, at most 3600."
             )
 
+    def list_limit(self, override: int | None) -> int:
+        """Resolve a list command's --limit, defaulting to `default_limit`.
+
+        Validated here rather than in __post_init__ so a bad value fails only
+        the list commands that use it, not every command's config load.
+        """
+        from xdr_cli.exceptions import ConfigError
+
+        if override is not None:
+            return override
+        value = self.default_limit
+        if type(value) is not int or value < 1:
+            raise ConfigError("default_limit must be a positive integer.")
+        return value
+
     def check_maintenance_config(self) -> None:
         """Reject deferred upkeep errors at the upkeep boundary, not CLI startup."""
         error = getattr(self, "_maintenance_config_error", None)

@@ -150,6 +150,52 @@ def test_extract_entities_rejects_bad_sha256():
     assert "not-a-hash" not in entities["file_hashes"]
 
 
+def test_extract_entities_routes_ip_device_names_to_ips():
+    """Defender for Identity reports unresolved hosts with an IP as deviceDnsName."""
+    incident = {
+        "alerts": [
+            {
+                "evidence": [
+                    {
+                        "@odata.type": "#microsoft.graph.security.deviceEvidence",
+                        "deviceDnsName": "192.0.2.254",
+                    },
+                    {
+                        "@odata.type": "#microsoft.graph.security.deviceEvidence",
+                        "deviceDnsName": "2001:db8::1",
+                    },
+                    {
+                        "@odata.type": "#microsoft.graph.security.deviceEvidence",
+                        "deviceDnsName": "dc-01.corp.example",
+                    },
+                ]
+            }
+        ]
+    }
+    entities = _extract_entities(incident)
+    assert entities["devices"] == {"dc-01.corp.example"}
+    assert entities["ips"] == {"192.0.2.254", "2001:db8::1"}
+
+
+def test_containment_without_mde_id_points_at_device_show():
+    """A device without an MDE ID gets a resolve command, not a bare placeholder."""
+    incident = {"id": "7", "severity": "high", "classification": "unknown", "alerts": []}
+    entities = {
+        "devices": {"WS-01", "WS-02"},
+        "device_ids": {"WS-01": "a" * 40},
+        "users": set(),
+        "file_hashes": set(),
+        "ips": set(),
+        "decoded_commands": [],
+    }
+    rec = _build_recommended_actions(incident, entities)
+    by_device = {step["device"]: step for step in rec["contain"]}
+    assert by_device["WS-01"]["command"].startswith(f"xdr device isolate {'a' * 40} ")
+    assert "resolve_command" not in by_device["WS-01"]
+    assert by_device["WS-02"]["command"].startswith("xdr device isolate <device-id> ")
+    assert by_device["WS-02"]["resolve_command"] == "xdr device show WS-02"
+
+
 def test_containment_gated_on_medium_severity():
     """Medium-severity incidents should NOT emit containment actions."""
     incident = {

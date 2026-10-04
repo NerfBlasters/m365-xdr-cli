@@ -99,10 +99,12 @@ async def run_query(client: XDRClient, kql: str) -> HuntingResult:
             "falling back to MDE-only tables...[/dim]"
         )
 
-    # MDE's advancedhunting/run body uses PascalCase "Query".
+    # Defender for Endpoint's advancedqueries/run is the hunting endpoint
+    # documented for this token audience and AdvancedQuery.Read; its body
+    # uses PascalCase "Query".
     response = await client.post(
         APISurface.MDE,
-        "advancedhunting/run",
+        "advancedqueries/run",
         json={"Query": kql},
     )
     return _normalize_response(response)

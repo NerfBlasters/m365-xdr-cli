@@ -160,8 +160,10 @@ Supported categories:
 
 `xdr --rationale "<prediction>" ...` records pre-run intent when attachment
 succeeds. `xdr session start --learning-mode` requires `xdr annotate` after
-each attached, non-housekeeping invocation. An unattached command cannot be
-learning-gated. Use `xdr annotate --skip "<reason>"` rather than inventing a
+each attached, non-housekeeping invocation. A command the gate refuses is
+still recorded (with `learning_gate_refused: true`) but is never itself
+waiting for annotation, so the next `xdr annotate` clears the command that
+was actually pending. An unattached command cannot be learning-gated. Use `xdr annotate --skip "<reason>"` rather than inventing a
 successful lesson.
 
 ## Security and compatibility

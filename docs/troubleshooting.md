@@ -30,8 +30,12 @@ class-specific code. The record always has the same shape:
 "invalid":null,"allowed":[],"suggestions":[{"reason":"recovery",
 "message":"Check your Entra ID app permissions and RBAC roles.",
 "confidence":"exact"}],"corrected_argv":null,"help_command":null,
-"retry_after_seconds":null,"request_ids":null,"original":{}}}
+"retry_after_seconds":null,"request_ids":{"request-id":"..."},
+"original":{"type":"Forbidden","status":403,"message":"...","detail":{...}}}}
 ```
+
+`original` carries the upstream error's type, HTTP status, message and
+detail when the failure came from an API; it is `null` for local errors.
 
 Fields worth scripting against:
 
@@ -56,13 +60,13 @@ class may carry more than one code.
 | Exit | Class                | Common `code` values                                                    | What to do                                                        |
 | ---- | -------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | 0    | `SUCCESS`            | --                                                                      | --                                                                |
-| 1    | `INTERNAL_ERROR`     | `INTERNAL_ERROR`, `CLI_COMMAND_FAILED`                                  | Re-run with `--debug`; report a bug                               |
-| 2    | `AUTH_ERROR`         | `AUTH_LOGIN_REQUIRED`, `NOT_AUTHENTICATED`, `TOKEN_EXPIRED`             | `xdr auth status`, then `xdr auth login`                          |
+| 1    | `INTERNAL_ERROR`     | `INTERNAL_ERROR`                                                        | Re-run with `--debug`; report a bug                               |
+| 2    | `AUTH_ERROR`         | `AUTH_LOGIN_REQUIRED`, `NOT_AUTHENTICATED`                              | `xdr auth status`, then `xdr auth login`                          |
 | 3    | `UPSTREAM_API_ERROR` | `API_ERROR`                                                             | Inspect `original.status` / `original.detail`                     |
 | 4    | `CONFIG_ERROR`       | `CONFIG_ERROR`                                                          | Check `~/.xdr-cli/config.toml`                                    |
 | 5    | `QUERY_ERROR`        | `QUERY_ERROR`, `QUERY_UNKNOWN_TABLE`, `QUERY_UNKNOWN_COLUMN`, `QUERY_SEMANTIC_ERROR` | Fix KQL; `xdr schema tables --search <name>`         |
 | 6    | `USAGE_ERROR`        | `CLI_USAGE_ERROR`, `CLI_UNKNOWN_COMMAND`, `CLI_UNKNOWN_OPTION`, `CLI_REMOVED_OPTION`, `CLI_INVALID_VALUE`, `CLI_INVALID_ENUM`, `CLI_MISSING_VALUE` | Follow `help_command` / `corrected_argv` |
-| 7    | `PERMISSION_ERROR`   | `PERMISSION_MISSING_SCOPE`, `PERMISSION_DENIED`                         | Grant the missing API permission and admin consent                |
+| 7    | `PERMISSION_ERROR`   | `PERMISSION_MISSING_SCOPE`, `PERMISSION_DENIED`                         | Grant the missing API permission and admin consent (see below)    |
 | 8    | `NOT_FOUND`          | `API_NOT_FOUND`, `LOCAL_NOT_FOUND`, `RESULT_QUERY_NOT_FOUND`            | Verify the ID or run-id                                           |
 | 9    | `RATE_LIMIT`         | `API_RATE_LIMITED`                                                      | Wait `retry_after_seconds`, then retry                            |
 | 10   | `TIMEOUT`            | `API_TIMEOUT`                                                           | Raise `--timeout` / `api_timeout`; narrow the query               |
@@ -74,6 +78,9 @@ class may carry more than one code.
 
 Note that there is no `FORBIDDEN` code. An HTTP 403 from either API is
 reported as `PERMISSION_MISSING_SCOPE` with exit code 7.
+
+`CLI_COMMAND_FAILED` is not tied to one class: it wraps a command that exited
+without a structured error and keeps that command's own exit code.
 
 ## Output streams, piping, and non-interactive mode
 
@@ -124,8 +131,9 @@ or `jq -s .`) rather than assuming a single document.
 Explicit `session end` has a lifecycle-specific shape: a `session-end` record
 with feedback instructions, followed by a `session-maintenance` record. Upkeep
 failure or incomplete work returns 14; cancellation returns 130. The session
-is already closed, so do not retry `session end`. Inspect `maintenance.cause`
-and follow its recovery command. Use `session end --no-maintenance` to skip
+is already closed, so do not retry `session end`. Run the maintenance record's
+`next_command`; when the failure had an underlying cause, `maintenance.cause`
+names it. Use `session end --no-maintenance` to skip
 upkeep for an end that has not yet run. See [sessions](sessions.md).
 
 Configuration warnings can still appear on stderr in quiet mode. Invalid
@@ -134,11 +142,11 @@ and `session end --no-maintenance` available.
 
 ### A prompt was skipped, or a destructive action refused to run
 
-Confirmation prompts are auto-skipped whenever stdin **or** stdout is not a
-TTY. You can force this with `--no-interactive`. Destructive device-action
-commands (`isolate`, `unisolate`, `restrict`, `scan`, `collect-package`)
-require `--yes` to execute without a prompt; without it in a non-TTY
-context they will not proceed.
+`xdr` never prompts when stdin **or** stdout is not a TTY, or when
+`--no-interactive` is given. Commands that would normally ask for
+confirmation (the device actions `isolate`, `unisolate`, `restrict`, `scan`,
+`collect-package`, plus `incidents update` and `results prune`) then refuse
+with `CLI_USAGE_ERROR` (exit 6) unless `--yes` is passed.
 
 `auth login` is a separate interactive flow and is not made unattended by
 `--no-interactive`. Agents should surface authentication failures to a human
@@ -162,17 +170,19 @@ xdr auth login --tenant-id <TENANT-ID> --client-id <CLIENT-ID>
 Any later command that needs a token before configuration exists raises
 `CONFIG_ERROR` (exit 4) with the same hint.
 
-### `NOT_AUTHENTICATED` or `TOKEN_EXPIRED`
+### `NOT_AUTHENTICATED` or `AUTH_LOGIN_REQUIRED`
 
-Your cached token is missing or has expired and could not be refreshed
-silently. Re-run `xdr auth login`. The token cache lives at
+`NOT_AUTHENTICATED` means the token cache holds no signed-in account.
+`AUTH_LOGIN_REQUIRED` means an account is cached but a token could not be
+refreshed silently. Re-run `xdr auth login`. The token cache lives at
 `~/.xdr-cli/token_cache.json`; `xdr auth logout` deletes it if you want a
 clean start.
 
-If the message says *Interactive authentication required for scope ...*,
-the cache holds a Graph token but the Defender for Endpoint audience has
-never been consented. Run `xdr auth logout && xdr auth login`; if that
-still fails, see the `AADSTS65001` entry below.
+If the message says *Interactive authentication required for scope ...*
+(code `AUTH_LOGIN_REQUIRED`), the cache holds an account but that API
+audience, usually Defender for Endpoint, has never been consented
+interactively. Run `xdr auth logout && xdr auth login`; if that still fails,
+see the `AADSTS65001` entry below.
 
 ### Sign-in hangs, never opens a browser, or rejects the device code
 
@@ -193,7 +203,12 @@ If the flow stalls or the code is rejected:
 - Make sure **Allow public client flows** is enabled in the app
   registration's **Authentication** blade.
 - Confirm redirect URI `http://localhost` is registered as a **Public
-  client/native** redirect (see `AADSTS50011` below).
+  client/native** redirect (see `AADSTS50011` below). On Windows, the WAM
+  broker also needs `ms-appx-web://Microsoft.AAD.BrokerPlugin/<client-id>`.
+- An interactive sign-in that opens but then fails (cancelled, blocked by
+  Conditional Access, redirect mismatch) is reported as an error; it does
+  not fall back to a device code. The fallback is only for hosts where no
+  browser or broker can start.
 - If a browser did open but you dismissed it, re-run the command; the
   cancelled dialog is reported as an `AUTH_LOGIN_REQUIRED` error, not a
   hang.
@@ -208,12 +223,18 @@ table in the README and click **Grant admin consent for [tenant]**.
 Permissions take effect only after consent, and existing cached tokens do
 not pick up new scopes until you `xdr auth logout && xdr auth login`.
 
-The error's `message` names the required scope when the CLI knows it
-(for example `ThreatHunting.Read.All` or `Machine.Isolate`).
+The error's `message` names the required permission when the CLI knows the
+endpoint (for example `ThreatHunting.Read.All` or `Machine.Isolate`). Where
+the delegated and application names differ, both are given, e.g.
+`Machine.Read (delegated) or Machine.Read.All (application)`. A 403 can also
+come from a missing role for the signed-in user; that is reported the same
+way. Check `original.type`: Graph's `Authorization_RequestDenied` with a token
+that already carries the scope usually means a role is missing. For example,
+`xdr domains list` needs a directory role that can read domains (Global Reader
+or Domain Name Administrator) in addition to `Domain.Read.All`.
 
-`PERMISSION_DENIED` (also exit 7) is the local equivalent: the operation
-was refused for a reason other than a missing OAuth scope, such as RBAC
-on the tenant side.
+`PERMISSION_DENIED` (also exit 7) is local: `xdr session end` refuses to end
+a session for a non-`operator` `XDR_ACTOR` unless `--force` is given.
 
 ### `AADSTS65001` ("user or administrator has not consented")
 
@@ -230,8 +251,9 @@ for [tenant]* in the Status column. If any are missing, click **Grant
 admin consent for [tenant]** again, then `xdr auth logout && xdr auth
 login` so the cache is rebuilt with the new consent.
 
-In `client_credentials` mode the same AADSTS code is surfaced as a
-`PERMISSION_MISSING_SCOPE` error naming the scope.
+When a silent token request (delegated or `client_credentials`) returns this
+AADSTS code, it is surfaced as a `PERMISSION_MISSING_SCOPE` error naming the
+scope.
 
 ### Why WindowsDefenderATP audience vs. api.security.microsoft.com endpoint?
 
@@ -275,11 +297,13 @@ that `client_secret` is set, has not expired, and that the app has
 
 ### `CLI_REMOVED_OPTION` for `--jq`, `--fields`, or hunt `--limit`
 
-These flags do not exist. `xdr` does not project, filter, or truncate
-results locally; every run writes a JSONL artifact and you shape it with
-shell tools. The one-line error includes `corrected_argv` (the same
-command with the offending flag and its value stripped) and a
-`suggestions` entry explaining the replacement:
+These flags do not exist. `xdr` does not project or filter results
+locally, and hunts save every row the API returns; you shape the JSONL
+artifact with shell tools. (`incidents list`, `alerts list` and
+`results list` do take `--limit`, which bounds how many items are fetched.)
+The one-line error includes `corrected_argv` (the same command with the
+offending flag and its value stripped) and a `suggestions` entry explaining
+the replacement:
 
 | Flag                 | Instead                                                            |
 | -------------------- | ------------------------------------------------------------------ |
@@ -420,8 +444,9 @@ pipx install .
 ### Incident or device not found (`API_NOT_FOUND`)
 
 Incident IDs come from `xdr incidents list` or from the Defender portal
-URL. Device IDs are machine GUIDs, not hostnames -- get them from
-`xdr incidents show <id> --expand evidence` or from a hunting query
+URL. Device IDs are 40-character hex MachineIds, not hostnames -- get them
+from the evidence rows of `xdr incidents show <id> --expand alerts`
+(`mdeDeviceId`), from `xdr device show <hostname>`, or from a hunting query
 (`DeviceInfo | project DeviceId, DeviceName`). A `LOCAL_NOT_FOUND` with
 the same exit code (8) means a local artifact, session, or cache entry
 was not found; check the run-id with `xdr results list`.
@@ -484,20 +509,22 @@ procedures are documented in the
 modifies state. The file is created with mode `0600` inside a `0700`
 directory, matching the token and cookie stores, because it is effectively
 your command history. Each line is a timestamp followed by `CMD:` and the
-**raw argument vector** exactly as typed:
+argument vector as typed, with secret-bearing values (`--refresh-token`)
+redacted:
 
 ```
 2026-10-03 09:14:22,118 CMD: device isolate 1a2b3c... --yes --comment IR-1234
 ```
 
-Commands that are logged (matched as a contiguous token sequence anywhere
-in argv):
+Commands that are logged (matched against the command Click actually
+dispatches, so every accepted syntax is covered and an argument that
+happens to equal a command name does not count):
 
-- Device actions: `isolate`, `unisolate`, `scan`, `collect-package`,
-  `restrict`
-- Incident updates: `update`
-- Authentication: `login`, `logout`, `portal-login`, `portal-cookie`,
-  `portal-logout`
+- Device actions: `device isolate`, `device unisolate`, `device scan`,
+  `device collect-package`, `device restrict`
+- Incident updates: `incidents update`
+- Authentication: `auth login`, `auth logout`, `auth portal-login`,
+  `auth portal-cookie`, `auth portal-logout`
 - Guided investigation: `investigate`
 - Lists: `lists init`
 - Schema cache writes: `schema repair-overlay`, `schema migrate-cache`,
@@ -512,13 +539,14 @@ capture every command while active.
 
 Two cautions:
 
-- Because the line is the raw argv, any value you pass on the command
-  line (comments, UPNs, IDs) lands in the file as typed. The only
-  redaction applied anywhere is to `--refresh-token` values in the
-  **session** recorder; the audit log itself is unredacted.
+- Apart from `--refresh-token`, any value you pass on the command line
+  (comments, UPNs, IDs) lands in the file as typed.
 - This is a local convenience log, not a tamper-evident audit trail. It
-  can be edited or deleted by anyone with access to the home directory,
-  and it records that a command was *attempted*, not whether it
-  succeeded. For authoritative records of device actions and incident
+  can be edited or deleted by anyone with access to the home directory.
+  The line is written when the command is dispatched, before it runs, so
+  it records that a command was *attempted* (including `--dry-run` runs and
+  ones refused for a missing `--yes` or declined at the prompt), not whether
+  it succeeded. `--help` and argument errors never dispatch a command and
+  are not logged. For authoritative records of device actions and incident
   changes, use the Defender portal's action center and Microsoft Entra
   sign-in / audit logs.

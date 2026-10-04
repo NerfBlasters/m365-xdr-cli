@@ -10,44 +10,114 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
-## [0.11.1] - 2026-10-04
+## [0.12.0] - 2026-10-04
 
-Documentation rewrite for the public launch.
+Documentation rewrite for the public launch, plus the fixes found while
+verifying it against the code and a live tenant.
 
 ### Changed
 
 - README rewritten as a landing page: what the tool is, who it is for, a
   recorded demo, install, Entra app registration, a six-command quick start,
   and a complete command reference. Long-form material moved to `docs/`.
-- Entra permissions table corrected against Microsoft's API references:
-  `Domain.Read.All` added for `xdr domains list`, `SecurityAlert.Read.All`
-  instead of `ReadWrite.All`, delegated Defender for Endpoint permission names
-  (`Machine.Read`/`Machine.ReadWrite`, `AdvancedQuery.Read`) instead of the
-  application-permission names.
-- README now describes `xdr auth login` as an interactive sign-in with
-  device-code fallback, documents `xdr lists init`, the `--rationale` global
-  flag, `xdr history stats`, and the real scope of `~/.xdr-cli/audit.log`.
+- Entra permissions table verified against a live tenant: `Domain.Read.All`
+  added for `xdr domains list`; `SecurityAlert.Read.All` instead of
+  `ReadWrite.All` (`xdr` never modifies alerts); delegated `Machine.Read`
+  (sufficient for `device show`, hostname lookups and `device action-status`)
+  instead of `Machine.Read.All`/`Machine.ReadWrite`; `AdvancedQuery.Read` for
+  the hunting fallback. Service-principal setup names the differing
+  application permissions.
+- 403 errors and the `library show` descriptor name the delegated Defender
+  for Endpoint permission and its application equivalent (`Machine.Read
+  (delegated) or Machine.Read.All (application)`), name
+  `SecurityAlert.Read.All` for alerts, and name `Domain.Read.All` for
+  `domains list`. The descriptor's `required_permissions` entries gain an
+  `application_permission` field.
+- `incidents show --expand` accepts only `alerts` and rejects anything else
+  with `CLI_INVALID_ENUM` (exit 6) before calling Graph. Graph incidents have
+  no `evidence` expansion; `--expand evidence` previously returned HTTP 400.
+  Evidence is already included in each alert.
+- `hunt library-show` and the deprecated `hunt library-run` validate
+  parameters exactly as `library run` does. Unknown names, missing required
+  parameters, and invalid values now fail with the `LIBRARY_*` codes (exit 5)
+  instead of being silently dropped or coerced. Unknown entries report
+  `LIBRARY_UNKNOWN_ENTRY` instead of `QUERY_ERROR`.
+- Deprecated library aliases accept and validate their target's parameters.
+- The audit log is written from the command Click actually dispatches,
+  instead of a token search over raw argv. Every accepted syntax (`--`,
+  clustered short flags, `--opt=value`) is covered; an argument equal to a
+  command name (`xdr hunt run update`) is no longer logged; `--help` and
+  argument errors, which dispatch nothing, are no longer logged; and
+  `--refresh-token` values are redacted as in the session recorder.
+- The hunting fallback calls Defender for Endpoint's documented
+  `api/advancedqueries/run`, whose delegated permission is the
+  `AdvancedQuery.Read` the README asks for, instead of the Defender XDR
+  `api/advancedhunting/run`, which Microsoft documents with
+  `AdvancedHunting.Read` under a different API. The request and response are
+  unchanged.
+- Library parameter validation reuses the renderer's type checks, so invalid
+  dates, durations, and integers fail with `LIBRARY_INVALID_PARAM` and a
+  `help_command` instead of a generic `QUERY_ERROR`.
+- `library show` and `library list` describe a deprecated alias with its
+  target's parameters, tables, and cost hint, matching what it runs.
+- README gains a "Built to improve with use" section describing the local
+  improvement loop that already exists: automatic session recording,
+  `--rationale`, learning mode with `xdr annotate`, append-only agent and
+  analyst feedback at session end, and `xdr history stats` failure and
+  library-coverage metrics.
+- README now describes `xdr auth login` accurately (WAM on Windows, browser
+  elsewhere, device code only when neither can start), adds the Windows
+  broker redirect URI to setup, documents `xdr lists init`, the `--rationale`
+  global flag, and the real scope of `~/.xdr-cli/audit.log`, and lists every
+  exit code.
 - Troubleshooting references the error codes the CLI actually emits
-  (`PERMISSION_MISSING_SCOPE`, not `FORBIDDEN`).
+  (`PERMISSION_MISSING_SCOPE`, not `FORBIDDEN`; `AUTH_LOGIN_REQUIRED`, not
+  `TOKEN_EXPIRED`) and describes `PERMISSION_DENIED`, `CLI_COMMAND_FAILED`,
+  and non-interactive confirmation behaviour correctly.
 - `docs/schema_graph.md` gained the bundle guarantees, `repair-overlay` /
   `migrate-cache` behaviour, and the `validate-core` command-map row that
   previously lived only in the README.
+- Help text and comments that pointed at removed README sections now point
+  at `docs/device_timeline.md` (`xdr auth portal-login --help`,
+  `xdr device timeline --help`, AGENTS.md).
 - Launch documentation reconciled with 0.11.0: local-first discovery,
   automatic session-end upkeep, output contracts, and evidence retention.
+
+### Fixed
+
+- `investigate` no longer treats an IP address reported as a device name
+  (Defender for Identity does this for hosts it cannot resolve) as a device:
+  the address is recorded as an IP, and no process-tree hunt or isolation
+  command is suggested for it.
+- Isolation suggestions for a device without an MDE ID carry a
+  `resolve_command` (`xdr device show <host>`) and print it, instead of a
+  bare `<device-id>` placeholder.
+- In learning mode, a command refused by the gate is no longer the target of
+  the next `xdr annotate`. It was recorded as a new unannotated invocation,
+  so annotating cleared the refusal and left the gate closed. Refused
+  attempts are now recorded with `learning_gate_refused: true` and are never
+  pending.
+- The README's admin-consent step named Security Administrator, which cannot
+  grant tenant-wide consent. It now names Cloud Application Administrator,
+  Application Administrator, or Privileged Role Administrator.
+- `default_limit` in `config.toml` is now the default for `incidents list`
+  and `alerts list --limit`; it was previously ignored.
 
 ### Added
 
 - `docs/device_timeline.md`: the unofficial device-timeline feature and portal
   authentication, moved out of the README and corrected.
 - `docs/library.md`: every packaged KQL query with tier and parameters, the
-  parameter contract, and custom-query format.
+  parameter contract and its error codes, and custom-query format.
 - `docs/troubleshooting.md`: long-form troubleshooting and the exit-code table.
 - `docs/media/investigate.gif` (with its asciinema source) recorded against a
-  demo tenant, with tenant and object identifiers replaced for publication.
+  demo tenant, with tenant, object, and local-path identifiers replaced for
+  publication.
 
 ### Removed
 
-- References in the documentation to releases that predate this repository.
+- References in the documentation and library descriptions to releases that
+  predate this repository.
 
 ## [0.11.0] - 2026-10-04
 

@@ -41,17 +41,25 @@ _SURFACE_SCOPES: dict[APISurface, list[str]] = {
 
 
 def _required_permission(response: httpx.Response) -> str:
-    """Return an authoritative permission hint for known xdr-cli endpoints."""
+    """Return an authoritative permission hint for known xdr-cli endpoints.
+
+    Where Defender for Endpoint's delegated and application permission names
+    differ, both are named so the hint fits interactive and client-credentials
+    auth alike.
+    """
 
     path = response.request.url.path.casefold()
     if "runhuntingquery" in path:
         return "Microsoft Graph / ThreatHunting.Read.All"
-    if "advancedhunting" in path:
-        return "WindowsDefenderATP / AdvancedQuery.Read.All"
+    if "advancedqueries" in path or "advancedhunting" in path:
+        return (
+            "WindowsDefenderATP / AdvancedQuery.Read (delegated) "
+            "or AdvancedQuery.Read.All (application)"
+        )
     if "/incidents" in path:
         return "Microsoft Graph / SecurityIncident.ReadWrite.All"
     if "/alerts_v2" in path:
-        return "Microsoft Graph / SecurityAlert.ReadWrite.All"
+        return "Microsoft Graph / SecurityAlert.Read.All"
     if "/isolate" in path or "/unisolate" in path:
         return "WindowsDefenderATP / Machine.Isolate"
     if "/runantivirusscan" in path:
@@ -61,7 +69,12 @@ def _required_permission(response: httpx.Response) -> str:
     if "/restrictcodeexecution" in path:
         return "WindowsDefenderATP / Machine.RestrictExecution"
     if "/machines" in path or "/machineactions" in path:
-        return "WindowsDefenderATP / Machine.Read.All"
+        return (
+            "WindowsDefenderATP / Machine.Read (delegated) "
+            "or Machine.Read.All (application)"
+        )
+    if path.endswith("/v1.0/domains"):
+        return "Microsoft Graph / Domain.Read.All"
     return ""
 
 

@@ -736,12 +736,117 @@ def test_hunt_library_run_timeout_flag_overrides_config(session_home, monkeypatc
 
 
 def test_hunt_library_show_unknown_query_errors(tmp_path, monkeypatch):
-    """Unknown query names exit non-zero with a QueryError naming the query."""
+    """Unknown query names fail like `library run`: exit 5, LIBRARY_UNKNOWN_ENTRY."""
     monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / ".xdr-cli"))
     (tmp_path / ".xdr-cli" / "queries").mkdir(parents=True)
 
     result = runner.invoke(app, ["hunt", "library-show", "no_such_query"])
-    assert result.exit_code != 0
+    assert result.exit_code == 5
     error = json.loads(result.stdout)["error"]
-    assert error["code"] == "QUERY_ERROR"
+    assert error["code"] == "LIBRARY_UNKNOWN_ENTRY"
     assert "no_such_query" in error["message"]
+
+
+@pytest.mark.parametrize(
+    ("argv", "code"),
+    [
+        (["-p", "device_name=WS-01", "-p", "devcie=typo"], "LIBRARY_UNKNOWN_PARAM"),
+        (["-p", "device_name=WS-01", "-p", "mode="], "LIBRARY_INVALID_PARAM"),
+        ([], "LIBRARY_MISSING_PARAM"),
+    ],
+)
+@pytest.mark.parametrize("command", ["library-show", "library-run"])
+def test_hunt_library_aliases_validate_params_like_library_run(
+    tmp_path, monkeypatch, command, argv, code
+):
+    """`hunt library-show`/`library-run` must reject what `library run` rejects,
+    so a typo cannot silently drop a scoping parameter."""
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / ".xdr-cli"))
+    (tmp_path / ".xdr-cli" / "queries").mkdir(parents=True)
+
+    result = runner.invoke(app, ["hunt", command, "qry_process_tree", *argv])
+    assert result.exit_code == 5, result.output
+    error = json.loads(result.stdout.splitlines()[-1])["error"]
+    assert error["code"] == code
+
+
+def test_deprecated_alias_accepts_and_validates_target_params(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / ".xdr-cli"))
+    (tmp_path / ".xdr-cli" / "queries").mkdir(parents=True)
+
+    ok = runner.invoke(
+        app,
+        ["hunt", "library-show", "qry_inbox_rule_audit", "-p", "account_upn=alice@corp.example"],
+    )
+    assert ok.exit_code == 0, ok.output
+    assert "alice@corp.example" in ok.stdout
+
+    bad = runner.invoke(
+        app, ["hunt", "library-show", "qry_inbox_rule_audit", "-p", "acount_upn=x"]
+    )
+    assert bad.exit_code == 5
+    assert json.loads(bad.stdout.splitlines()[-1])["error"]["code"] == "LIBRARY_UNKNOWN_PARAM"
+
+
+@pytest.mark.parametrize(
+    ("query", "argv"),
+    [
+        (
+            "qry_device_logons",
+            ["-p", "device_name=WS-01", "-p", "start=yesterday", "-p", "end=2026-10-02"],
+        ),
+        (
+            "qry_device_logons",
+            ["-p", "device_name=WS-01", "-p", "start=2026-10-01", "-p", "end="],
+        ),
+        (
+            "ttp_ldap_process_attribution",
+            [
+                "-p", "device_name=WS-01", "-p", "start=2026-10-01",
+                "-p", "end=2026-10-02", "-p", "lookback=6 hours",
+            ],
+        ),
+    ],
+)
+@pytest.mark.parametrize("command", [["hunt", "library-show"], ["library", "run"]])
+def test_typed_param_errors_use_the_library_contract(
+    tmp_path, monkeypatch, command, query, argv
+):
+    """Datetime and duration failures surface as LIBRARY_INVALID_PARAM with a
+    recovery command, before any API call."""
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / ".xdr-cli"))
+    (tmp_path / ".xdr-cli" / "queries").mkdir(parents=True)
+
+    with patch("xdr_cli.commands.hunt_cmd.run_query") as run_query:
+        result = runner.invoke(app, [*command, query, *argv])
+    assert result.exit_code == 5, result.output
+    error = json.loads(result.stdout.splitlines()[-1])["error"]
+    assert error["code"] == "LIBRARY_INVALID_PARAM"
+    assert error["help_command"] == f"xdr library show {query}"
+    run_query.assert_not_called()
+
+
+def test_alias_descriptor_reports_target_execution_metadata(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / ".xdr-cli"))
+    (tmp_path / ".xdr-cli" / "queries").mkdir(parents=True)
+
+    def show(name):
+        result = runner.invoke(app, ["library", "show", name])
+        assert result.exit_code == 0, result.output
+        return json.loads(result.stdout)["data"]
+
+    alias, target = show("qry_inbox_rule_audit"), show("qry_inbox_rule_activity")
+    assert (alias["name"], alias["tier"], alias["alias_of"]) == (
+        "qry_inbox_rule_audit", "deprecated", "qry_inbox_rule_activity",
+    )
+    assert alias["description"] == "Deprecated; use qry_inbox_rule_activity."
+    assert alias["parameters"] == target["parameters"] != []
+    assert alias["schema_hint"] == target["schema_hint"]
+    assert alias["schema_hint"]["tables"]
+    assert alias["cost_hint"] == target["cost_hint"]
+    assert alias["examples"][0].startswith("xdr library run qry_inbox_rule_audit")
+
+    listed = runner.invoke(app, ["library", "list", "--search", "qry_inbox_rule_audit"])
+    assert listed.exit_code == 0, listed.output
+    row = json.loads(listed.stdout.splitlines()[1])
+    assert row["parameters"] == target["parameters"]

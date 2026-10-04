@@ -37,7 +37,8 @@ SCOPES = ["https://graph.microsoft.com/.default"]
 # and silently exchanges it for whichever resource's access token is needed.
 # Note: MDE endpoints live under api.security.microsoft.com but tokens must
 # be issued for the api.securitycenter.microsoft.com audience — this matches
-# Microsoft's current guidance (see README "Token audience" note).
+# Microsoft's current guidance (see the WindowsDefenderATP footnote in the
+# README permissions table).
 SCOPES_GRAPH = ["https://graph.microsoft.com/.default"]
 SCOPES_MDE = ["https://api.securitycenter.microsoft.com/.default"]
 

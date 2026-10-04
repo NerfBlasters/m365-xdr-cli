@@ -50,6 +50,14 @@ def _decode_encoded_powershell(cmdline: str) -> str | None:
         return None
 
 
+def _is_ip_literal(value: str) -> bool:
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return True
+
+
 def _extract_entities(incident: dict) -> dict[str, Any]:
     """Extract unique entities from incident alerts/evidence.
 
@@ -71,7 +79,11 @@ def _extract_entities(incident: dict) -> dict[str, Any]:
             if "device" in ev_type:
                 name = ev.get("deviceDnsName", "")
                 mde_id = ev.get("mdeDeviceId", "")
-                if name and _SAFE_HOSTNAME.match(name):
+                if name and _is_ip_literal(name):
+                    # Defender for Identity reports hosts it cannot resolve by
+                    # IP; that is not a DeviceName for hunting or containment.
+                    entities["ips"].add(name)
+                elif name and _SAFE_HOSTNAME.match(name):
                     entities["devices"].add(name)
                     if mde_id and _SAFE_MDE_ID.match(mde_id):
                         entities["device_ids"][name] = mde_id
@@ -218,7 +230,7 @@ def _build_recommended_actions(
         for device in sorted(entities["devices"]):
             mde_id = entities["device_ids"].get(device)
             target = mde_id or "<device-id>"
-            contain.append({
+            step = {
                 "step": "isolate",
                 "device": device,
                 "mde_device_id": mde_id,
@@ -229,7 +241,11 @@ def _build_recommended_actions(
                 "rationale": (
                     f"Severity={severity}, classification={classification or 'unknown'}"
                 ),
-            })
+            }
+            if not mde_id:
+                # Isolation takes a MachineId; device show resolves hostnames.
+                step["resolve_command"] = f"xdr device show {device}"
+            contain.append(step)
 
     ms_recommended = None
     for alert in incident.get("alerts", []):
@@ -455,6 +471,11 @@ async def _investigate(ctx: AppContext, incident_id: str, auto_enrich: bool) -> 
                 )
                 for step in recommended["contain"]:
                     err_console.print(f"  {step['command']}")
+                    if step.get("resolve_command"):
+                        err_console.print(
+                            f"    [dim](device {step['device']}; get its ID with: "
+                            f"{step['resolve_command']})[/dim]"
+                        )
                     err_console.print(f"    [dim]({step['rationale']})[/dim]")
             elif recommended["gating_reason"]:
                 err_console.print(

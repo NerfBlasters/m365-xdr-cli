@@ -29,7 +29,7 @@ async def get_incident(
     *,
     expand: list[str] | None = None,
 ) -> dict:
-    """Get a single incident by ID, optionally expanding alerts/evidence."""
+    """Get a single incident by ID, optionally expanding its alerts."""
     params: dict[str, str] = {}
     if expand:
         params["$expand"] = ",".join(expand)

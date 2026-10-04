@@ -37,8 +37,9 @@ def alerts_list(
     since: str | None = typer.Option(
         None, "--since", help="Show alerts since (e.g., 24h, 7d).",
     ),
-    limit: int = typer.Option(
-        25, "--limit", "-l", help="Max results.",
+    limit: int | None = typer.Option(
+        None, "--limit", "-l",
+        help="Max results [default: default_limit in config.toml, 25].",
     ),
 ) -> None:
     """List security alerts."""
@@ -49,7 +50,7 @@ def alerts_list(
             severity=severity,
             service=service,
             since=since,
-            limit=limit,
+            limit=app_ctx.config.list_limit(limit),
         )
     )
 

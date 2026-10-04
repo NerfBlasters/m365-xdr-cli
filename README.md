@@ -23,10 +23,11 @@ pipeable, and small enough for an agent's context window.
 - **Guided investigation** — `xdr investigate <id>` pulls the incident,
   extracts devices/users/IPs/hashes, runs the relevant hunting queries, and
   prints suggested next steps with ready-to-run commands.
-- **Advanced hunting** — run ad-hoc KQL, or pick from a library of 69 reviewed
-  queries (process trees, Kerberoasting, token replay, inbox rules, OAuth
-  consent anomalies, lateral movement, ransomware precursors, …) that take
-  typed parameters and are escaped before they reach the API.
+- **Advanced hunting** — run ad-hoc KQL, or pick from a library of 66 hunting
+  queries (process trees, Kerberos delegation abuse, token replay, inbox rules,
+  OAuth consent anomalies, lateral movement, ransomware precursors, …) that
+  take typed parameters and are escaped before they reach the API. Three are
+  marked beta; see [the library reference](docs/library.md).
 - **Response actions** — isolate, release, scan, restrict execution, and
   collect investigation packages, with confirmation, `--dry-run`, and a local
   audit log.
@@ -40,8 +41,12 @@ pipeable, and small enough for an agent's context window.
   connections from saved hunts, validates promising pivots, and explores new
   locations when you explicitly end a session. Export it to BloodHound to
   navigate across tables. See [Schema discovery](#schema-discovery-and-sessions).
-- **Extras for deeper work** — optional investigation sessions with
-  append-only feedback, and an *unofficial* device-timeline download that
+- **An improvement loop built in** — investigations are recorded locally as
+  sessions: every command, the hypothesis behind it (`--rationale`), the
+  lesson after it (learning mode), and an outcome-and-friction assessment when
+  the session ends. `xdr history stats` turns that record into failure rates
+  and library coverage gaps. See [Built to improve with use](#built-to-improve-with-use).
+- **Extras for deeper work** — an *unofficial* device-timeline download that
   reaches back ~180 days (see [Device timeline](docs/device_timeline.md)).
 
 ## Is it for you?
@@ -97,7 +102,10 @@ registration can be shared by everyone on the team.
 
 1. **Azure Portal → Microsoft Entra ID → App registrations → New registration.**
    Name it (`xdr-cli`), choose **Single tenant**, and add a
-   **Public client/native** redirect URI of `http://localhost`.
+   **Public client/native** redirect URI of `http://localhost`. If anyone
+   will sign in on Windows, also add
+   `ms-appx-web://Microsoft.AAD.BrokerPlugin/<client-id>` (your application
+   ID from step 2), which the Windows sign-in broker (WAM) requires.
 2. From **Overview**, copy the **Application (client) ID** and
    **Directory (tenant) ID**.
 3. **API permissions → Add a permission.** Add these **delegated** permissions:
@@ -108,51 +116,68 @@ registration can be shared by everyone on the team.
    | Microsoft Graph | `SecurityAlert.Read.All` | `alerts list/show` |
    | Microsoft Graph | `ThreatHunting.Read.All` | `hunt run`, `library run`, `investigate`, `schema` |
    | Microsoft Graph | `Domain.Read.All` | `domains list` |
-   | WindowsDefenderATP¹ | `Machine.ReadWrite` ² | `device show`, hostname lookups |
+   | WindowsDefenderATP¹ | `Machine.Read` | `device show`, `device action-status`, hostname lookups |
    | WindowsDefenderATP | `Machine.Isolate` | `device isolate` / `unisolate` |
    | WindowsDefenderATP | `Machine.Scan` | `device scan` |
    | WindowsDefenderATP | `Machine.CollectForensics` | `device collect-package` |
    | WindowsDefenderATP | `Machine.RestrictExecution` | `device restrict` |
+   | WindowsDefenderATP | `AdvancedQuery.Read` | Hunting fallback only (see below) |
 
    ¹ Under **APIs my organization uses**, search for *WindowsDefenderATP*.
    Defender for Endpoint tokens are still issued for the legacy
    `api.securitycenter.microsoft.com` audience even though requests go to
    `api.security.microsoft.com`; that is why these live under
    WindowsDefenderATP rather than Microsoft Graph.
-   ² Microsoft's [Get machine](https://learn.microsoft.com/en-us/defender-endpoint/api/get-machine-by-id)
-   reference lists `Machine.ReadWrite` for the by-ID lookup used by `device show`.
-   [List machines](https://learn.microsoft.com/en-us/defender-endpoint/api/get-machines)
-   also accepts `Machine.Read` for hostname lookups. Grant only the permissions
-   needed by the commands you intend to use.
 
-   Hunting goes through Microsoft Graph. The legacy Defender for Endpoint
-   hunting API (`AdvancedQuery.Read`) is only used as a fallback and is being
-   [retired by Microsoft](https://learn.microsoft.com/en-us/defender-endpoint/api/run-advanced-query-api);
-   configure [Graph hunting](https://learn.microsoft.com/en-us/graph/api/security-security-runhuntingquery?view=graph-rest-1.0)
-   for new deployments.
-4. **Grant admin consent** for your tenant (Global Admin or Security Admin).
+   Grant only the permissions needed by the commands you intend to use.
+   `SecurityAlert.ReadWrite.All` also works for alerts but is not needed:
+   `xdr` never modifies alerts.
+
+   Hunting goes through Microsoft Graph. If Graph hunting returns 403 or 404,
+   `xdr` retries the query once against the
+   [Defender for Endpoint hunting API](https://learn.microsoft.com/en-us/defender-endpoint/api/run-advanced-query-api)
+   (`api.security.microsoft.com/api/advancedqueries/run`), which needs
+   `AdvancedQuery.Read` and only sees Defender for Endpoint tables. Microsoft
+   began retiring that API in January 2026, so configure
+   [Graph hunting](https://learn.microsoft.com/en-us/graph/api/security-security-runhuntingquery?view=graph-rest-1.0)
+   and treat the fallback as temporary.
+4. **Grant admin consent** for your tenant. Every permission above is
+   delegated, so a Cloud Application Administrator, Application
+   Administrator, or Privileged Role Administrator can grant it
+   ([Microsoft's requirements](https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/grant-admin-consent#prerequisites)).
+   Security Administrator alone cannot. The service-principal setup
+   described under [Configuration](#configuration) uses Microsoft Graph
+   *application* permissions, which need Privileged Role Administrator.
 5. **Authentication → Advanced settings → Allow public client flows → Yes.**
 
 The signed-in user also needs the Defender roles that match what they run
 (Security Reader for triage; *Active remediation actions* for device
-actions). The app registration cannot grant more than the user has.
+actions). The app registration cannot grant more than the user has. For
+`xdr domains list`, Microsoft Graph also requires the signed-in user to hold
+a directory role that can read domains, such as Global Reader or Domain Name
+Administrator ([List domains](https://learn.microsoft.com/en-us/graph/api/domain-list));
+without one the call fails with `PERMISSION_MISSING_SCOPE` even when
+`Domain.Read.All` is consented.
 
 ## Quick start
 
 ```bash
-# 1. Sign in. Opens an interactive sign-in (Windows Hello/WAM on Windows,
-#    your browser elsewhere) and falls back to a device code if it can't.
-#    tenant_id and client_id are saved to ~/.xdr-cli/config.toml.
+# 1. Sign in. Opens an interactive sign-in (the WAM broker on Windows, your
+#    browser elsewhere); if neither can start, e.g. on a headless host, it
+#    prints a device code instead. tenant_id and client_id are saved to
+#    ~/.xdr-cli/config.toml.
 xdr auth login --tenant-id <TENANT_ID> --client-id <CLIENT_ID>
 xdr auth status
 
-# 2. Seed the reference lists the hunting library uses (internal subnets,
-#    known-good signers, tenant domains, …). Edit ~/.xdr-cli/lists/*.txt later.
+# 2. Copy the reference-list templates the hunting library reads (internal
+#    subnets, known-good signers, tenant domains, …) into ~/.xdr-cli/lists/.
+#    Generic lists (signers, private subnets, remote-support tools) ship with
+#    defaults; tenant-specific ones such as TenantDomains start empty.
 xdr lists init
 
-# 3. Look around.
+# 3. Look around. --expand alerts includes each alert's evidence.
 xdr incidents list --since 7d --severity high
-xdr incidents show 42 --expand alerts --expand evidence
+xdr incidents show 42 --expand alerts
 xdr alerts list --since 24h
 
 # 4. Investigate one incident end to end.
@@ -178,19 +203,25 @@ most two preview rows, and saves the complete result as JSONL under
 `context.results_command` is the exact command to page through them:
 
 ```json
-{"status":"success","run_id":"20261004T015710757111Z-41a96c5113e3","data_path":"/home/me/.xdr-cli/results/2026-10-04/20261004T015710757111Z-41a96c5113e3.jsonl","meta_path":"/home/me/.xdr-cli/results/2026-10-04/20261004T015710757111Z-41a96c5113e3.meta.json","rows":2,"server_truncation_state":"unknown","context":{"shown":2,"total":2,"has_more":false}}
-{"id":"2","severity":"high","status":"active","displayName":"Multi-stage incident involving Credential access & Lateral movement on multiple endpoints"}
-{"id":"1","severity":"high","status":"active","displayName":"'Ceprolad' detected on one endpoint"}
+{"status":"success","schema_version":1,"run_id":"20261004T015710757111Z-41a96c5113e3","data_path":"/home/me/.xdr-cli/results/2026-10-04/20261004T015710757111Z-41a96c5113e3.jsonl","meta_path":"/home/me/.xdr-cli/results/2026-10-04/20261004T015710757111Z-41a96c5113e3.meta.json","rows":2,"server_truncation_state":"unknown","execution_time_ms":1537,"session_id":null,"session_label":null,"session_attachment":"unattached","incident_id":null,"alert_id":null,"context":{"shown":2,"total":2,"has_more":false}}
+{"id":"2","severity":"high","status":"active","displayName":"Multi-stage incident involving Credential access & Lateral movement on multiple endpoints", …}
+{"id":"1","severity":"high","status":"active","displayName":"'Ceprolad' detected on one endpoint", …}
 ```
 
+The preview rows above are abridged; real rows are the full API objects
+(previews larger than 4 KB are replaced by a `preview_omitted` marker).
+
 Work with the artifact using whatever you already use — `jq`, `rg`, Python —
-or the built-in `xdr results` commands:
+or the built-in `xdr results` commands. `incidents show`, `alerts show`, and
+`investigate` split their output into typed rows (`record_type` of `incident`,
+`alert`, `evidence`, `entity`, …), so one kind can be selected directly:
 
 ```bash
+xdr incidents show 42 --expand alerts   # note the receipt's data_path
 jq -r 'select(.record_type=="alert") | "\(.severity)\t\(.title)"' "$DATA_PATH"
 xdr results shape <run-id>            # which fields exist, with types and counts
-xdr results rows <run-id> --type entity
-xdr results query <run-id>            # the exact KQL that produced it
+xdr results rows <run-id> --type evidence
+xdr results query <run-id>            # the KQL behind a hunt or library run
 ```
 
 Artifacts are never deleted automatically. `xdr results prune --older-than 30 --yes`
@@ -229,8 +260,10 @@ The short version:
   Never merge streams with `2>&1`.
 - Progress is auto-silenced when stdout is piped; `--quiet` suppresses progress,
   `--no-quiet` forces it on. Configuration warnings can still appear on stderr.
-- Confirmation prompts are skipped automatically when stdin/stdout isn't a TTY;
-  `--no-interactive` forces that. Response actions then require `--yes`.
+- Without a TTY on stdin and stdout (or with `--no-interactive`), `xdr` never
+  prompts. Commands that would ask for confirmation (response actions,
+  `incidents update`, `results prune`) refuse with exit 6 unless `--yes` is
+  passed.
   `auth login` is a separate interactive flow: agents should ask a human to
   perform it, rather than treating `--no-interactive` as unattended login.
 - Failures before durable output are one JSON error line with a stable `code`
@@ -238,8 +271,10 @@ The short version:
 - Explicit `session end` emits a closure record with feedback instructions,
   then a maintenance record. Upkeep can return exit 14 after the session is
   safely closed; cancellation returns 130. Do not retry the session end.
-- Exit codes: 0 ok · 2 auth · 3 upstream API · 6 usage · 7 permission ·
-  8 not found · 9 rate-limited · 10 timeout · 14 partial success.
+- Exit codes: 0 ok · 1 internal · 2 auth · 3 upstream API · 4 config ·
+  5 query · 6 usage · 7 permission · 8 not found · 9 rate-limited ·
+  10 timeout · 11 network · 12 artifact I/O · 13 conflict · 14 partial
+  success · 130 cancelled.
 
 ```bash
 # In a Claude Code / Copilot CLI / Codex prompt:
@@ -247,6 +282,59 @@ The short version:
 read the receipt's data_path, and summarise the alerts, entities, and recommended
 actions. Do not run any `xdr device` command without asking me."
 ```
+
+## Built to improve with use
+
+Every investigation can leave a structured record of how the tool performed,
+so gaps show up as data rather than anecdotes. The record stays on your
+machine under `~/.xdr-cli/sessions/`; nothing is sent anywhere.
+
+- **Sessions record every command.** `hunt run`, `library run`,
+  `investigate`, and `incidents`/`alerts show` start a session automatically
+  (or start one yourself with `xdr session start --label incident-42`). Each
+  invocation becomes one JSONL record with the command and redacted
+  arguments, the KQL and tables it touched, the library query and parameters,
+  the exit and error code, duration, and row count.
+- **`--rationale` captures intent before the result.**
+  `xdr --rationale "expect RDP from WS-01 to the DC" hunt run "…"` stores the
+  hypothesis on that command's record, so a review can compare what was
+  expected with what came back.
+- **Learning mode captures the lesson after.** In a session started with
+  `xdr session start --learning-mode`, each command must be followed by
+  `xdr annotate "<what this showed>"`, or `xdr annotate --skip "<why it wasn't
+  useful>"`, before the next one runs. A skip is recorded as signal too.
+- **Feedback closes each session.** `xdr session end` returns a `next_action`
+  asking for an assessment, which `xdr session feedback` appends with an
+  outcome (`completed-smoothly`, `completed-with-friction`,
+  `incomplete-blocked`) and friction categories (`output-handling`,
+  `query-or-schema`, `library-discovery`, `auth-or-permission`,
+  `latency-or-timeout`, …). The agent's assessment and the analyst's are
+  separate entries (`--source agent` / `--source analyst`). Entries are
+  append-only and never overwritten, and agents are told never to invent
+  analyst feedback.
+- **`xdr history stats` turns the record into metrics:** failure rate and top
+  error codes, hand-written versus library hunts, and *table coverage gaps*
+  (tables queried with ad-hoc KQL that a library query already covers). Scope
+  it to one `--session` or to all of an `--operator`'s sessions, narrow with
+  `--incident`, `--command`, or `--since`, and use `--by-actor` to separate
+  parallel agents (`XDR_ACTOR`).
+
+```bash
+xdr session start --learning-mode --label incident-42
+xdr --rationale "token replay from a new ASN" library run ttp_token_theft_replay
+xdr annotate "two sign-ins from one ASN; both were the user's VPN"
+xdr session end
+xdr session feedback <session-id> --source agent --outcome completed-with-friction \
+  --category library-discovery --comment "needed three searches to find the replay query"
+xdr history stats --operator <initials> --since 30d   # initials prefix your session IDs
+```
+
+The tool supplies the evidence; people decide what to change. A recurring
+friction category, a repeated error code, or a coverage gap is the starting
+point for a new library query, a playbook, or a fix (see
+[CONTRIBUTING.md](CONTRIBUTING.md)). The schema graph below improves the same
+way, from the hunts you have already run. Details:
+[docs/sessions.md](docs/sessions.md).
 
 ## Schema discovery and sessions
 
@@ -289,7 +377,7 @@ attachment, feedback, cancellation and the two-record output contract.
 |---|---|
 | `xdr auth login / status / logout` | Interactive sign-in (device-code fallback), status, clear tokens |
 | `xdr auth portal-cookie / portal-login / portal-logout` | Portal-session auth for the unofficial [device timeline](docs/device_timeline.md) |
-| `xdr incidents list / show / update` | List, view (`--expand alerts --expand evidence`), update status/classification |
+| `xdr incidents list / show / update` | List, view (`--expand alerts` adds alerts and their evidence), update status/classification |
 | `xdr alerts list / show` | List and view alerts |
 | `xdr investigate ID [--auto-enrich]` | Guided investigation of one incident |
 | `xdr hunt run KQL` | Ad-hoc advanced hunting (`--from-file`, `--from-stdin`, `--timeout`) |
@@ -309,8 +397,8 @@ attachment, feedback, cancellation and the two-record output contract.
 | `xdr schema observe` / `discoveries` / `candidates` | Explicit identifier probes and empirical discovery reports |
 | `xdr schema candidate-review` / `candidate-proposal` | Inspect private evidence or draft a non-promoting core proposal |
 | `xdr schema correlate` / `prune-evidence` / `validate-core` | Offline artifact correlation, evidence retirement, and packaged graph validation |
-| `xdr session start / end / resume / list / show / feedback` | Optional investigation sessions — see [docs/sessions.md](docs/sessions.md) |
-| `xdr history [stats]`, `xdr annotate` | Browse and annotate recorded invocations |
+| `xdr session start / end / resume / list / show / feedback` | Investigation sessions, learning mode, and append-only feedback — see [Built to improve with use](#built-to-improve-with-use) |
+| `xdr history [stats]`, `xdr annotate` | Browse recorded invocations, aggregate failure and coverage metrics, record a lesson |
 | `xdr domains list` | List the tenant's verified domains |
 
 Global options: `--quiet/-q`, `--no-quiet`, `--no-interactive`, `--debug`,
@@ -336,7 +424,7 @@ schema_explore_on_session_end = true  # discover new locations after focused val
 schema_explore_max_queries = 5        # exploration queries per explicit session end (1-1000)
 schema_maintenance_timeout_seconds = 90  # overall foreground upkeep deadline; maximum 3600
 schema_collection_stale_seconds = 604800  # nonblocking semantic-collection reminder
-default_limit = 25
+default_limit = 25              # incidents/alerts list when --limit is omitted
 ```
 
 | Path | Purpose |
@@ -344,7 +432,7 @@ default_limit = 25
 | `~/.xdr-cli/config.toml` | Configuration (`0600` on POSIX) |
 | `~/.xdr-cli/token_cache.json` | MSAL token cache (`0600`) |
 | `~/.xdr-cli/portal_cookies.json` | Imported portal session cookies (`0600`) |
-| `~/.xdr-cli/audit.log` | Local log of response actions, incident updates, auth changes, and `investigate` runs (raw argv; `0600`) |
+| `~/.xdr-cli/audit.log` | Local log of attempted state-changing commands (response actions, incident updates, auth changes, `lists init`, schema repair/import) and `investigate` runs. Written with redacted argv when the command is dispatched, before it runs, so `--dry-run` and declined attempts appear too; `--help` and argument errors do not, and outcomes are not recorded (`0600`) |
 | `~/.xdr-cli/lists/*.txt` | Reference lists for library queries |
 | `~/.xdr-cli/queries/*.kql` | Your own library queries (see [docs/library.md](docs/library.md)) |
 | `~/.xdr-cli/results/YYYY-MM-DD/` | Result artifacts and metadata |
@@ -356,7 +444,9 @@ session), `XDR_ACTOR` (name parallel actors in one session),
 
 **Service-principal auth.** Set `auth_mode = "client_credentials"` and
 `client_secret` in `config.toml`, and give the app registration
-*application* permissions with admin consent. Tokens are acquired
+*application* permissions with admin consent. The application names match the
+table above except `Machine.Read.All` (for `Machine.Read`) and
+`AdvancedQuery.Read.All` (for `AdvancedQuery.Read`). Tokens are acquired
 automatically; `xdr auth login` is not needed. The `authenticated` field from
 `xdr auth status` reports cached delegated-account presence, not whether the
 service-principal credentials are valid. It can be false with working app
@@ -367,7 +457,7 @@ credentials or true if an earlier delegated account remains cached.
 **`xdr auth status` shows `"configured": false`** — run
 `xdr auth login --tenant-id <ID> --client-id <ID>` once; the values are saved.
 
-**`NOT_AUTHENTICATED` / `TOKEN_EXPIRED`** — run `xdr auth login` again.
+**`NOT_AUTHENTICATED` / `AUTH_LOGIN_REQUIRED`** — run `xdr auth login` again.
 
 **`PERMISSION_MISSING_SCOPE` (exit 7) or `AADSTS65001`** — a permission in
 the table above is missing or not consented. In *API permissions*, every row
@@ -379,8 +469,9 @@ sets of permissions are present.
 *Authentication → Public client/native*.
 
 **Sign-in never completes** — enable *Allow public client flows* on the
-registration. If the interactive sign-in can't open a browser, `xdr` falls
-back to a device code; copy it to any browser.
+registration. On Windows, also check the broker redirect URI from setup
+step 1. If no browser or broker can start (for example over SSH), `xdr`
+prints a device code instead; enter it in any browser.
 
 **`API_TIMEOUT` (exit 10) on a hunt that works in the portal** — raise the
 per-call timeout: `xdr library run <name> --timeout 240`, or set

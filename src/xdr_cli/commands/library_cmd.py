@@ -14,7 +14,7 @@ from xdr_cli.commands.hunt_cmd import _hunt_run
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import QueryError, UsageError
 from xdr_cli.kql_parse import extract_tables
-from xdr_cli.queries import list_queries, load_query
+from xdr_cli.queries import _validate_parameter_value, list_queries, load_query
 from xdr_cli.results import emit_result, write_result
 
 library_app = typer.Typer(
@@ -68,7 +68,14 @@ def _cost_hint(query) -> dict[str, str]:
     }
 
 
-def _descriptor(query) -> dict:
+def _descriptor(query, by_name: dict | None = None) -> dict:
+    """Describe ``query``. A deprecated alias keeps its own identity but
+    reports its target's parameters, tables, and cost, because that is what
+    `library run` executes and validates against."""
+    if by_name is None:
+        by_name = {q.name: q for q in list_queries()}
+    target = by_name.get(query.alias_of) if query.tier == "deprecated" else None
+    execution = target or query
     return {
         "name": query.name,
         "description": query.description,
@@ -84,35 +91,37 @@ def _descriptor(query) -> dict:
                 "required": param.default is None,
                 "default": param.default,
             }
-            for param in query.params
+            for param in execution.params
         ],
         "required_permissions": {
             "any_of": [
                 {
                     "resource": "Microsoft Graph",
                     "permission": "ThreatHunting.Read.All",
+                    "application_permission": "ThreatHunting.Read.All",
                     "path": "primary",
                 },
                 {
                     "resource": "WindowsDefenderATP",
-                    "permission": "AdvancedQuery.Read.All",
+                    "permission": "AdvancedQuery.Read",
+                    "application_permission": "AdvancedQuery.Read.All",
                     "path": "fallback",
                 },
             ]
         },
         "schema_hint": {
-            "tables": extract_tables(query.raw_kql),
-            "declared_output_fields": _declared_output_fields(query.raw_kql),
-            "mode_dependent": any(p.name == "mode" for p in query.params),
+            "tables": extract_tables(execution.raw_kql),
+            "declared_output_fields": _declared_output_fields(execution.raw_kql),
+            "mode_dependent": any(p.name == "mode" for p in execution.params),
             "tenant_observed_schema": False,
-            "lists": list(query.lists),
-            "notes": query.agent_hint or None,
+            "lists": list(execution.lists),
+            "notes": execution.agent_hint or None,
         },
-        "cost_hint": _cost_hint(query),
+        "cost_hint": _cost_hint(execution),
         "examples": [
             f"xdr library run {query.name}"
             + "".join(
-                f" --param {p.name}=<value>" for p in query.params if p.default is None
+                f" --param {p.name}=<value>" for p in execution.params if p.default is None
             )
         ],
     }
@@ -142,8 +151,32 @@ def _find(name: str):
     raise error
 
 
+def _invalid_reason(contract, value: str) -> str | None:
+    """Why ``value`` fails ``contract``, or None when it is acceptable."""
+    try:
+        # The renderer's own type check (enum, integer, datetime, duration,
+        # control characters), so validation and rendering never disagree.
+        _validate_parameter_value(contract, value)
+    except QueryError as exc:
+        return exc.message.split(": ", 1)[-1].rstrip(".")
+    if contract.value_format == "64-character SHA-256 hex" and not re.fullmatch(
+        r"[A-Fa-f0-9]{64}", value
+    ):
+        return "expected exactly 64 hexadecimal characters"
+    if contract.value_format == "IPv4 or IPv6 address":
+        try:
+            ipaddress.ip_address(value)
+        except ValueError:
+            return "expected an IPv4 or IPv6 address"
+    return None
+
+
 def _parse_params(name: str, values: list[str] | None) -> dict[str, str]:
     query = _find(name)
+    if query.tier == "deprecated" and query.alias_of:
+        # Alias shims declare no parameters; they run the target's body, so
+        # they accept and validate the target's parameters.
+        query = _find(query.alias_of)
     allowed = [p.name for p in query.params]
     params: dict[str, str] = {}
     for item in values or []:
@@ -181,24 +214,7 @@ def _parse_params(name: str, values: list[str] | None) -> dict[str, str]:
     by_name = {p.name: p for p in query.params}
     for key, value in params.items():
         contract = by_name[key]
-        invalid_reason: str | None = None
-        if contract.allowed and value not in contract.allowed:
-            invalid_reason = f"expected one of {', '.join(contract.allowed)}"
-        elif contract.value_type == "integer":
-            try:
-                if int(value) < 1:
-                    raise ValueError
-            except ValueError:
-                invalid_reason = "expected a positive integer"
-        elif contract.value_format == "64-character SHA-256 hex" and not re.fullmatch(
-            r"[A-Fa-f0-9]{64}", value
-        ):
-            invalid_reason = "expected exactly 64 hexadecimal characters"
-        elif contract.value_format == "IPv4 or IPv6 address":
-            try:
-                ipaddress.ip_address(value)
-            except ValueError:
-                invalid_reason = "expected an IPv4 or IPv6 address"
+        invalid_reason = _invalid_reason(contract, value)
         if invalid_reason:
             error = QueryError(
                 f"Invalid value for {key!r}: {invalid_reason}.",
@@ -218,7 +234,9 @@ def library_list(
     tier: str | None = typer.Option(None, "--tier"),
 ) -> None:
     """List library descriptors without dumping KQL source."""
-    catalog = [_descriptor(query) for query in list_queries()]
+    queries = list_queries()
+    by_name = {query.name: query for query in queries}
+    catalog = [_descriptor(query, by_name) for query in queries]
     rows = list(catalog)
     if search:
         needle = search.casefold()

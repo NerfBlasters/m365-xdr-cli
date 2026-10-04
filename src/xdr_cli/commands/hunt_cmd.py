@@ -229,19 +229,10 @@ def hunt_library_run(
     app_ctx: AppContext = ctx.obj
     typer.echo("warning: use 'xdr library run'; this alias will be removed in 1.0", err=True)
 
-    # Parse params
-    params: dict[str, str] = {}
-    for p in param or []:
-        if "=" not in p:
-            raise UsageError(
-                f"Invalid parameter {p!r}; use key=value.",
-                invalid={"kind": "parameter", "value": p},
-                corrected_argv=["--param", "key=value"],
-                help_command=f"xdr library show {name}",
-            )
-        key, value = p.split("=", 1)
-        params[key.strip()] = value.strip()
+    # Imported here: library_cmd imports this module.
+    from xdr_cli.commands.library_cmd import _parse_params
 
+    params = _parse_params(name, param)
     kql = load_query(name, **params)
 
     asyncio.run(
@@ -276,17 +267,9 @@ def hunt_library_show(
     substitution or pasting into the Defender Advanced Hunting GUI to compare
     behaviour against the CLI execution path.
     """
-    params: dict[str, str] = {}
-    for p in param or []:
-        if "=" not in p:
-            raise UsageError(
-                f"Invalid parameter {p!r}; use key=value.",
-                invalid={"kind": "parameter", "value": p},
-                corrected_argv=["--param", "key=value"],
-                help_command=f"xdr library show {name}",
-            )
-        key, value = p.split("=", 1)
-        params[key.strip()] = value.strip()
+    # Imported here: library_cmd imports this module. Validating exactly as
+    # `library run` does keeps the rendered KQL identical to what it sends.
+    from xdr_cli.commands.library_cmd import _parse_params
 
-    kql = load_query(name, **params)
+    kql = load_query(name, **_parse_params(name, param))
     typer.echo(kql)
