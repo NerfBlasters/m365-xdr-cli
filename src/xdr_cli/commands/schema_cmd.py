@@ -15,6 +15,7 @@ import sys
 import tarfile
 import tempfile
 import threading
+from collections.abc import Iterator
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -87,7 +88,7 @@ from xdr_cli.schema_graph.model import (
 )
 from xdr_cli.schema_graph.model import relationship_id as build_relationship_id
 from xdr_cli.schema_graph.normalize import NormalizationError, normalize_value
-from xdr_cli.schema_graph.opengraph import export_opengraph
+from xdr_cli.schema_graph.opengraph import bloodhound_custom_nodes, export_opengraph
 from xdr_cli.schema_graph.overlay import (
     TenantSemanticOverlay,
     load_tenant_overlay,
@@ -2171,10 +2172,18 @@ def schema_export_opengraph(
         "--include-candidates",
         help="Include unreviewed candidate relationships in the visualization.",
     ),
+    custom_nodes: Path | None = typer.Option(
+        None,
+        "--custom-nodes",
+        help=(
+            "Also write BloodHound node styling (icons and colors) to this `.json` "
+            "file, as the request body for BloodHound's `POST /api/v2/custom-nodes`."
+        ),
+    ),
     force: bool = typer.Option(
         False,
         "--force",
-        help="Replace an existing destination file.",
+        help="Replace existing destination files.",
     ),
 ) -> None:
     """Export value-free schema structure as BloodHound OpenGraph JSON.
@@ -2193,6 +2202,12 @@ def schema_export_opengraph(
     BloodHound may use Object ID as the canvas label. No concrete identifier
     values are exported. Usable schema routes carry `traversable=true` for graph
     exploration, but they do not assert an attack-path privilege.
+
+    Tables are also linked directly with `Join`, `NormalizeJoin`, `SameEntity`,
+    `Correlate`, and `Bridge` edges for a table-level pivot map. Add
+    `--custom-nodes schema.custom-nodes.json` to write node icons and colors,
+    then send that file to BloodHound's `/api/v2/custom-nodes` endpoint. xdr-cli
+    never contacts BloodHound itself.
     """
 
     app_ctx: AppContext = ctx.obj
@@ -2208,54 +2223,49 @@ def schema_export_opengraph(
             observations=overlay.observations,
         ).graph
         overlay_generation = overlay.metadata.get("generation")
-    expanded_output = output.expanduser()
-    # Resolve the directory for a stable publication location, but never
-    # resolve the final component: with --force that would follow a planted
-    # symlink and replace its target rather than the named export entry.
-    destination = expanded_output.parent.resolve() / expanded_output.name
-    if destination.exists() and not force:
-        raise ConflictError(
-            f"OpenGraph destination already exists: {destination}",
+    destination = _export_destination(output)
+    styles_destination = _export_destination(custom_nodes) if custom_nodes else None
+    if styles_destination is not None and styles_destination == destination:
+        raise UsageError(
+            "--custom-nodes must name a different file than the OpenGraph output.",
             help_command="xdr schema export-opengraph --help",
         )
-    try:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary_name = tempfile.mkstemp(
-            dir=destination.parent,
-            prefix=f".{destination.name}.",
-            suffix=".tmp",
-        )
-        temporary = Path(temporary_name)
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(
-                export_opengraph(graph, include_candidates=include_candidates),
-                handle,
-                indent=2,
-                sort_keys=True,
+    for target in (destination, styles_destination):
+        if target is not None and (target.exists() or target.is_symlink()) and not force:
+            raise ConflictError(
+                f"OpenGraph destination already exists: {target}",
+                help_command="xdr schema export-opengraph --help",
             )
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        if os.name == "posix":
-            temporary.chmod(0o600)
-        if force:
-            os.replace(temporary, destination)
-        else:
-            _link_no_replace(temporary, destination)
-            temporary.unlink()
-    except FileExistsError as exc:
-        raise ConflictError(
-            f"OpenGraph destination already exists: {destination}",
-            help_command="xdr schema export-opengraph --help",
-        ) from exc
-    except OSError as exc:
-        raise ArtifactError(
-            f"Could not export OpenGraph file: {exc}",
-            original={"type": type(exc).__name__, "message": str(exc)},
-        ) from exc
-    finally:
-        if "temporary" in locals():
-            temporary.unlink(missing_ok=True)
+    publication_error = None
+    styles_written = False
+    # Finish serialization, fsync and permission checks for every output before
+    # replacing any destination. Independent renames cannot form a transaction;
+    # a late second-file failure must report the graph that was already saved.
+    with contextlib.ExitStack() as staging:
+        graph_temporary = staging.enter_context(
+            _stage_json(destination, export_opengraph(graph, include_candidates=include_candidates))
+        )
+        styles_temporary = (
+            staging.enter_context(_stage_json(styles_destination, bloodhound_custom_nodes()))
+            if styles_destination is not None
+            else None
+        )
+        _publish_staged_json(graph_temporary, destination, force=force)
+        if styles_temporary is not None and styles_destination is not None:
+            try:
+                _publish_staged_json(styles_temporary, styles_destination, force=force)
+                styles_written = True
+            except (ArtifactError, ConflictError) as exc:
+                publication_error = exc
+    receipt_context: dict[str, Any] = {
+        "output_path": str(destination),
+        "value_free": True,
+        "layer": "public+tenant" if include_tenant else "public",
+    }
+    if styles_written:
+        receipt_context["custom_nodes_path"] = str(styles_destination)
+    if publication_error is not None:
+        receipt_context["failed_output_path"] = str(styles_destination)
     emit_result(
         write_result(
             [
@@ -2278,15 +2288,85 @@ def schema_export_opengraph(
                 "include_tenant": include_tenant,
                 "include_candidates": include_candidates,
                 "tenant_overlay_generation": overlay_generation,
+                "custom_nodes_path": str(styles_destination) if styles_written else None,
+                "failed_output_path": (
+                    str(styles_destination) if publication_error is not None else None
+                ),
             },
-            receipt_context={
-                "output_path": str(destination),
-                "value_free": True,
-                "layer": "public+tenant" if include_tenant else "public",
-            },
+            receipt_context=receipt_context,
             tenant_id=app_ctx.config.tenant_id,
         )
     )
+    if publication_error is not None:
+        raise PartialSuccessError(
+            "OpenGraph was saved, but the custom-node styling file could not be published.",
+            help_command="xdr schema export-opengraph --help",
+            original={
+                "type": "PartialOpenGraphExport",
+                "output_path": str(destination),
+                "failed_output_path": str(styles_destination),
+                "cause": publication_error.error_code,
+                "message": str(publication_error),
+            },
+        ) from publication_error
+
+
+def _export_destination(path: Path) -> Path:
+    expanded = path.expanduser()
+    # Resolve the directory for a stable publication location, but never
+    # resolve the final component: with --force that would follow a planted
+    # symlink and replace its target rather than the named export entry.
+    return expanded.parent.resolve() / expanded.name
+
+
+@contextlib.contextmanager
+def _stage_json(destination: Path, payload: dict[str, Any]) -> Iterator[Path]:
+    temporary = None
+    try:
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.is_dir() and not destination.is_symlink():
+                raise IsADirectoryError(f"Export destination is a directory: {destination}")
+            descriptor, temporary_name = tempfile.mkstemp(
+                dir=destination.parent,
+                prefix=f".{destination.name}.",
+                suffix=".tmp",
+            )
+            temporary = Path(temporary_name)
+            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+                json.dump(payload, handle, indent=2, sort_keys=True)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            if os.name == "posix":
+                temporary.chmod(0o600)
+        except OSError as exc:
+            raise ArtifactError(
+                f"Could not stage OpenGraph file: {exc}",
+                original={"type": type(exc).__name__, "message": str(exc)},
+            ) from exc
+        yield temporary
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _publish_staged_json(temporary: Path, destination: Path, *, force: bool) -> None:
+    try:
+        if force:
+            os.replace(temporary, destination)
+        else:
+            _link_no_replace(temporary, destination)
+    except FileExistsError as exc:
+        raise ConflictError(
+            f"OpenGraph destination already exists: {destination}",
+            help_command="xdr schema export-opengraph --help",
+        ) from exc
+    except OSError as exc:
+        raise ArtifactError(
+            f"Could not export OpenGraph file: {exc}",
+            original={"type": type(exc).__name__, "message": str(exc)},
+        ) from exc
 
 
 def _locator_availability(effective, locator: str) -> str:

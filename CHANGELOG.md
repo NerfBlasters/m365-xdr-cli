@@ -10,6 +10,41 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.10.0] - 2026-09-30
+
+BloodHound readability update for the OpenGraph schema export.
+
+### Added
+
+- `schema export-opengraph` now links tables directly with `Join`,
+  `NormalizeJoin`, `SameEntity`, `Correlate`, and `Bridge` edges, one per table
+  pair and pivot kind, so
+  ``MATCH p=(:XDR_Table)-[:`Join`|NormalizeJoin|SameEntity|Correlate|Bridge]->(:XDR_Table) RETURN p``
+  draws a table-level pivot map. Each edge lists the field pairs and
+  relationship IDs it summarizes. Queries that match every relationship from a
+  table, such as `MATCH (:XDR_Table)-[r]->()`, now also return these edges.
+- `schema export-opengraph --custom-nodes PATH` writes the request body for
+  BloodHound's `POST /api/v2/custom-nodes`, giving tables, fields, entity kinds,
+  and namespaces their own icon and color. xdr-cli does not contact BloodHound.
+- Every exported node has a short `name` property (table name, column, entity
+  kind, or namespace), which BloodHound uses as the canvas label ahead of the
+  long `displayname`.
+
+### Fixed
+
+- Updated locked PyJWT from 2.14.0 to 2.15.0 to address
+  GHSA-42vr-xj54-vc7v, an unhandled exception when parsing certain JWT payloads.
+- Both OpenGraph output files are staged before either is published. A later
+  styling-publication failure reports the saved graph and failed path with
+  partial-success exit 14.
+- Table summaries use the weakest member evidence and expose mixed statuses,
+  confidence levels, candidate counts, and directions. Candidate keys cannot
+  inherit reviewed status or traversability from another member.
+- Overlapping direction groups merge into one edge per start/end/kind instead
+  of emitting duplicate table edges.
+- Table-map examples quote `Join`, a reserved word in BloodHound CE's Cypher
+  parser.
+
 ## [0.9.0] - 2026-09-03
 
 Autonomous semantic-crawl and empirical-pivot update following live-tenant
