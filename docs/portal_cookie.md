@@ -335,8 +335,8 @@ usage error (exit 6).
 
 With `--backend portal-cookie`, timeline reads use the stored cookies and
 `--refresh-token` is rejected (exit 4). On the official backend the timeline
-keeps its own credential order: explicit refresh token, then stored cookies,
-then a cached portal token. See [device_timeline.md](device_timeline.md).
+keeps its own credential order: explicit refresh token, then stored cookies.
+See [device_timeline.md](device_timeline.md).
 
 ## Errors you may see
 

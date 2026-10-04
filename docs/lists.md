@@ -39,7 +39,7 @@ still loaded; staleness is advisory.
 
 | Block | Purpose | How to populate |
 |---|---|---|
-| `TenantDomains` | Tenant-owned host/domain strings. Used by inbox-rule, mailbox-delegation, and DNS queries for internal/external classification. | By hand, or from `xdr domains list`: its receipt's `data_path` names a JSONL file whose rows carry `name` and `source`, so `jq -r 'select(.source=="entra") \| .name' "$DATA_PATH" >> ~/.xdr-cli/lists/TenantDomains.txt` appends the Entra-verified domains. |
+| `TenantDomains` | Tenant-owned host/domain strings. Used by inbox-rule, mailbox-delegation, and DNS queries for internal/external classification. | By hand, or from `xdr domains list`: its receipt's `data_path` names a JSONL file whose rows carry `name` and `source`, so `jq -r 'select(.source=="entra" and .isVerified==true) \| .name' "$DATA_PATH" >> ~/.xdr-cli/lists/TenantDomains.txt` appends the verified Entra domains. Keep the `isVerified` filter: an unverified domain is not yours yet, and listing it would classify mail sent to it as internal. |
 | `InternalSubnets` | Tenant-internal IPv4 CIDRs. | Public seed ships RFC1918 + CGNAT. Add tenant-specific ranges. |
 | `KnownServiceAccounts` | IT-managed service accounts (UPN / sAMAccountName). | Pre-populated seed ships with universal Windows service principals (`NT AUTHORITY\*`, `MSOL_*`, `AAD_*`, `Sync_*`). Add tenant-specific accounts (e.g. `svc_*`, `MSSQL$*`) to the user copy. |
 | `KnownGoodSigners` | Widely-trusted Authenticode publishers. | Public seed ships ~40. Add tenant-specific signers. |

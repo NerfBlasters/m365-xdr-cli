@@ -69,6 +69,8 @@ roles, namespaces, provenance, temporal guidance, and tenant availability.
 > [Regenerating this file](#regenerating-this-file)), then
 > `python scripts/build_schema_pivots.py schema.csv docs/schema_pivots.md`.
 
+<!-- BEGIN GENERATED PHYSICAL REFERENCE -->
+
 ---
 
 ## Casing gotchas — read first
@@ -875,6 +877,8 @@ DeviceTvmSoftwareVulnerabilitiesKB
 | project DeviceName, SoftwareName, SoftwareVersion, CveId, CvssScore, IsExploitAvailable
 ```
 
+<!-- END GENERATED PHYSICAL REFERENCE -->
+
 ---
 
 ## Regenerating this file
@@ -907,8 +911,9 @@ does not certify it. Convert the JSONL to CSV:
 # Consume the receipt and previews, then select the first line.
 receipt=$(xdr schema refresh | jq -cs '.[0]')
 path=$(printf '%s' "$receipt" | jq -r '.data_path')
-jq -r '[.TableName,.ColumnName,.ColumnType,.ColumnOrdinal] | @csv' "$path" \
-  > schema.csv
+{ echo 'TableName,ColumnName,ColumnType,ColumnOrdinal'
+  jq -r '[.TableName,.ColumnName,.ColumnType,.ColumnOrdinal] | @csv' "$path"
+} > schema.csv   # the renderer reads these column headers
 ```
 
 Browse the refreshed cache with `xdr schema tables --search signin` and
@@ -925,12 +930,18 @@ then **Export -> Export results to CSV**. The portal and CLI run the same
 KQL, so rows are comparable when tenant scope, permissions, and
 connected-workspace context match.
 
-### 2. Rebuild the hand-maintained sections
+### 2. Rebuild the physical reference
 
 ```bash
 python3 scripts/build_schema_pivots.py schema.csv docs/schema_pivots.md
 python3 scripts/build_schema_pivots.py schema.csv | less   # stdout only
 ```
+
+When the output file exists, the renderer replaces only the text between
+`<!-- BEGIN GENERATED PHYSICAL REFERENCE -->` and
+`<!-- END GENERATED PHYSICAL REFERENCE -->`; the header above the markers,
+the generated semantic block, and this section are left as they are. Without
+an existing file it writes a complete document.
 
 Same CSV in, same output out, so it is safe to regenerate in CI
 (`git diff --exit-code docs/schema_pivots.md` after the render). Every bullet
