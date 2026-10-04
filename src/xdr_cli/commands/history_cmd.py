@@ -106,7 +106,7 @@ def _iter_filtered_records(
         UTC timestamps with the same ``Z`` suffix sort lexicographically, so a
         string compare is correct here and avoids per-record datetime parsing.
       * ``command``: substring match against the ``command`` field
-        (e.g., ``"hunt"`` matches ``"hunt run"``, ``"hunt library"``,
+        (e.g., ``"hunt"`` matches ``"hunt run"``, ``"hunt library-show"``,
         ``"investigate.hunt"``).
       * ``incident``: exact match against ``anchor_incident``.
       * ``actor``: exact match against the ``actor`` field — currently unused
@@ -244,7 +244,6 @@ def history_browse(
 # rely on a stable shape across versions; when ``xdr pivot`` ships, it will
 # populate this counter without a schema change.
 _HUNT_RUN = "hunt run"
-_HUNT_LIBRARY_RUN = "hunt library-run"
 _LIBRARY_RUN = "library run"
 _PIVOT = "pivot"
 _INVESTIGATE_HUNT = "investigate.hunt"
@@ -332,7 +331,7 @@ def _compute_invocations(records: list[dict[str, Any]]) -> dict[str, Any]:
 def _compute_hunt_ratio(records: list[dict[str, Any]]) -> dict[str, Any]:
     counts = Counter(r.get("command", "") for r in records)
     hr = counts.get(_HUNT_RUN, 0)
-    hlr = counts.get(_HUNT_LIBRARY_RUN, 0) + counts.get(_LIBRARY_RUN, 0)
+    hlr = counts.get(_LIBRARY_RUN, 0)
     pivot = counts.get(_PIVOT, 0)
     inv_hunt = counts.get(_INVESTIGATE_HUNT, 0)
     if hr > 0 and hlr > 0:

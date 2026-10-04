@@ -40,8 +40,8 @@ For multi-step investigations, render a markdown checklist to give the analyst v
 
 Follow a **triage-ladder** pattern. Each step informs the next; don't skip ahead.
 
-0. **Let the CLI attach telemetry.** `hunt run`, `hunt library-run`,
-   `library run`, `schema observe`, `schema candidate-review`, `investigate`,
+0. **Let the CLI attach telemetry.** `hunt run`, `library run`,
+   `schema observe`, `schema candidate-review`, `investigate`,
    `incidents show`, and `alerts show` automatically create an optional
    30-minute session when none exists. Other commands may attach to one
    existing session but do not create one. Session ambiguity never blocks

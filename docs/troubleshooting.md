@@ -67,7 +67,7 @@ are grouped separately below the table because they only come from
 | 3    | `UPSTREAM_API_ERROR` | `API_ERROR`, `API_MALFORMED_RESPONSE`, `API_INVALID_RESPONSE_SHAPE`, `BACKEND_CAPABILITY_UNAVAILABLE` | Inspect `original.status` / `original.detail`; for the capability code, no request was sent -- pick the other `--backend` |
 | 4    | `CONFIG_ERROR`       | `CONFIG_ERROR`, `PORTAL_COOKIE_INVALID`, `PORTAL_XSRF_TOKEN_MISSING`, `PORTAL_COOKIE_TENANT_MISMATCH`, `PACKAGE_DATA_MISSING` | Check `~/.xdr-cli/config.toml`; re-import cookies; reinstall for the package code |
 | 5    | `QUERY_ERROR`        | `QUERY_ERROR`, `QUERY_UNKNOWN_TABLE`, `QUERY_UNKNOWN_COLUMN`, `QUERY_SEMANTIC_ERROR`, `LIBRARY_UNKNOWN_ENTRY`, `LIBRARY_UNKNOWN_PARAM`, `LIBRARY_MISSING_PARAM`, `LIBRARY_INVALID_PARAM` | Fix KQL (`xdr schema tables --search <name>`) or the library call (`xdr library show <name>`) |
-| 6    | `USAGE_ERROR`        | `CLI_USAGE_ERROR`, `CLI_UNKNOWN_COMMAND`, `CLI_UNKNOWN_OPTION`, `CLI_REMOVED_OPTION`, `CLI_INVALID_VALUE`, `CLI_INVALID_ENUM`, `CLI_MISSING_VALUE` | Follow `help_command` / `corrected_argv` |
+| 6    | `USAGE_ERROR`        | `CLI_USAGE_ERROR`, `CLI_UNKNOWN_COMMAND`, `CLI_UNKNOWN_OPTION`, `CLI_INVALID_VALUE`, `CLI_INVALID_ENUM`, `CLI_MISSING_VALUE` | Follow `help_command` / `corrected_argv` |
 | 7    | `PERMISSION_ERROR`   | `PERMISSION_MISSING_SCOPE`, `PERMISSION_DENIED`                         | Grant the missing API permission and admin consent (see below)    |
 | 8    | `NOT_FOUND`          | `API_NOT_FOUND`, `LOCAL_NOT_FOUND`, `RESULT_NOT_FOUND`, `RESULT_QUERY_NOT_FOUND` | Verify the ID or run-id (`xdr results list`)              |
 | 9    | `RATE_LIMIT`         | `API_RATE_LIMITED`                                                      | Wait `retry_after_seconds`, then retry                            |
@@ -478,18 +478,15 @@ again under `--backend portal-cookie` to clear both.
 
 ## Command-line usage errors
 
-### `CLI_REMOVED_OPTION` for `--jq`, `--fields`, or hunt `--limit`
+### `CLI_UNKNOWN_OPTION` for `--jq`, `--fields`, or hunt `--limit`
 
 These flags do not exist. `xdr` does not project or filter results
 locally, and hunts save every row the API returns; you shape the JSONL
 artifact with shell tools. (`incidents list`, `alerts list` and
 `results list` do take `--limit`, which bounds how many items are fetched.)
-The one-line error includes `corrected_argv` (the same command with the
-offending flag and its value stripped) and a `suggestions` entry explaining
-the replacement. `schema collect` returns the same code for `--resume` and
-`--exhaustive`, which it does not take; plain `xdr schema collect`
-continues pending validation and `--explore` drives identifier-led
-discovery.
+`schema collect` likewise takes no `--resume` or `--exhaustive`: plain
+`xdr schema collect` continues pending validation and `--explore` drives
+identifier-led discovery.
 
 | Flag                 | Instead                                                            |
 | -------------------- | ------------------------------------------------------------------ |
@@ -713,8 +710,7 @@ happens to equal a command name does not count):
   `device collect-package`, `device restrict`, `device unrestrict`
 - Incident updates: `incidents update`
 - Authentication: `auth login`, `auth logout`, `auth portal-cookie`,
-  `auth portal-logout`, and `auth portal-login` (still matched, although
-  that command only prints a usage error directing you to `portal-cookie`)
+  `auth portal-logout`
 - Guided investigation: `investigate`
 - Lists: `lists init`
 - Schema cache writes: `schema repair-overlay`, `schema migrate-cache`,

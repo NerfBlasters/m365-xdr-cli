@@ -54,9 +54,8 @@ from xdr_cli.package_download import (
     download_package_archive,
     package_destination,
 )
-from xdr_cli.portal_auth import PortalAuth, load_portal_cookies
+from xdr_cli.portal_auth import load_portal_cookies
 from xdr_cli.portal_client import (
-    BearerAuth,
     CookieAuth,
     PortalAuthStrategy,
     PortalClient,
@@ -537,13 +536,11 @@ def _select_portal_auth_strategy(
     """First-match-wins auth-strategy selection for `device timeline`.
 
     1. ``--refresh-token``/``MDE_REFRESH_TOKEN`` -> RefreshTokenAuth. Explicit
-       per-run credential; wins over any stored state (CI use case).
-    2. A stored ``portal_cookies.json`` -> CookieAuth. Its presence means the
-       user deliberately ran `xdr auth portal-cookie` (typically because
-       FOCI/MSAL is blocked in their tenant), so it takes precedence over a
-       merely-cached MSAL account.
-    3. A cached portal MSAL account -> BearerAuth.
-    4. None of the above -> exit non-zero with cookie-import recovery guidance.
+       per-run credential on the official backend only; wins over stored
+       cookies (CI use case).
+    2. A stored ``portal_cookies.json`` -> CookieAuth, imported by
+       `xdr auth portal-cookie`.
+    3. Neither -> exit non-zero with cookie-import recovery guidance.
     """
     if ctx.config.backend_profile.cookie_auth and refresh_token:
         raise ConfigError("--refresh-token cannot be combined with --backend portal-cookie.")
@@ -566,10 +563,6 @@ def _select_portal_auth_strategy(
         raise NotAuthenticatedError(
             "No portal cookies found. Run xdr auth portal-cookie <cookie-source>."
         )
-
-    portal_auth = PortalAuth(ctx.config)
-    if portal_auth.get_auth_status().get("authenticated"):
-        return BearerAuth(portal_auth)
 
     error = AuthError(
         "No Defender portal credentials found.",

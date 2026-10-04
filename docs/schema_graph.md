@@ -136,8 +136,6 @@ xdr schema pivot DeviceNetworkEvents.DeviceId
 xdr schema path DeviceNetworkEvents DeviceProcessEvents
 ```
 
-`xdr schema candidates` is an alias for `discoveries`.
-
 ## Local-first collection
 
 ```bash
@@ -977,7 +975,7 @@ Shared entities are row evidence; a structural route alone is not.
 | `schema collect --explore` | When work remains | Find saved identifiers in new fields and nested paths |
 | `schema observe --plan-only` | No | Preview one source's targets and request estimate |
 | `schema observe` | Yes | Sample/reuse identifiers and crawl target tables |
-| `schema discoveries` (alias `candidates`) | No | Report observed/validated routes and policy decisions |
+| `schema discoveries` | No | Report observed/validated routes and policy decisions |
 | `schema pivot`, `schema path` | No | Explain usable field/table routes |
 | `schema candidate-review` | Yes | Optional bounded private context for one route |
 | `schema candidate-proposal` | No | Draft a contributor-owned core JSONL proposal |

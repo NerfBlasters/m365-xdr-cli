@@ -59,12 +59,12 @@ def _artifact_stdout(output: str):
     return [json.loads(line) for line in output.splitlines()]
 
 
-def test_hunt_library_lists_queries(tmp_path, monkeypatch):
+def test_library_list_lists_queries(tmp_path, monkeypatch):
     monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / ".xdr-cli"))
     (tmp_path / ".xdr-cli").mkdir()
     (tmp_path / ".xdr-cli" / "queries").mkdir()
 
-    result = runner.invoke(app, ["hunt", "library"])
+    result = runner.invoke(app, ["library", "list"])
     assert result.exit_code == 0
     receipt = json.loads(result.stdout.splitlines()[0])
     rows = [
@@ -364,21 +364,20 @@ def test_hunt_run_columns_projected_from_schema(session_home, monkeypatch):
     assert inv["columns_projected"] == ["Timestamp", "DeviceName"]
 
 
-def test_removed_fields_flag_returns_structured_migration_error(session_home):
+def test_fields_flag_is_an_ordinary_unknown_option(session_home):
     result = runner.invoke(
         app,
         ["--fields", "Timestamp", "hunt", "run", "DeviceInfo | take 1"],
     )
     assert result.exit_code == 6
     error = json.loads(result.stdout)["error"]
-    assert error["code"] == "CLI_REMOVED_OPTION"
-    assert error["corrected_argv"] == [
-        "xdr", "hunt", "run", "DeviceInfo | take 1",
-    ]
+    assert error["code"] == "CLI_UNKNOWN_OPTION"
+    assert error["invalid"] == {"kind": "option", "value": "--fields"}
+    assert error["help_command"] == "xdr --help"
 
 
-def test_hunt_library_run_records_library_name_and_params(session_home, monkeypatch):
-    """`hunt library-run` propagates the query name and params dict to the
+def test_library_run_records_library_name_and_params(session_home, monkeypatch):
+    """`library run` propagates the query name and params dict to the
     recorder."""
     from xdr_cli.api.hunting import HuntingResult
 
@@ -397,8 +396,8 @@ def test_hunt_library_run_records_library_name_and_params(session_home, monkeypa
         "argv",
         [
             "xdr",
-            "hunt",
-            "library-run",
+            "library",
+            "run",
             "qry_process_tree",
             "-p",
             "device_name=host01",
@@ -525,11 +524,11 @@ class TestParseExecutionTimeMs:
 
 
 # ---------------------------------------------------------------------------
-# `xdr hunt library` param rendering (Task 11 Bug 2)
+# `xdr library list` param rendering (Task 11 Bug 2)
 # ---------------------------------------------------------------------------
 
 
-def test_hunt_library_renders_three_param_states_distinctly(tmp_path, monkeypatch):
+def test_library_list_renders_three_param_states_distinctly(tmp_path, monkeypatch):
     """The library listing must distinguish `None` (required) from `""`
     (declared empty default — scope-pass-through idiom) from a non-empty
     default.
@@ -564,7 +563,7 @@ def test_hunt_library_renders_three_param_states_distinctly(tmp_path, monkeypatc
         "xdr_cli.commands.library_cmd.list_queries",
         return_value=[fake_required],
     ):
-        result = runner.invoke(app, ["hunt", "library"])
+        result = runner.invoke(app, ["library", "list"])
     assert result.exit_code == 0, result.output
     receipt = json.loads(result.stdout.splitlines()[0])
     rows = [
@@ -576,7 +575,7 @@ def test_hunt_library_renders_three_param_states_distinctly(tmp_path, monkeypatc
     assert rendered["qry_required_only"][0]["required"] is True
 
     # Now exercise the full three-state contract with a real built-in query.
-    result2 = runner.invoke(app, ["hunt", "library"])
+    result2 = runner.invoke(app, ["library", "list"])
     assert result2.exit_code == 0, result2.output
     receipt2 = json.loads(result2.stdout.splitlines()[0])
     rows2 = [
@@ -697,8 +696,8 @@ def test_hunt_run_timeout_flag_overrides_config(session_home, monkeypatch):
     assert captured_kwargs.get("timeout") == 240, captured_kwargs
 
 
-def test_hunt_library_run_timeout_flag_overrides_config(session_home, monkeypatch):
-    """Same override contract for `library-run --timeout`."""
+def test_library_run_timeout_flag_overrides_config(session_home, monkeypatch):
+    """Same override contract for `library run --timeout`."""
     from unittest.mock import AsyncMock, MagicMock, patch
     from xdr_cli.api.hunting import HuntingResult
 
@@ -722,8 +721,8 @@ def test_hunt_library_run_timeout_flag_overrides_config(session_home, monkeypatc
         result = runner.invoke(
             app,
             [
-                "hunt",
-                "library-run",
+                "library",
+                "run",
                 "qry_process_tree",
                 "-p",
                 "device_name=host01",
@@ -755,34 +754,43 @@ def test_hunt_library_show_unknown_query_errors(tmp_path, monkeypatch):
         ([], "LIBRARY_MISSING_PARAM"),
     ],
 )
-@pytest.mark.parametrize("command", ["library-show", "library-run"])
-def test_hunt_library_aliases_validate_params_like_library_run(
+@pytest.mark.parametrize("command", [["hunt", "library-show"], ["library", "run"]])
+def test_hunt_library_show_validates_params_like_library_run(
     tmp_path, monkeypatch, command, argv, code
 ):
-    """`hunt library-show`/`library-run` must reject what `library run` rejects,
-    so a typo cannot silently drop a scoping parameter."""
+    """`hunt library-show` must reject what `library run` rejects, so a typo
+    cannot silently drop a scoping parameter."""
     monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / ".xdr-cli"))
     (tmp_path / ".xdr-cli" / "queries").mkdir(parents=True)
 
-    result = runner.invoke(app, ["hunt", command, "qry_process_tree", *argv])
+    result = runner.invoke(app, [*command, "qry_process_tree", *argv])
     assert result.exit_code == 5, result.output
     error = json.loads(result.stdout.splitlines()[-1])["error"]
     assert error["code"] == code
 
 
 def test_deprecated_alias_accepts_and_validates_target_params(tmp_path, monkeypatch):
+    """A user-dir `-- tier: deprecated` shim forwards to its alias_of target."""
     monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / ".xdr-cli"))
-    (tmp_path / ".xdr-cli" / "queries").mkdir(parents=True)
+    user_queries = tmp_path / ".xdr-cli" / "queries"
+    user_queries.mkdir(parents=True)
+    (user_queries / "qry_inbox_rule_legacy.kql").write_text(
+        "-- name: qry_inbox_rule_legacy\n"
+        "-- description: Deprecated; use qry_inbox_rule_activity.\n"
+        "-- params:\n"
+        "-- tier: deprecated\n"
+        "-- alias_of: qry_inbox_rule_activity\n"
+    )
 
     ok = runner.invoke(
         app,
-        ["hunt", "library-show", "qry_inbox_rule_audit", "-p", "account_upn=alice@corp.example"],
+        ["hunt", "library-show", "qry_inbox_rule_legacy", "-p", "account_upn=alice@corp.example"],
     )
     assert ok.exit_code == 0, ok.output
     assert "alice@corp.example" in ok.stdout
 
     bad = runner.invoke(
-        app, ["hunt", "library-show", "qry_inbox_rule_audit", "-p", "acount_upn=x"]
+        app, ["hunt", "library-show", "qry_inbox_rule_legacy", "-p", "acount_upn=x"]
     )
     assert bad.exit_code == 5
     assert json.loads(bad.stdout.splitlines()[-1])["error"]["code"] == "LIBRARY_UNKNOWN_PARAM"
@@ -828,25 +836,46 @@ def test_typed_param_errors_use_the_library_contract(
 
 def test_alias_descriptor_reports_target_execution_metadata(tmp_path, monkeypatch):
     monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / ".xdr-cli"))
-    (tmp_path / ".xdr-cli" / "queries").mkdir(parents=True)
+    user_queries = tmp_path / ".xdr-cli" / "queries"
+    user_queries.mkdir(parents=True)
+    (user_queries / "qry_inbox_rule_legacy.kql").write_text(
+        "-- name: qry_inbox_rule_legacy\n"
+        "-- description: Deprecated; use qry_inbox_rule_activity.\n"
+        "-- params:\n"
+        "-- tier: deprecated\n"
+        "-- alias_of: qry_inbox_rule_activity\n"
+    )
 
     def show(name):
         result = runner.invoke(app, ["library", "show", name])
         assert result.exit_code == 0, result.output
         return json.loads(result.stdout)["data"]
 
-    alias, target = show("qry_inbox_rule_audit"), show("qry_inbox_rule_activity")
+    alias, target = show("qry_inbox_rule_legacy"), show("qry_inbox_rule_activity")
     assert (alias["name"], alias["tier"], alias["alias_of"]) == (
-        "qry_inbox_rule_audit", "deprecated", "qry_inbox_rule_activity",
+        "qry_inbox_rule_legacy", "deprecated", "qry_inbox_rule_activity",
     )
     assert alias["description"] == "Deprecated; use qry_inbox_rule_activity."
     assert alias["parameters"] == target["parameters"] != []
     assert alias["schema_hint"] == target["schema_hint"]
     assert alias["schema_hint"]["tables"]
     assert alias["cost_hint"] == target["cost_hint"]
-    assert alias["examples"][0].startswith("xdr library run qry_inbox_rule_audit")
+    assert alias["examples"][0].startswith("xdr library run qry_inbox_rule_legacy")
 
-    listed = runner.invoke(app, ["library", "list", "--search", "qry_inbox_rule_audit"])
+    listed = runner.invoke(app, ["library", "list", "--search", "qry_inbox_rule_legacy"])
     assert listed.exit_code == 0, listed.output
     row = json.loads(listed.stdout.splitlines()[1])
     assert row["parameters"] == target["parameters"]
+
+
+@pytest.mark.parametrize("command", ["library", "library-run"])
+def test_removed_hunt_library_aliases_are_unknown_commands(tmp_path, monkeypatch, command):
+    """`hunt library` and `hunt library-run` were removed; `library list` and
+    `library run` are the only spellings."""
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / ".xdr-cli"))
+    (tmp_path / ".xdr-cli" / "queries").mkdir(parents=True)
+
+    result = runner.invoke(app, ["hunt", command, "qry_process_tree"])
+    assert result.exit_code == 6, result.output
+    error = json.loads(result.stdout.splitlines()[-1])["error"]
+    assert error["code"] == "CLI_UNKNOWN_COMMAND"

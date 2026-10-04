@@ -250,10 +250,7 @@ flow (which needs `client_id`).
 
 `auth logout` clears credentials for the backend selected for that
 invocation only. In cookie mode it deletes `portal_cookies.json` and
-`portal_token_cache.json` (a token cache left by a sign-in flow this
-release no longer offers; `auth portal-logout` deletes it) and reports
-`cookie_cleared` and `token_cache_cleared`; official `token_cache.json` is
-untouched. In official mode it clears `token_cache.json` and leaves the
+reports `cookie_cleared`; official `token_cache.json` is untouched. In official mode it clears `token_cache.json` and leaves the
 cookies in place. Consequence in `auto` mode: with both present, `auth
 logout` clears MSAL, and the next command silently selects cookies. Run
 `auth portal-logout`, which always clears the portal files regardless of

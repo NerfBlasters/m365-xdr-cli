@@ -53,11 +53,6 @@ def official_identity(monkeypatch):
     }
     monkeypatch.setattr('xdr_cli.auth.AuthManager', Mock(return_value=auth))
     monkeypatch.setattr('xdr_cli.commands.auth_cmd.AuthManager', Mock(return_value=auth))
-    portal = Mock()
-    portal.get_auth_status.return_value = {
-        'authenticated': False, 'account': None, 'audit_app_name': None,
-    }
-    monkeypatch.setattr('xdr_cli.commands.auth_cmd.PortalAuth', Mock(return_value=portal))
 
 
 @pytest.mark.parametrize('command,collection', [
@@ -310,17 +305,16 @@ def test_action_modes_are_canonical_before_dispatch(
 
 
 @pytest.mark.parametrize('command', ['logout', 'portal-logout'])
-def test_portal_logout_clears_legacy_tokens_but_preserves_official(local, command):
+def test_portal_logout_clears_cookies_but_preserves_official(local, command):
     _, home = local
-    (home / 'portal_token_cache.json').write_text('{}')
     (home / 'token_cache.json').write_text('{"synthetic": "official"}')
     for first in (True, False):
         result = CliRunner().invoke(app, ['--backend', 'portal-cookie', 'auth', command])
         assert result.exit_code == 0, result.output
         data = json.loads(result.stdout)['data']
-        assert data['cookie_cleared'] is first and data['token_cache_cleared'] is first
+        assert data['cookie_cleared'] is first
+        assert 'token_cache_cleared' not in data
         assert not (home / 'portal_cookies.json').exists()
-        assert not (home / 'portal_token_cache.json').exists()
         assert (home / 'token_cache.json').read_text() == '{"synthetic": "official"}'
 
 

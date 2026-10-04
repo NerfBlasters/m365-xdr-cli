@@ -252,9 +252,6 @@ def test_portal_auth_status_does_not_initialize_msal(config, monkeypatch):
     monkeypatch.setattr("xdr_cli.commands.auth_cmd.AuthManager", Mock(
         side_effect=AssertionError("MSAL"),
     ))
-    monkeypatch.setattr("xdr_cli.commands.auth_cmd.PortalAuth", Mock(
-        side_effect=AssertionError("portal OAuth"),
-    ))
     monkeypatch.setattr("xdr_cli.main.load_config", lambda: config)
     result = CliRunner().invoke(app, ["auth", "status"])
     assert result.exit_code == 0, result.output

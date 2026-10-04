@@ -33,7 +33,7 @@ class Config:
     # aggregations routinely run 30-90s against Defender. The previous 30s
     # default reflected single-event lookups and caused summary-mode hunts
     # to look like "empty results" when in fact the API was just slow.
-    # Override per-call with `xdr hunt run --timeout` / `library-run --timeout`.
+    # Override per-call with `xdr hunt run --timeout` / `xdr library run --timeout`.
     api_timeout: int = 120
     # Optional investigation telemetry expires after 30 minutes of inactivity.
     session_timeout_seconds: int = 1800

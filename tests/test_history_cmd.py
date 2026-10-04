@@ -79,7 +79,7 @@ def test_history_current_session(home):
             "timestamp": "2026-04-24T00:02:00Z",
             "session_id": "jd-1",
             "seq": 2,
-            "command": "hunt library",
+            "command": "library list",
         },
     ]
     _seed_jsonl(home, "jd-1", records)
@@ -118,7 +118,7 @@ def test_history_command_filter(home):
             "timestamp": "2026-04-24T00:02:00Z",
             "session_id": "jd-1",
             "seq": 2,
-            "command": "hunt library",
+            "command": "library list",
         },
         {
             "kind": "invocation",
@@ -567,13 +567,13 @@ def _seed_session(home_dir, session_id, records, *, upn: str = "j@c") -> None:
 
 
 def test_stats_invocation_counts(home):
-    """Five invocations: 3 hunt run, 2 hunt library-run; ratio 3:2."""
+    """Five invocations: 3 hunt run, 2 library run; ratio 3:2."""
     records = [
         _stats_record(1, "hunt run"),
         _stats_record(2, "hunt run"),
         _stats_record(3, "hunt run"),
-        _stats_record(4, "hunt library-run"),
-        _stats_record(5, "hunt library-run"),
+        _stats_record(4, "library run"),
+        _stats_record(5, "library run"),
     ]
     _seed_session(home, "jd-1", records)
     _set_current(home, "jd-1")
@@ -584,25 +584,10 @@ def test_stats_invocation_counts(home):
     data = parsed["data"]
     assert data["invocations"]["total"] == 5
     assert data["invocations"]["by_command"]["hunt run"] == 3
-    assert data["invocations"]["by_command"]["hunt library-run"] == 2
+    assert data["invocations"]["by_command"]["library run"] == 2
     assert data["hunt_ratio"]["hunt_run"] == 3
     assert data["hunt_ratio"]["hunt_library_run"] == 2
     assert data["hunt_ratio"]["ratio_explanatory"] == "3:2"
-
-
-def test_stats_counts_native_and_legacy_library_run_together(home):
-    records = [
-        _stats_record(1, "hunt run"),
-        _stats_record(2, "library run"),
-        _stats_record(3, "hunt library-run"),
-    ]
-    _seed_session(home, "jd-1", records)
-    _set_current(home, "jd-1")
-    result = runner.invoke(app, ["history", "stats"])
-    assert result.exit_code == 0, result.output
-    ratio = json.loads(result.stdout)["data"]["hunt_ratio"]
-    assert ratio["hunt_library_run"] == 2
-    assert ratio["ratio_explanatory"] == "1:2"
 
 
 def test_stats_cpu_sum(home):
@@ -672,7 +657,7 @@ def test_stats_failure_rate_zero_failures(home):
 
 def test_stats_table_coverage_gaps(home):
     """A hunt run touched a library-covered table without using the library."""
-    # CloudAppEvents is referenced by qry_inbox_rule_audit.kql / qry_inbox_rule_triggers.kql.
+    # CloudAppEvents is referenced by qry_inbox_rule_activity.kql.
     records = [
         _stats_record(
             1,
@@ -715,14 +700,14 @@ def test_stats_table_coverage_gaps_retokenize_null(home):
 
 
 def test_stats_table_coverage_gaps_excludes_library_run(home):
-    """library-run records do not produce gaps even when they hit covered tables."""
+    """library run records do not produce gaps even when they hit covered tables."""
     records = [
         _stats_record(
             1,
-            "hunt library-run",
+            "library run",
             tables_referenced=["CloudAppEvents"],
             kql="CloudAppEvents | take 1",
-            library_query="qry_inbox_rule_audit",
+            library_query="qry_inbox_rule_activity",
         ),
     ]
     _seed_session(home, "jd-1", records)
@@ -855,7 +840,7 @@ def test_stats_by_actor_breakdown(home):
         ),
         _stats_record(
             2,
-            "hunt library-run",
+            "library run",
             actor="operator",
             cpu_usage="5%",
             exit_code=0,

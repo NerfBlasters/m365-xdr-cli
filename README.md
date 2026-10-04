@@ -479,7 +479,6 @@ Unknown keys produce a warning on stderr.
 | `~/.xdr-cli/config.toml` | Configuration (`0600`) |
 | `~/.xdr-cli/token_cache.json` | MSAL token cache for the official backend (`0600`) |
 | `~/.xdr-cli/portal_cookies.json` | Imported portal session cookie (`0600`) |
-| `~/.xdr-cli/portal_token_cache.json` | A token cache left by a sign-in flow this release does not offer; `auth portal-logout` deletes it |
 | `~/.xdr-cli/action_associations/` | Action ID → device ID pairs (IDs only) learned in cookie mode |
 | `~/.xdr-cli/audit.log` | Local log of attempted state-changing commands (response actions, incident updates, auth changes, `lists init`, schema repair/import) and `investigate` runs. Written with redacted argv when the command is dispatched, before it runs, so `--dry-run` and declined attempts appear too; `--help` and argument errors do not, and outcomes are not recorded (`0600`) |
 | `~/.xdr-cli/lists/*.txt` | Reference lists for library queries |

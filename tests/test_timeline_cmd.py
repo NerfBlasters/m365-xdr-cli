@@ -33,7 +33,7 @@ import respx
 from typer.testing import CliRunner
 
 from xdr_cli.main import app, run
-from xdr_cli.portal_client import BearerAuth, CookieAuth, RefreshTokenAuth
+from xdr_cli.portal_client import CookieAuth, RefreshTokenAuth
 
 runner = CliRunner()
 
@@ -73,7 +73,7 @@ async def _async_gen(items: list[dict]) -> AsyncIterator[dict]:
 @pytest.fixture()
 def home_dir(tmp_path, monkeypatch):
     """Isolated XDR_CLI_HOME with a tenant_id preset (needed for
-    RefreshTokenAuth's token-endpoint URL and PortalAuth's MSAL authority).
+    RefreshTokenAuth's token-endpoint URL and the cookie tenant binding).
     Never touches the real ~/.xdr-cli/. MDE_REFRESH_TOKEN is scrubbed so
     ambient CI/dev-shell env vars can't leak a strategy the test didn't ask
     for.
@@ -358,22 +358,15 @@ def test_refresh_token_wins_over_stored_cookie(mock_client_cls, mock_stream, hom
     assert isinstance(kwargs["auth"], RefreshTokenAuth)
 
 
-@patch("xdr_cli.commands.device_cmd.PortalAuth")
 @patch("xdr_cli.commands.device_cmd.stream_device_timeline")
 @patch("xdr_cli.commands.device_cmd.PortalClient")
-def test_cookie_wins_over_cached_msal_account(
-    mock_client_cls, mock_stream, mock_portal_auth_cls, home_dir,
+def test_stored_cookie_selects_cookie_auth_without_refresh_token(
+    mock_client_cls, mock_stream, home_dir,
 ):
-    """No --refresh-token; stored cookie file present AND a cached MSAL
-    account present -> CookieAuth wins. PortalAuth is mocked to report an
-    authenticated account so this actually proves cookie beats MSAL rather
-    than MSAL just being unavailable."""
+    """No --refresh-token; a stored cookie file -> CookieAuth."""
     (home_dir / "portal_cookies.json").write_text(
         json.dumps(_bound_cookie_store())
     )
-    mock_portal_auth_cls.return_value.get_auth_status.return_value = {
-        "authenticated": True, "account": "user@test.com",
-    }
     mock_instance = AsyncMock()
     mock_client_cls.return_value = mock_instance
     mock_stream.side_effect = lambda *a, **kw: _async_gen([])
@@ -455,44 +448,17 @@ def test_cookie_store_missing_xsrf_token_degrades_gracefully(
     assert auth._xsrf_token == ""
 
 
-@patch("xdr_cli.commands.device_cmd.PortalAuth")
-@patch("xdr_cli.commands.device_cmd.stream_device_timeline")
-@patch("xdr_cli.commands.device_cmd.PortalClient")
-def test_cached_msal_account_used_when_no_refresh_token_or_cookie(
-    mock_client_cls, mock_stream, mock_portal_auth_cls, home_dir,
-):
-    """No refresh token, no cookie file, cached MSAL account present ->
-    BearerAuth wrapping the PortalAuth instance."""
-    mock_portal_auth_instance = mock_portal_auth_cls.return_value
-    mock_portal_auth_instance.get_auth_status.return_value = {
-        "authenticated": True, "account": "user@test.com",
-    }
-    mock_instance = AsyncMock()
-    mock_client_cls.return_value = mock_instance
-    mock_stream.side_effect = lambda *a, **kw: _async_gen([])
-
-    result = runner.invoke(app, ["device", "timeline", MACHINE_ID])
-
-    assert result.exit_code == 0, result.output
-    mock_client_cls.assert_called_once()
-    _, kwargs = mock_client_cls.call_args
-    auth = kwargs["auth"]
-    assert isinstance(auth, BearerAuth)
-    assert auth._portal_auth is mock_portal_auth_instance
-
-
 @patch("xdr_cli.commands.device_cmd.stream_device_timeline")
 @patch("xdr_cli.commands.device_cmd.PortalClient")
 def test_no_credentials_exits_nonzero_and_names_cookie_import(
     mock_client_cls, mock_stream, home_dir,
 ):
-    """No --refresh-token, no cookie file, no cached MSAL account -> exit
-    non-zero, error names `xdr auth portal-cookie` and does not recommend the
-    retired portal-login route. Nothing PortalClient-shaped is ever touched."""
+    """No --refresh-token and no cookie file -> exit non-zero; the error names
+    `xdr auth portal-cookie` as the recovery. Nothing PortalClient-shaped is
+    ever touched."""
     result = runner.invoke(app, ["device", "timeline", MACHINE_ID])
 
     assert result.exit_code != 0
-    assert "portal-login" not in result.stdout
     assert "portal-cookie" in result.stdout
     assert len(result.stdout.splitlines()) == 1
     mock_client_cls.assert_not_called()

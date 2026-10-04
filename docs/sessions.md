@@ -16,7 +16,7 @@ Resolution order is:
 1. a valid explicit `XDR_SESSION`;
 2. a matching incident/alert anchor;
 3. exactly one unexpired marker;
-4. automatic creation for `hunt run`, `hunt library-run`, `library run`,
+4. automatic creation for `hunt run`, `library run`,
    `schema observe`, `schema candidate-review`, `investigate`,
    `incidents show`, and `alerts show`;
 5. unattached execution when multiple unmatched sessions remain.

@@ -13,33 +13,6 @@ from typer.core import TyperGroup
 
 from xdr_cli.exceptions import UsageError, XDRError, format_error_json
 
-_REMOVED_OPTIONS: dict[str, dict[str, str]] = {
-    "--fields": {
-        "reason": "removed_option",
-        "message": (
-            "Results are now saved as JSONL. Inspect columns with "
-            "'xdr results shape <run-id>' and filter with rg or jq -s."
-        ),
-        "confidence": "exact",
-    },
-    "--jq": {
-        "reason": "removed_option",
-        "message": (
-            "Native JMESPath projection was removed. Filter the saved JSONL "
-            "artifact with rg or jq -s."
-        ),
-        "confidence": "exact",
-    },
-    "--limit": {
-        "reason": "removed_option",
-        "message": (
-            "Hunt output is no longer discarded locally. Limit at the source "
-            "with KQL (for example, '| take 100') or filter the saved artifact."
-        ),
-        "confidence": "exact",
-    },
-}
-
 
 def _command_path(ctx: click.Context | None) -> str:
     if ctx is None:
@@ -48,29 +21,6 @@ def _command_path(ctx: click.Context | None) -> str:
     if "xdr_cli" in parts:
         return " ".join(["xdr", *parts[parts.index("xdr_cli") + 1 :]])
     return " ".join(["xdr", *parts[1:]]) if parts else "xdr"
-
-
-def _remove_option(argv: list[str], option: str) -> list[str]:
-    """Remove one legacy option and its value from an argv suggestion."""
-
-    corrected: list[str] = []
-    index = 0
-    while index < len(argv):
-        token = argv[index]
-        if token == option:
-            # Legacy projection options accepted one value. Drop that value
-            # only when one is visibly present; never consume the next valid
-            # option (for example ``--jq --raw``).
-            index += 1
-            if index < len(argv) and not argv[index].startswith("-"):
-                index += 1
-            continue
-        if token.startswith(f"{option}="):
-            index += 1
-            continue
-        corrected.append(token)
-        index += 1
-    return corrected
 
 
 def _option_names(ctx: click.Context | None) -> list[str]:
@@ -90,7 +40,6 @@ def usage_error_from_click(
 ) -> UsageError:
     """Convert Click's human-only usage error into the stable v1 error shape."""
 
-    raw_argv = list(argv or [])
     message = exc.format_message()
     invalid: dict[str, Any] | None = None
     allowed: list[str] = []
@@ -122,35 +71,17 @@ def usage_error_from_click(
     elif option_match:
         value = option_match.group(1).rstrip(".")
         invalid = {"kind": "option", "value": value}
-        if _command_path(exc.ctx) == "xdr schema collect" and value in {
-            "--resume", "--exhaustive"
-        }:
-            code = "CLI_REMOVED_OPTION"
-            message = f"{value} was removed from schema collect."
-            suggestions.append({
-                "reason": "removed_option",
-                "message": (
-                    "Rerun 'xdr schema collect' to continue pending validation. "
-                    "Use 'xdr schema collect --explore' for identifier-led discovery."
-                ),
-                "confidence": "exact",
-            })
-        elif value in _REMOVED_OPTIONS:
-            code = "CLI_REMOVED_OPTION"
-            suggestions.append(_REMOVED_OPTIONS[value])
-            corrected_argv = ["xdr", *_remove_option(raw_argv, value)]
-        else:
-            code = "CLI_UNKNOWN_OPTION"
-            allowed = _option_names(exc.ctx)
-            close = difflib.get_close_matches(value, allowed, n=3, cutoff=0.5)
-            suggestions.extend(
-                {
-                    "reason": "nearest_option",
-                    "message": candidate,
-                    "confidence": "heuristic",
-                }
-                for candidate in close
-            )
+        code = "CLI_UNKNOWN_OPTION"
+        allowed = _option_names(exc.ctx)
+        close = difflib.get_close_matches(value, allowed, n=3, cutoff=0.5)
+        suggestions.extend(
+            {
+                "reason": "nearest_option",
+                "message": candidate,
+                "confidence": "heuristic",
+            }
+            for candidate in close
+        )
     elif command_match:
         value = command_match.group(1)
         invalid = {"kind": "command", "value": value}

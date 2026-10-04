@@ -36,7 +36,6 @@ def test_cookie_only_default_never_constructs_msal(selection, monkeypatch):
     assert select_backend(config) == 'portal-cookie'
     auth = Mock(side_effect=AssertionError('No MSAL'))
     monkeypatch.setattr('xdr_cli.commands.auth_cmd.AuthManager', auth)
-    monkeypatch.setattr('xdr_cli.commands.auth_cmd.PortalAuth', auth)
     result = CliRunner().invoke(app, ['auth', 'status'])
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)['data']['backend'] == 'portal-cookie'

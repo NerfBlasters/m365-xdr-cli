@@ -591,25 +591,10 @@ def test_parse_failures_are_one_line_and_repair_oriented(tmp_path, monkeypatch):
     assert result.exit_code == 6
     assert len(result.stdout.splitlines()) == 1
     error = json.loads(result.stdout)["error"]
-    assert error["code"] == "CLI_REMOVED_OPTION"
-    assert error["corrected_argv"] == ["xdr", "hunt", "run", "DeviceEvents | take 1"]
-
-
-def test_removed_option_correction_preserves_adjacent_valid_option(tmp_path, monkeypatch):
-    _home(tmp_path, monkeypatch)
-    result = runner.invoke(
-        app,
-        ["hunt", "run", "DeviceEvents | take 1", "--jq", "--raw"],
-    )
-    assert result.exit_code == 6
-    error = json.loads(result.stdout)["error"]
-    assert error["corrected_argv"] == [
-        "xdr",
-        "hunt",
-        "run",
-        "DeviceEvents | take 1",
-        "--raw",
-    ]
+    assert error["code"] == "CLI_UNKNOWN_OPTION"
+    assert error["invalid"] == {"kind": "option", "value": "--limit"}
+    assert error["help_command"] == "xdr hunt run --help"
+    assert error["corrected_argv"] is None
 
 
 @pytest.mark.parametrize("argv", [[], ["alerts"], ["library"], ["results"], ["schema"]])

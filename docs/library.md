@@ -4,8 +4,8 @@ The library is a catalog of packaged Advanced Hunting (KQL) queries that
 ship inside the CLI. Each entry is one `.kql` file under
 `src/xdr_cli/queries/` with a short `-- key: value` front-matter header
 that declares its name, description, tier, parameters, and the reference
-lists it consumes. The CLI ships 69 files: 66 hunting queries plus 1 utility
-(`sys_schema_probe`) and 2 deprecated aliases. You can add your own (see
+lists it consumes. The CLI ships 67 files: 66 hunting queries plus 1 utility
+(`sys_schema_probe`). You can add your own (see
 [Custom queries](#custom-queries)).
 
 ## Commands
@@ -75,7 +75,7 @@ methodology contract tests in `tests/test_queries_methodology.py`:
 | `r3` | Projects `SchemaVersion`; no `Severity` band required. In the shipped catalog the `r3` entries are entity-scoped queries, most anchored with `start=`/`end=` and defaulting to `mode=detail` (the two `identity_signin_*` summaries are the exceptions). |
 | `pivot` | Projects `SchemaVersion`; exempt from the `Severity` requirement. In the shipped catalog these are entity-scoped lookups (by message ID, hash, app ID, device, remote, ...) that default to `mode=detail`. |
 | `utility` | Exempt from all methodology checks. Currently only `sys_schema_probe`. |
-| `deprecated` | An alias shim. The file must also declare `-- alias_of: <target>`; `library run` loads the target's body instead, accepts and validates the target's parameters, and prints a stderr warning. `library show` and `library list` keep the alias's name and description but report the target's parameters, tables, and cost hint. |
+| `deprecated` | An alias shim (no shipped query currently uses it). The file must also declare `-- alias_of: <target>`; `library run` loads the target's body instead, accepts and validates the target's parameters, and prints a stderr warning. `library show` and `library list` keep the alias's name and description but report the target's parameters, tables, and cost hint. |
 | `beta` | Treated as a finding tier by the tests; the shipped entries prefix their description with `(beta)`. |
 
 There is no documented definition of what distinguishes `r1` from `r2`
@@ -136,8 +136,6 @@ the query declares them.
 | `qry_file_access_detail` | pivot | Specific files downloaded or synced by an account — identifies targeted access to sensitive content | `account_oid`*, `start`*, `end`*, `mode` =detail |
 | `qry_file_hash_scope` | pivot | Find all devices with a specific file hash | `sha256`*, `hours` =720, `mode` =detail |
 | `qry_inbox_rule_activity` | r1 | Exchange rule changes (inbox + transport + mailbox forwarding) with extracted predicates, forwarding-destination classification, and BEC-specific scoring | `hours` =168, `account_upn`, `mode` =summary |
-| `qry_inbox_rule_audit` | **deprecated** (alias of `qry_inbox_rule_activity`) | Deprecated; use qry_inbox_rule_activity. | `hours` =168, `account_upn`, `mode` =summary (the target's) |
-| `qry_inbox_rule_triggers` | **deprecated** (alias of `qry_inbox_rule_activity`) | Deprecated; use qry_inbox_rule_activity. | `hours` =168, `account_upn`, `mode` =summary (the target's) |
 | `qry_mailbox_delegation` | n | Exchange mailbox delegation grants — FullAccess / SendAs / SendOnBehalf, with internal/external delegate classification | `hours` =168, `account_upn`, `mode` =summary |
 | `qry_oauth_app_info` | pivot | OAuth app registration details — app name, service principal ID, and owner tenant (first-party vs third-party) | `app_id`*, `mode` =detail |
 | `qry_oauth_consent` | pivot | Who consented to an OAuth app and from where — identifies suspicious or coerced consent events | `app_id`*, `start`*, `end`*, `mode` =detail |

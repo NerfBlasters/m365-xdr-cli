@@ -10,9 +10,34 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
-## [0.13.1] - 2026-10-04
+## [0.14.0] - 2026-10-04
 
-Second documentation pass for a reader arriving fresh at the public repository.
+Second documentation pass for a reader arriving fresh at the public
+repository, and removal of the compatibility shims that only served
+installations older than this repository's public history.
+
+### Removed
+
+- `xdr hunt library` and `xdr hunt library-run`, the aliases for
+  `xdr library list` and `xdr library run`. `xdr hunt library-show` stays as
+  the resolved-KQL renderer.
+- `xdr schema candidates`, the alias for `xdr schema discoveries`.
+- `xdr auth portal-login` and the portal OAuth token cache
+  (`portal_token_cache.json`) behind it. Portal access is cookie-based;
+  `auth portal-logout` clears the cookie store only, and `auth status` no
+  longer reports `msal_cached`.
+- The `CLI_REMOVED_OPTION` shims for `--fields`, `--jq`, hunt `--limit`, and
+  `schema collect --resume`/`--exhaustive`. These are ordinary unknown
+  options now.
+- The hidden, always-rejected `schema collect --max-targets`.
+- The deprecated query aliases `qry_inbox_rule_audit` and
+  `qry_inbox_rule_triggers`; use `qry_inbox_rule_activity`. The `deprecated`
+  tier and `alias_of` mechanism remain for future deprecations.
+
+### Changed
+
+- `xdr history stats` counts only `library run` records in its
+  `hunt_library_run` ratio; the output key name is unchanged.
 
 ### Changed
 

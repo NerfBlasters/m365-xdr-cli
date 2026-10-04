@@ -194,7 +194,7 @@ The Defender advanced-hunting API separately enforces a 10-minute-per-hour CPU q
 `~/.xdr-cli/audit.log` records every dispatched state-changing command with
 redacted argv: the device response actions (`isolate`, `unisolate`, `restrict`,
 `unrestrict`, `scan`, `collect-package`), `incidents update`, `auth
-login`/`logout`/`portal-login`/`portal-cookie`/`portal-logout`, `lists init`,
+login`/`logout`/`portal-cookie`/`portal-logout`, `lists init`,
 `schema repair-overlay`/`migrate-cache`/`bundle import`, and `investigate`
 (read-only, logged for traceability). The line is written when Click dispatches
 the command, before it runs, so `--dry-run` and declined confirmations appear
@@ -301,7 +301,7 @@ identify the running build and registered capabilities. Portable state moves
 through `xdr schema bundle inspect/export/import`; inspect is always read-only,
 and import activates only an exact same-tenant, collision-free bundle.
 
-For empirical candidates, run `xdr schema candidates` and follow its exact
+For empirical candidates, run `xdr schema discoveries` and follow its exact
 `ReviewCommand`. `xdr schema candidate-review RELATIONSHIP_ID` saves bounded
 private context and returns a copyable `xdr results head RUN_ID` command.
 After the gate passes, `xdr schema candidate-proposal RELATIONSHIP_ID --help`
@@ -327,7 +327,7 @@ proposal drafts before pruning their evidence.
 Sessions track local investigation telemetry. Explicit session end also runs
 the configured tenant schema maintenance; startup and ordinary session attachment
 do not gate investigation work on maintenance.
-`hunt run`, `hunt library-run`, `library run`, `schema observe`,
+`hunt run`, `library run`, `schema observe`,
 `schema candidate-review`, `investigate`, `incidents show`, and `alerts show`
 auto-create a session when none exists; other commands may attach to exactly
 one existing session but do not create one. Inactivity expires a session after

@@ -20,9 +20,8 @@ request is made.
 
 | Command | Description |
 |---|---|
-| `xdr auth portal-login` | Returns a usage error directing callers to `portal-cookie` |
 | `xdr auth portal-cookie` | Authenticate to the unofficial Defender portal API via browser cookies |
-| `xdr auth portal-logout` | Clear portal cookies and the portal token cache; official tokens are preserved |
+| `xdr auth portal-logout` | Clear stored portal cookies; official tokens are preserved |
 | `xdr device timeline DEVICE` | Download device timeline (unofficial API) |
 
 ## Quick start
@@ -40,20 +39,17 @@ uses that signed-in user's portal permissions. Audit attribution must be
 verified in your tenant; a local auth-status label is not evidence of the
 actual sign-in or activity-log attribution.
 
-`xdr auth portal-login` does not sign in; it returns a usage error pointing
-at `portal-cookie`. The `--refresh-token` path redeems the token as the
-"Microsoft Azure CLI" client, so sign-in logs attribute that activity to
-Azure CLI.
+The `--refresh-token` path redeems the token as the "Microsoft Azure CLI"
+client, so sign-in logs attribute that activity to Azure CLI.
 
 ## Portal credentials
 
 With `--backend portal-cookie`, timeline requires stored cookies;
-`--refresh-token` (and `MDE_REFRESH_TOKEN`) is rejected, and the portal token
-cache is never consulted. The default official backend selects a credential
-in this order: an explicit refresh token, stored cookies, then an account in
-`~/.xdr-cli/portal_token_cache.json` (a token cache left by a sign-in flow
-this release does not offer; `auth portal-logout` deletes it). Neither token
-path is available under the cookie backend.
+`--refresh-token` (and `MDE_REFRESH_TOKEN`) is rejected. The default official
+backend selects a credential in this order: an explicit refresh token, then
+stored cookies. With neither present the command exits non-zero and names
+`xdr auth portal-cookie` as the recovery. There is no other portal credential
+store; the CLI never signs in to the portal itself.
 
 ### 1. `xdr auth portal-cookie COOKIE_SOURCE` (recommended, validated)
 
@@ -105,25 +101,17 @@ Options:
   containing no `sccauth` cookie is rejected and left untouched (nothing is
   stored).
 
-### 2. `xdr auth portal-login`
-
-Returns a usage error directing callers to `portal-cookie`, without
-contacting Microsoft or changing the configured tenant.
-
-### 3. `--refresh-token` (env `MDE_REFRESH_TOKEN`)
+### 2. `--refresh-token` (env `MDE_REFRESH_TOKEN`)
 
 For CI/non-interactive use on the official backend: redeems a pre-obtained
-FOCI refresh token instead of stored portal auth. It wins over any stored
-cookie or MSAL state. Under `--backend portal-cookie` it is rejected as a
-configuration error.
+FOCI refresh token instead of stored cookies. It wins over a stored cookie.
+Under `--backend portal-cookie` it is rejected as a configuration error.
 
 ### Clearing portal credentials
 
-`xdr auth portal-logout` removes both `~/.xdr-cli/portal_cookies.json` and
-the portal token cache `~/.xdr-cli/portal_token_cache.json`. It does not
-touch the main `~/.xdr-cli/token_cache.json` used by `xdr auth login`/`xdr
-auth logout`.
-Missing files are a no-op.
+`xdr auth portal-logout` removes `~/.xdr-cli/portal_cookies.json`. It does
+not touch the main `~/.xdr-cli/token_cache.json` used by `xdr auth login`/`xdr
+auth logout`. A missing cookie file is a no-op.
 
 ## Secret handling
 

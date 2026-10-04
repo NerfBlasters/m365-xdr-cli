@@ -3,16 +3,10 @@
 `PortalClient` is a side-channel HTTP client parallel to `XDRClient` (see
 tests/test_client.py) that talks to `security.microsoft.com/apiproxy/mtp/`.
 It is async (mirrors `httpx.AsyncClient`) and takes a single `auth`
-parameter implementing the `PortalAuthStrategy` protocol — `BearerAuth`
-(MSAL-backed token source) or `CookieAuth` (session cookies) — rather than
-separate `portal_auth=`/`cookie_auth=` kwargs.
-
-This is a RED-only test file for TDD Task 3: `xdr_cli.portal_client` does
-not exist yet, so every test here is expected to fail at collection with a
-ModuleNotFoundError until Task 4 implements `portal_client.py`.
+parameter implementing the `PortalAuthStrategy` protocol — `CookieAuth`
+(stored session cookies) or `RefreshTokenAuth` (a per-run FOCI refresh
+token) — rather than separate kwargs per credential type.
 """
-
-from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -20,7 +14,6 @@ import respx
 
 from xdr_cli.exceptions import APIError, AuthError, NotAuthenticatedError, RateLimitError
 from xdr_cli.portal_client import (
-    BearerAuth,
     CookieAuth,
     PortalClient,
     RefreshTokenAuth,
@@ -30,20 +23,10 @@ BASE_URL = "https://security.microsoft.com/apiproxy/mtp/"
 
 
 @pytest.fixture()
-def mock_portal_auth():
-    """A MagicMock token source, standing in for `PortalAuth`.
-
-    `BearerAuth.apply()` calls `.get_token()` synchronously (see plan Task 4
-    Step 1), so a plain MagicMock — not AsyncMock — is correct here.
-    """
-    portal_auth = MagicMock()
-    portal_auth.get_token.return_value = "fake-token"
-    return portal_auth
-
-
-@pytest.fixture()
-def bearer_client(mock_portal_auth):
-    return PortalClient(auth=BearerAuth(mock_portal_auth))
+def cookie_client():
+    """A PortalClient on the stored-cookie strategy, for tests that exercise
+    the transport (base URL, status handling, pagination) rather than auth."""
+    return PortalClient(auth=CookieAuth(cookie_header="sccauth=fake", xsrf_token="x"))
 
 
 # ---------------------------------------------------------------------------
@@ -52,41 +35,42 @@ def bearer_client(mock_portal_auth):
 
 
 @respx.mock
-async def test_get_sends_bearer_authorization_header(bearer_client, mock_portal_auth):
-    """Case 1: BearerAuth calls portal_auth.get_token() and sends it as Bearer."""
+async def test_get_sends_stored_cookie_and_xsrf_headers(cookie_client):
+    """Case 1: the strategy's credential lands on the outgoing request."""
     route = respx.get(f"{BASE_URL}some/path").respond(json={"ok": True})
 
-    await bearer_client.get("some/path")
+    await cookie_client.get("some/path")
 
     assert route.called
-    assert route.calls[0].request.headers["authorization"] == "Bearer fake-token"
-    mock_portal_auth.get_token.assert_called_once()
+    headers = route.calls[0].request.headers
+    assert headers["cookie"] == "sccauth=fake"
+    assert headers["x-xsrf-token"] == "x"
 
 
 @respx.mock
-async def test_get_uses_apiproxy_mtp_base_url(bearer_client):
+async def test_get_uses_apiproxy_mtp_base_url(cookie_client):
     """Case 2: base URL is https://security.microsoft.com/apiproxy/mtp/."""
     route = respx.get(
         "https://security.microsoft.com/apiproxy/mtp/mdeTimelineExperience/machines/abc123/events"
     ).respond(json={"Items": []})
 
-    await bearer_client.get("mdeTimelineExperience/machines/abc123/events")
+    await cookie_client.get("mdeTimelineExperience/machines/abc123/events")
 
     assert route.called
 
 
 @respx.mock
-async def test_probe_accepts_any_successful_json_shape(bearer_client):
+async def test_probe_accepts_any_successful_json_shape(cookie_client):
     """Auth verification cares about HTTP success, not a dict-only API body."""
     route = respx.get(f"{BASE_URL}ndr/machines").respond(json=[])
 
-    await bearer_client.probe("ndr/machines")
+    await cookie_client.probe("ndr/machines")
 
     assert route.called
 
 
 @respx.mock
-async def test_successful_response_is_json_decoded_and_returned_as_is(bearer_client):
+async def test_successful_response_is_json_decoded_and_returned_as_is(cookie_client):
     """Case 3: the JSON body comes back verbatim, no filtering/transformation."""
     body = {
         "Items": [{"Id": "evt-1"}, {"Id": "evt-2"}],
@@ -96,7 +80,7 @@ async def test_successful_response_is_json_decoded_and_returned_as_is(bearer_cli
     }
     respx.get(f"{BASE_URL}some/path").respond(json=body)
 
-    result = await bearer_client.get("some/path")
+    result = await cookie_client.get("some/path")
 
     assert result == body
 
@@ -104,67 +88,6 @@ async def test_successful_response_is_json_decoded_and_returned_as_is(bearer_cli
 # ---------------------------------------------------------------------------
 # Step 1: 401 retry-once-then-fatal (brief cases 4-5)
 # ---------------------------------------------------------------------------
-
-
-@respx.mock
-async def test_401_once_retries_with_freshly_fetched_token():
-    """Case 4: a single 401 triggers exactly one retry with a new token."""
-    portal_auth = MagicMock()
-    portal_auth.get_token.side_effect = ["token1", "token2"]
-    client = PortalClient(auth=BearerAuth(portal_auth))
-
-    route = respx.get(f"{BASE_URL}some/path").mock(
-        side_effect=[httpx.Response(401), httpx.Response(200, json={"ok": True})]
-    )
-
-    result = await client.get("some/path")
-
-    assert result == {"ok": True}
-    assert route.call_count == 2
-    assert route.calls[0].request.headers["authorization"] == "Bearer token1"
-    assert route.calls[1].request.headers["authorization"] == "Bearer token2"
-    assert portal_auth.get_token.call_count == 2
-
-
-@respx.mock
-async def test_401_twice_raises_not_authenticated_with_portal_login_hint():
-    """Case 5: two consecutive 401s are fatal — cap retries at 1.
-
-    The MagicMock side_effect list has exactly two entries (token1, token2);
-    a third call to get_token() would raise StopIteration, so this also
-    pins that no more than one retry is attempted.
-    """
-    portal_auth = MagicMock()
-    portal_auth.get_token.side_effect = ["token1", "token2"]
-    client = PortalClient(auth=BearerAuth(portal_auth))
-
-    route = respx.get(f"{BASE_URL}some/path").respond(status_code=401)
-
-    with pytest.raises(NotAuthenticatedError) as exc_info:
-        await client.get("some/path")
-
-    assert route.call_count == 2
-    assert "portal-cookie" in str(exc_info.value)
-
-
-@respx.mock
-async def test_401_retry_forces_a_fresh_token_via_force_refresh():
-    """The retry must ask PortalAuth for a NON-cached token
-    (force_refresh=True) — replaying the same MSAL-cached token the server
-    just rejected can never recover. The pre-401 call uses the cache."""
-    portal_auth = MagicMock()
-    portal_auth.get_token.side_effect = ["token1", "token2"]
-    client = PortalClient(auth=BearerAuth(portal_auth))
-
-    respx.get(f"{BASE_URL}some/path").mock(
-        side_effect=[httpx.Response(401), httpx.Response(200, json={"ok": True})]
-    )
-
-    await client.get("some/path")
-
-    calls = portal_auth.get_token.call_args_list
-    assert calls[0].kwargs.get("force_refresh") is False
-    assert calls[1].kwargs.get("force_refresh") is True
 
 
 @respx.mock
@@ -217,20 +140,20 @@ async def test_401_with_cookie_auth_raises_immediately_without_retry():
 
 
 @respx.mock
-async def test_429_raises_rate_limit_error_with_retry_after(bearer_client):
+async def test_429_raises_rate_limit_error_with_retry_after(cookie_client):
     """Case 6: Retry-After header value flows into RateLimitError.retry_after."""
     respx.get(f"{BASE_URL}some/path").respond(
         status_code=429, headers={"Retry-After": "37"}
     )
 
     with pytest.raises(RateLimitError) as exc_info:
-        await bearer_client.get("some/path")
+        await cookie_client.get("some/path")
 
     assert exc_info.value.retry_after == 37
 
 
 @respx.mock
-async def test_429_with_http_date_retry_after_does_not_crash(bearer_client):
+async def test_429_with_http_date_retry_after_does_not_crash(cookie_client):
     """RFC 7231 allows `Retry-After` to be an HTTP-date, not just an integer.
     It must parse into RateLimitError, not raise a ValueError that escapes
     _check_response (uncaught trace in `device timeline`; bypasses the
@@ -240,19 +163,19 @@ async def test_429_with_http_date_retry_after_does_not_crash(bearer_client):
     )
 
     with pytest.raises(RateLimitError) as exc_info:
-        await bearer_client.get("some/path")
+        await cookie_client.get("some/path")
 
     assert isinstance(exc_info.value.retry_after, int)
     assert exc_info.value.retry_after >= 0
 
 
 @respx.mock
-async def test_429_without_retry_after_header_defaults_to_60(bearer_client):
+async def test_429_without_retry_after_header_defaults_to_60(cookie_client):
     """A 429 carrying no `Retry-After` still yields a sane wait, not a crash."""
     respx.get(f"{BASE_URL}some/path").respond(status_code=429)
 
     with pytest.raises(RateLimitError) as exc_info:
-        await bearer_client.get("some/path")
+        await cookie_client.get("some/path")
 
     assert exc_info.value.retry_after == 60
 
@@ -278,16 +201,16 @@ async def test_440_is_auth_expiry_with_portal_recovery_guidance():
 
 
 @respx.mock
-async def test_5xx_raises_api_error(bearer_client):
+async def test_5xx_raises_api_error(cookie_client):
     """Case 7: server errors surface as APIError."""
     respx.get(f"{BASE_URL}some/path").respond(status_code=503)
 
     with pytest.raises(APIError):
-        await bearer_client.get("some/path")
+        await cookie_client.get("some/path")
 
 
 @respx.mock
-async def test_5xx_error_captures_json_body_as_detail(bearer_client):
+async def test_5xx_error_captures_json_body_as_detail(cookie_client):
     """A 500's response body (the server's actual error) is surfaced via
     APIError.detail so an opaque failure is diagnosable; a JSON body is kept
     structured rather than stringified."""
@@ -295,7 +218,7 @@ async def test_5xx_error_captures_json_body_as_detail(bearer_client):
     respx.get(f"{BASE_URL}some/path").respond(status_code=500, json=body)
 
     with pytest.raises(APIError) as exc_info:
-        await bearer_client.get("some/path")
+        await cookie_client.get("some/path")
 
     assert exc_info.value.status_code == 500
     detail = exc_info.value.detail
@@ -306,14 +229,14 @@ async def test_5xx_error_captures_json_body_as_detail(bearer_client):
 
 
 @respx.mock
-async def test_5xx_error_with_text_body_captures_truncated_detail(bearer_client):
+async def test_5xx_error_with_text_body_captures_truncated_detail(cookie_client):
     """A non-JSON (e.g. HTML error page) body is captured as a size-capped
     text snippet, not dumped in full."""
     big = "<html>" + "x" * 5000 + "</html>"
     respx.get(f"{BASE_URL}some/path").respond(status_code=500, text=big)
 
     with pytest.raises(APIError) as exc_info:
-        await bearer_client.get("some/path")
+        await cookie_client.get("some/path")
 
     body_detail = exc_info.value.detail["response_body"]
     assert isinstance(body_detail, str)
@@ -323,7 +246,7 @@ async def test_5xx_error_with_text_body_captures_truncated_detail(bearer_client)
 
 
 @respx.mock
-async def test_5xx_empty_body_captures_diagnostic_headers_as_detail(bearer_client):
+async def test_5xx_empty_body_captures_diagnostic_headers_as_detail(cookie_client):
     """An empty-body 500 (the signature of an edge/gateway rejection) still
     yields something actionable: the routing/correlation response headers are
     surfaced as detail so the failure isn't a total black box."""
@@ -333,7 +256,7 @@ async def test_5xx_empty_body_captures_diagnostic_headers_as_detail(bearer_clien
     )
 
     with pytest.raises(APIError) as exc_info:
-        await bearer_client.get("some/path")
+        await cookie_client.get("some/path")
 
     detail = exc_info.value.detail
     assert detail["response_headers"]["x-msedge-ref"] == "Ref A: 123"
@@ -346,7 +269,7 @@ async def test_5xx_empty_body_captures_diagnostic_headers_as_detail(bearer_clien
 
 
 @respx.mock
-async def test_paginate_apiproxy_yields_items_across_pages_in_order(bearer_client):
+async def test_paginate_apiproxy_yields_items_across_pages_in_order(cookie_client):
     """Cases 8 + 10: items flow in order across pages; the second request's
     URL is the exact base-URL join of the relative `Next` field (proving the
     duplicate `/apiproxy/mtp/` prefix is stripped, not doubled)."""
@@ -377,7 +300,7 @@ async def test_paginate_apiproxy_yields_items_across_pages_in_order(bearer_clien
     )
 
     items = []
-    async for item in bearer_client.paginate_apiproxy(
+    async for item in cookie_client.paginate_apiproxy(
         "mdeTimelineExperience/machines/abc123/events", params=None
     ):
         items.append(item)
@@ -392,7 +315,7 @@ async def test_paginate_apiproxy_yields_items_across_pages_in_order(bearer_clien
 
 
 @respx.mock
-async def test_get_preserves_plus_in_query_end_to_end(bearer_client):
+async def test_get_preserves_plus_in_query_end_to_end(cookie_client):
     """Full-stack proof that a path carrying a raw query (as the pagination
     loop passes when following `Next`) reaches the wire with a base64
     skipToken's '+'/'/'/'=' intact — httpx must not treat '+' as a space."""
@@ -401,7 +324,7 @@ async def test_get_preserves_plus_in_query_end_to_end(bearer_client):
         "mdeTimelineExperience/machines/abc/events"
     ).respond(json={"ok": True})
 
-    await bearer_client.get(
+    await cookie_client.get(
         "mdeTimelineExperience/machines/abc/events?pageSize=1000&skipToken=aB+cD/eF12+gh=="
     )
 
@@ -411,7 +334,7 @@ async def test_get_preserves_plus_in_query_end_to_end(bearer_client):
 
 @respx.mock
 async def test_paginate_apiproxy_raises_api_error_on_partial_response_reasons(
-    bearer_client,
+    cookie_client,
 ):
     """Case 9: non-empty PartialResponseReasons is a hard failure, not a
     silent truncation — raise APIError carrying the reasons."""
@@ -426,7 +349,7 @@ async def test_paginate_apiproxy_raises_api_error_on_partial_response_reasons(
     )
 
     with pytest.raises(APIError) as exc_info:
-        async for _ in bearer_client.paginate_apiproxy(
+        async for _ in cookie_client.paginate_apiproxy(
             "mdeTimelineExperience/machines/abc123/events", params=None
         ):
             pass

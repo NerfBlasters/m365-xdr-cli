@@ -6,8 +6,8 @@ internal API the Defender portal's own UI uses for the device timeline.
 It is unofficial/undocumented, so it gets its own client rather than
 reusing `XDRClient`'s Graph/MDE surfaces.
 
-Three interchangeable auth strategies (`BearerAuth`, `CookieAuth`,
-`RefreshTokenAuth`) implement `PortalAuthStrategy.apply()`, which mutates
+Two interchangeable auth strategies (`CookieAuth`, `RefreshTokenAuth`)
+implement `PortalAuthStrategy.apply()`, which mutates
 an outgoing `httpx.Request` in place before it is sent. `PortalClient`
 takes exactly one of them via `auth=`.
 """
@@ -29,7 +29,7 @@ from xdr_cli.exceptions import (
     TimeoutError,
     parse_retry_after,
 )
-from xdr_cli.portal_auth import PORTAL_CLIENT_ID, PORTAL_SCOPES, PortalAuth
+from xdr_cli.portal_auth import PORTAL_CLIENT_ID, PORTAL_SCOPES
 
 BASE_URL = "https://security.microsoft.com/apiproxy/mtp/"
 
@@ -79,29 +79,6 @@ class PortalAuthStrategy(Protocol):
         session cookie) so the caller can skip a guaranteed-401 retry.
         """
         ...
-
-
-class BearerAuth:
-    """Legacy MSAL-backed bearer token for existing portal OAuth caches."""
-
-    def __init__(self, portal_auth: PortalAuth) -> None:
-        self._portal_auth = portal_auth
-        # Set by refresh() so the NEXT apply() bypasses MSAL's silent cache.
-        # No local token caching — get_token() is called per request so MSAL's
-        # own near-expiry auto-refresh keeps working across a multi-page pull.
-        self._force_next = False
-
-    async def apply(self, request: httpx.Request) -> None:
-        # PortalAuth.get_token() is synchronous (MSAL's own API is sync).
-        token = self._portal_auth.get_token(force_refresh=self._force_next)
-        self._force_next = False
-        request.headers["Authorization"] = f"Bearer {token}"
-
-    async def refresh(self) -> bool:
-        # Make the next get_token() force a fresh mint (force_refresh=True) so
-        # the 401 retry isn't just a replay of the same cached, rejected token.
-        self._force_next = True
-        return True
 
 
 class CookieAuth:
