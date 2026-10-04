@@ -11,6 +11,14 @@ Explicit `--backend official|portal-cookie` wins over configuration. A configure
 `api_backend = "official"` or `"portal-cookie"` pins that choice; `"auto"` restores
 automatic selection. CLI flags and the resolved choice do not rewrite the saved
 preference. `auth status` reports `backend` and `backend_preference`.
+An invalid saved `api_backend` produces a warning on stderr and uses `auto`;
+an explicit `--backend` still takes precedence. Correct the saved value to
+remove the warning.
+While that value is invalid, incident updates and device response actions stop
+with exit 4 before confirmation or API dispatch unless an explicit `--backend`
+choice is supplied. Reads, auth diagnostics and local dry runs remain available.
+Saving credentials during auth recovery preserves the invalid preference until
+you correct it; it does not silently enable future writes.
 
 Selection reads local stores without contacting Microsoft. It does not establish
 remote validity. Expired MSAL access tokens still count as present; refresh-token
@@ -41,6 +49,15 @@ cookie auth submits the captured native `Unrestrict` policy action.
 Submission acceptance does not mean an action succeeded; use `device action-status`
 to check its outcome. Action completion does not independently prove an antivirus
 scan has finished.
+If a portal mutation times out, the structured error reports `retryable: false`
+because the action might already have been accepted. Inspect the incident or
+device state before deciding whether to submit another action.
+
+Incident and alert pagination skips IDs already returned when live pages overlap.
+The first observed record is retained; continuation validation and page bounds
+still apply. This is a live collection read, not a consistent point-in-time snapshot.
+Scan and isolation mode options accept any letter case and reject invalid values
+before confirmation or requests.
 
 ## Domain sources
 
@@ -93,10 +110,11 @@ is more specific than the official status enum. Unknown codes are left unmapped.
 Inventory enrichment searches the exact hostname with a 100-row bound and uses
 only a unique matching MachineId. `portal_source.supplementary` retains the
 selected inventory record and adapter/exclusion responses; `field_sources` records
-the conversions. Optional-source permission or response-shape failures are listed
-in `enrichment_errors` and leave affected fields unavailable. Authentication,
-rate-limit, network, and timeout errors stop the command. Action submission
-prerequisite reads do not fetch these supplementary views.
+the conversions. Optional-source permission, response-shape, network, or timeout
+failures are listed in `enrichment_errors` and leave affected fields unavailable.
+Authentication and rate-limit errors stop the command. Failures of the required
+tenant/device read also stop the command. Action submission prerequisites and
+timeline device verification do not fetch these supplementary views.
 
 These views can disagree in time and meaning. In particular, the device-detail
 enrollment state can differ from inventory `ManagedBy` and the official API's
@@ -125,9 +143,11 @@ reason to infer success. Keep official auth available when such history is neede
 Cookies remain user-session credentials: expiry, Conditional Access and portal
 RBAC still apply. Manual import works. Automatic browser export/renewal and
 unattended reauthentication are not shipped. `auth status` checks local storage,
-not remote session validity. Explicit cookie-mode `auth login` directs import;
-`auth logout` deletes local cookies without revoking Microsoft's browser session
-or deleting official credentials.
+not remote session validity. Rejected legacy or cross-tenant cookie stores are
+reported with `cookie_stored: false` and `cookie_error`; commands using those
+cookies still reject them. Explicit cookie-mode `auth login` directs import;
+cookie-mode `auth logout` deletes local cookies and legacy portal OAuth tokens
+without revoking Microsoft's browser session or deleting official credentials.
 
 New cookie-mode sessions use the existing `automatic` identity placeholder;
 it is not an authenticated operator UPN. They do not borrow the MSAL account.

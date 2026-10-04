@@ -181,8 +181,7 @@ async def _hunt_run(
         extra_metadata={
             "api_schema": result.schema,
             "api_backend": ctx.config.api_backend,
-            **({"portal_query_stats": result.stats}
-               if ctx.config.api_backend == "portal-cookie" else {}),
+            **result.metadata,
             "raw_json_string_columns": raw,
         },
         tenant_id=ctx.config.tenant_id,

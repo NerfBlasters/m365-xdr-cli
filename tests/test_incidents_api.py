@@ -5,11 +5,12 @@ import respx
 
 from xdr_cli.api.incidents import get_incident, list_incidents, update_incident
 from xdr_cli.client import APISurface, XDRClient
+from xdr_cli.official_backend import OfficialBackend
 
 
 @pytest.fixture()
 def client():
-    return XDRClient(get_token=lambda scopes=None: "fake", timeout=5)
+    return OfficialBackend(XDRClient(get_token=lambda scopes=None: "fake", timeout=5))
 
 
 SAMPLE_INCIDENT = {

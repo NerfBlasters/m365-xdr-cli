@@ -10,7 +10,7 @@ from xdr_cli.api.devices import (
     restrict_code_execution, run_av_scan,
     unisolate_device, unrestrict_code_execution,
 )
-from xdr_cli.backends import PortalBackend, UnsupportedBackendCapability
+from xdr_cli.backends import PortalBackend
 from xdr_cli.config import Config
 from xdr_cli.exceptions import APIError, NetworkError, NotFoundError, UsageError
 from xdr_cli.portal_auth import save_portal_cookies
@@ -134,9 +134,9 @@ async def test_unsupported_modes_and_missing_device_fail_without_network(client)
     try:
         with pytest.raises(UsageError):
             await client.get_action_status(ACTION)
-        with pytest.raises(UnsupportedBackendCapability):
+        with pytest.raises(UsageError):
             await run_av_scan(client, DEVICE, scan_type="Unknown")
-        with pytest.raises(UnsupportedBackendCapability):
+        with pytest.raises(UsageError):
             await isolate_device(client, DEVICE, isolation_type="Unknown")
         assert not respx.calls
     finally:

@@ -5,6 +5,7 @@ import respx
 
 from xdr_cli.api.alerts import get_alert, list_alerts
 from xdr_cli.client import XDRClient
+from xdr_cli.official_backend import OfficialBackend
 
 SAMPLE_ALERT = {
     "id": "al-1",
@@ -20,7 +21,7 @@ SAMPLE_ALERT = {
 
 @pytest.fixture()
 def client():
-    return XDRClient(get_token=lambda scopes=None: "fake", timeout=5)
+    return OfficialBackend(XDRClient(get_token=lambda scopes=None: "fake", timeout=5))
 
 
 @respx.mock

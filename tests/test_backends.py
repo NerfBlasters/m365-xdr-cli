@@ -8,7 +8,7 @@ import respx
 from typer.testing import CliRunner
 
 from xdr_cli.api.hunting import run_query
-from xdr_cli.backends import PortalBackend, UnsupportedBackendCapability, create_client
+from xdr_cli.backends import PortalBackend, create_client
 from xdr_cli.config import Config
 from xdr_cli.exceptions import (
     APIError, ConfigError, ForbiddenError, NotAuthenticatedError, QueryError, RateLimitError,
@@ -131,13 +131,9 @@ async def test_bad_hunting_response_is_not_empty_success(config, response, error
 async def test_unimplemented_operation_never_uses_official_api(config):
     client = create_client(config)
     try:
-        with pytest.raises(UnsupportedBackendCapability):
-            await client.get("graph", "domains")
-        with pytest.raises(UnsupportedBackendCapability):
-            await client.post("mde", "machines/example/isolate")
-        with pytest.raises(UnsupportedBackendCapability):
-            async for _ in client.paginate("graph", "incidents"):
-                pass
+        # A portal backend exposes named operations, never a generic proxy.
+        for verb in ("get", "post", "patch", "paginate"):
+            assert not hasattr(client, verb)
     finally:
         await client.close()
     assert len(respx.calls) == 0
@@ -146,9 +142,8 @@ async def test_unimplemented_operation_never_uses_official_api(config):
 def test_official_factory_retains_token_provider():
     auth, client = Mock(), Mock()
     config = Config(tenant_id="test-tenant", client_id="test-client")
-    assert create_client(config, timeout=17, auth_factory=auth, client_factory=client) is (
-        client.return_value
-    )
+    backend = create_client(config, timeout=17, auth_factory=auth, client_factory=client)
+    assert backend.transport is client.return_value
     auth.assert_called_once_with(config)
     client.assert_called_once_with(get_token=auth.return_value.get_token, timeout=17)
 

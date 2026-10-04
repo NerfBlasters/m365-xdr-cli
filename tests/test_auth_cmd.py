@@ -728,13 +728,15 @@ def test_status_tolerates_corrupt_cookie_file(auth_dir):
         _bound_cookie_store(tenant_fingerprint=hashlib.sha256(b"other").hexdigest()),
     ],
 )
-def test_status_rejects_unbound_or_wrong_tenant_cookie_store(auth_dir, stored):
+def test_status_reports_unbound_or_wrong_tenant_cookie_store(auth_dir, stored):
     (auth_dir / "portal_cookies.json").write_text(json.dumps(stored))
 
     result = runner.invoke(app, ["auth", "status"])
 
-    assert result.exit_code == 4
-    error = json.loads(result.stdout)["error"]
+    assert result.exit_code == 0
+    portal = json.loads(result.stdout)["data"]["portal"]
+    assert portal["cookie_stored"] is False
+    error = portal["cookie_error"]
     assert error["code"] == "PORTAL_COOKIE_TENANT_MISMATCH"
     assert "xdr auth portal-cookie" in error["message"]
 

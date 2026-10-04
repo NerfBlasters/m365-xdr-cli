@@ -125,9 +125,7 @@ async def _alerts_show(ctx: AppContext, alert_id: str) -> None:
     try:
         started = monotonic()
         result = await get_alert(client, alert_id)
-        response_provenance = (
-            "portal-response" if ctx.config.api_backend == "portal-cookie" else "graph-response"
-        )
+        response_provenance = client.profile.response_provenance
         incident_anchor: int | None = None
         if result.get("incidentId") is not None:
             try:
@@ -173,9 +171,7 @@ async def _alerts_show(ctx: AppContext, alert_id: str) -> None:
             alert_records(result, incident_id=result.get("incidentId")),
             command=ctx.invoked_command or "alerts show",
             execution_time_ms=int((monotonic() - started) * 1000),
-            server_truncation_state=(
-                "unknown" if ctx.config.api_backend == "portal-cookie" else "known-complete"
-            ),
+            server_truncation_state=client.profile.detail_truncation_state,
             session_id=ctx.session_id,
             session_label=ctx.session_label,
             session_attachment=ctx.session_attachment,

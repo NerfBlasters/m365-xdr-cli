@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 from typer.testing import CliRunner
 
 from xdr_cli.main import app
+from xdr_cli.official_backend import OfficialBackend
 
 runner = CliRunner()
 
@@ -109,7 +110,8 @@ def test_unrestrict_dispatches_and_is_audited(tmp_path, monkeypatch, caplog):
         'id': 'act-1', 'type': 'UnrestrictCodeExecution', 'status': 'Pending',
     }
     monkeypatch.setattr(
-        'xdr_cli.commands.device_cmd._get_client', Mock(return_value=(None, client)),
+        'xdr_cli.commands.device_cmd._get_client',
+        Mock(return_value=(None, OfficialBackend(client))),
     )
     args = ['device', 'unrestrict', 'dev-1', '--comment', 'recovery', '--yes']
     monkeypatch.setattr('sys.argv', ['xdr', *args])

@@ -326,8 +326,8 @@ class TimeoutError(XDRError):
     exit_code = ExitCode.TIMEOUT
     error_code = "API_TIMEOUT"
 
-    def __init__(self, message: str, **kwargs: Any) -> None:
-        super().__init__(message, retryable=True, **kwargs)
+    def __init__(self, message: str, *, retryable: bool = True, **kwargs: Any) -> None:
+        super().__init__(message, retryable=retryable, **kwargs)
 
 
 class ArtifactError(XDRError):

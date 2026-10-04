@@ -15,6 +15,7 @@ import sys
 import tempfile
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from pathlib import Path
 from time import monotonic
 from typing import TextIO
@@ -34,7 +35,8 @@ from xdr_cli.api.devices import (
 )
 from xdr_cli.api.timeline import stream_device_timeline
 from xdr_cli.auth import AuthManager
-from xdr_cli.backends import PortalBackend, create_client
+from xdr_cli.backend_contract import Backend
+from xdr_cli.backends import create_client
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import (
@@ -78,7 +80,17 @@ _MACHINE_ID_RE = re.compile(r"[a-fA-F0-9]{40}")
 _MAX_TIMELINE_DAYS = 180
 
 
-def _get_client(ctx: AppContext) -> tuple[None, XDRClient | PortalBackend]:
+class IsolationType(StrEnum):
+    FULL = "Full"
+    SELECTIVE = "Selective"
+
+
+class ScanType(StrEnum):
+    QUICK = "Quick"
+    FULL = "Full"
+
+
+def _get_client(ctx: AppContext) -> tuple[None, Backend]:
     client = create_client(
         ctx.config, timeout=ctx.config.api_timeout,
         auth_factory=AuthManager, client_factory=XDRClient,
@@ -126,18 +138,7 @@ def device_show(
 async def _device_show(ctx: AppContext, device: str) -> None:
     _, client = _get_client(ctx)
     try:
-        # Try as hostname first if it doesn't look like a GUID
-        if isinstance(client, PortalBackend):
-            machine_id = await _resolve_machine_id(client, device, verify_exact=True)
-            result = await get_device(client, machine_id)
-        elif "-" not in device or len(device) < 30:
-            found = await find_device_by_hostname(client, device)
-            if found:
-                result = found
-            else:
-                result = await get_device(client, device)
-        else:
-            result = await get_device(client, device)
+        result = await client.show_device(device)
 
         fmt = OutputFormatter(
             session_id=ctx.session_id,
@@ -152,8 +153,8 @@ async def _device_show(ctx: AppContext, device: str) -> None:
 def device_isolate(
     ctx: typer.Context,
     device_id: str = typer.Argument(help="Device ID."),
-    isolation_type: str = typer.Option(
-        "Full", "--type", "-t",
+    isolation_type: IsolationType = typer.Option(
+        IsolationType.FULL, "--type", "-t", case_sensitive=False,
         help="Isolation type: Full or Selective.",
     ),
     comment: str = typer.Option(
@@ -217,8 +218,8 @@ def device_unisolate(
 def device_scan(
     ctx: typer.Context,
     device_id: str = typer.Argument(help="Device ID."),
-    scan_type: str = typer.Option(
-        "Quick", "--scan-type", help="Quick or Full.",
+    scan_type: ScanType = typer.Option(
+        ScanType.QUICK, "--scan-type", case_sensitive=False, help="Quick or Full.",
     ),
     comment: str = typer.Option(
         "Scan triggered via xdr-cli",
@@ -392,7 +393,7 @@ def device_download_package(
     transfer and ZIP-container validation. Signed URLs never appear in output.
     """
     app_ctx: AppContext = ctx.obj
-    if app_ctx.config.api_backend != "portal-cookie":
+    if not app_ctx.config.backend_profile.package_download:
         raise UsageError("Package download requires --backend portal-cookie.")
     destination = package_destination(output, force=force)
     asyncio.run(_download_package(app_ctx, action_id, device_id, destination, force, max_bytes))
@@ -407,7 +408,9 @@ async def _download_package(
         receipt = await download_package_archive(
             url, output, force=force, max_bytes=max_bytes, timeout=ctx.config.api_timeout,
         )
-        receipt.update(action_id=action_id, device_id=device_id, api_backend="portal-cookie")
+        receipt.update(
+            action_id=action_id, device_id=device_id, api_backend=client.profile.name.value,
+        )
         fmt = OutputFormatter(session_id=ctx.session_id, session_label=ctx.session_label)
         typer.echo(fmt.format_output(receipt))
     finally:
@@ -537,7 +540,7 @@ def _select_portal_auth_strategy(
     3. A cached portal MSAL account -> BearerAuth.
     4. None of the above -> exit non-zero with cookie-import recovery guidance.
     """
-    if ctx.config.api_backend == "portal-cookie" and refresh_token:
+    if ctx.config.backend_profile.cookie_auth and refresh_token:
         raise ConfigError("--refresh-token cannot be combined with --backend portal-cookie.")
     if refresh_token:
         return RefreshTokenAuth(ctx.config.tenant_id, refresh_token)
@@ -554,7 +557,7 @@ def _select_portal_auth_strategy(
             cookie_header=stored_cookies.get("cookie_header"),
         )
 
-    if ctx.config.api_backend == "portal-cookie":
+    if ctx.config.backend_profile.cookie_auth:
         raise NotAuthenticatedError(
             "No portal cookies found. Run xdr auth portal-cookie <cookie-source>."
         )
@@ -579,7 +582,7 @@ def _select_portal_auth_strategy(
 
 
 async def _resolve_machine_id(
-    client: XDRClient,
+    client: Backend,
     device: str,
     *,
     verify_exact: bool = False,
@@ -601,7 +604,7 @@ async def _resolve_machine_id(
         return device
 
     if _MACHINE_ID_RE.fullmatch(device):
-        found = await get_device(client, device)
+        found = await get_device(client, device, enrich=False)
         resolved = found.get("id") if isinstance(found, dict) else None
         if not isinstance(resolved, str) or resolved.casefold() != device.casefold():
             raise ConflictError(
@@ -611,7 +614,7 @@ async def _resolve_machine_id(
             )
         return resolved
 
-    found = await find_device_by_hostname(client, device)
+    found = await find_device_by_hostname(client, device, enrich=False)
     candidates = found if isinstance(found, list) else ([found] if found else [])
 
     if not candidates:

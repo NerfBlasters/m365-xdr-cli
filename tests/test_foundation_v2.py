@@ -55,10 +55,12 @@ def _home(tmp_path: Path, monkeypatch) -> Path:
     home = tmp_path / ".xdr-cli"
     monkeypatch.setenv("XDR_CLI_HOME", str(home))
     monkeypatch.delenv("XDR_SESSION", raising=False)
-    monkeypatch.setattr("xdr_cli.sessions.resolve_operator_upn", lambda: "jane.doe@corp.com")
+    monkeypatch.setattr(
+        "xdr_cli.sessions.resolve_operator_upn", lambda **kwargs: "jane.doe@corp.com",
+    )
     monkeypatch.setattr(
         "xdr_cli.commands.session_cmd.resolve_operator_upn",
-        lambda: "jane.doe@corp.com",
+        lambda **kwargs: "jane.doe@corp.com",
     )
     return home
 

@@ -207,11 +207,11 @@ def upn(monkeypatch):
     """Stub MSAL/UPN resolution so tests don't hit the real auth cache."""
     monkeypatch.setattr(
         "xdr_cli.commands.session_cmd.resolve_operator_upn",
-        lambda: "jane.doe@corp.com",
+        lambda **kwargs: "jane.doe@corp.com",
     )
     monkeypatch.setattr(
         "xdr_cli.sessions.resolve_operator_upn",
-        lambda: "jane.doe@corp.com",
+        lambda **kwargs: "jane.doe@corp.com",
     )
     return "jane.doe@corp.com"
 
@@ -298,7 +298,7 @@ def test_session_start_without_concurrent_rotates_ambiguous_sessions(home, upn):
 
 
 def test_session_start_fails_when_no_auth(home, monkeypatch):
-    monkeypatch.setattr("xdr_cli.commands.session_cmd.resolve_operator_upn", lambda: None)
+    monkeypatch.setattr("xdr_cli.commands.session_cmd.resolve_operator_upn", lambda **kwargs: None)
     result = runner.invoke(app, ["session", "start"])
     assert result.exit_code == 2
     combined = (result.output or "") + (result.stderr or "")

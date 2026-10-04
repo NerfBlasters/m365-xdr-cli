@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from xdr_cli._lock import exclusive_lock
+from xdr_cli.backend_contract import backend_profile
 from xdr_cli.config import get_config_home
 from xdr_cli.exceptions import UsageError
 
@@ -569,6 +570,7 @@ def touch_session(session: Session) -> Session:
 def create_session(
     *,
     upn: str | None = None,
+    api_backend: str | None = None,
     label: str | None = None,
     learning_mode: bool = False,
     timeout_seconds: int = DEFAULT_SESSION_TIMEOUT_SECONDS,
@@ -579,7 +581,7 @@ def create_session(
 ) -> Session:
     """Create, persist, and activate a manual or automatic session."""
 
-    upn = upn or resolve_operator_upn() or "automatic"
+    upn = upn or resolve_operator_upn(api_backend=api_backend) or "automatic"
     session = Session(
         id=generate_session_id(upn),
         upn=upn,
@@ -669,7 +671,8 @@ def resolve_session_for_invocation(
             if ended is not None:
                 _emit_retirement_feedback_notice(sole, "automatic-rotation")
             created = create_session(
-                upn="automatic" if api_backend == "portal-cookie" else None,
+                api_backend=api_backend,
+                upn="automatic" if backend_profile(api_backend).cookie_auth else None,
                 label=(
                     f"incident-{anchor_incident}"
                     if anchor_incident is not None
@@ -708,7 +711,8 @@ def resolve_session_for_invocation(
         else f"auto-{datetime.now(UTC).strftime('%Y%m%d-%H%M')}"
     )
     created = create_session(
-        upn="automatic" if api_backend == "portal-cookie" else None,
+        api_backend=api_backend,
+        upn="automatic" if backend_profile(api_backend).cookie_auth else None,
         label=anchor_label,
         timeout_seconds=timeout_seconds,
         automatic=True,
@@ -724,7 +728,7 @@ def resolve_session_for_invocation(
 # ---------------------------------------------------------------------------
 
 
-def resolve_operator_upn() -> str | None:
+def resolve_operator_upn(*, api_backend: str | None = None) -> str | None:
     """Return the cached MSAL account UPN, or ``None`` if no account is cached.
 
     Cookie-only configuration returns ``None`` without consulting MSAL.
@@ -738,7 +742,7 @@ def resolve_operator_upn() -> str | None:
         from xdr_cli.config import load_config
 
         config = load_config()
-        if select_backend(config) == "portal-cookie":
+        if backend_profile(select_backend(config, api_backend)).cookie_auth:
             return None
         info = AuthManager(config).get_auth_status()
     except Exception:

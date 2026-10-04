@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 
 from xdr_cli.backend_selection import select_backend
 from xdr_cli.backends import PortalBackend, create_client
-from xdr_cli.client import APISurface, XDRClient
+from xdr_cli.official_backend import OfficialBackend
 from xdr_cli.config import Config, load_config, save_config
 from xdr_cli.exceptions import NotAuthenticatedError
 from xdr_cli.main import app
@@ -150,9 +150,9 @@ async def test_auth_failure_does_not_switch_backends(selection, monkeypatch):
     auth = Mock(return_value=Mock(get_token=Mock(side_effect=NotAuthenticatedError())))
     client = create_client(config, auth_factory=auth)
     try:
-        assert isinstance(client, XDRClient)
+        assert isinstance(client, OfficialBackend)
         with pytest.raises(NotAuthenticatedError):
-            await client.get(APISurface.GRAPH_CORE, 'domains')
+            await anext(client.iter_domains())
     finally:
         await client.close()
     portal.assert_not_called()

@@ -5,6 +5,7 @@ import respx
 
 from xdr_cli.api.domains import list_domains
 from xdr_cli.client import XDRClient
+from xdr_cli.official_backend import OfficialBackend
 
 SAMPLE_DOMAINS = [
     {
@@ -24,7 +25,7 @@ SAMPLE_DOMAINS = [
 
 @pytest.fixture()
 def client():
-    return XDRClient(get_token=lambda scopes=None: "fake", timeout=5)
+    return OfficialBackend(XDRClient(get_token=lambda scopes=None: "fake", timeout=5))
 
 
 @respx.mock

@@ -12,6 +12,7 @@ from xdr_cli.api.devices import (
     unisolate_device,
 )
 from xdr_cli.client import XDRClient
+from xdr_cli.official_backend import OfficialBackend
 
 SAMPLE_DEVICE = {
     "id": "dev-1",
@@ -32,7 +33,7 @@ SAMPLE_ACTION = {
 
 @pytest.fixture()
 def client():
-    return XDRClient(get_token=lambda scopes=None: "fake", timeout=5)
+    return OfficialBackend(XDRClient(get_token=lambda scopes=None: "fake", timeout=5))
 
 
 @respx.mock

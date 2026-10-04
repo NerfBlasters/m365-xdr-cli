@@ -5,6 +5,8 @@ conventions exist to keep the repo maintainable as more people contribute and
 to prepare for eventual open-source release. The reference rules live here;
 for narrative learning — end-to-end walkthroughs with WHY explanations at
 every non-obvious step — see [`docs/contributing-walkthrough.md`](docs/contributing-walkthrough.md).
+For API backend changes, follow the shared operation contract in
+[`docs/backend_development.md`](docs/backend_development.md).
 
 ---
 

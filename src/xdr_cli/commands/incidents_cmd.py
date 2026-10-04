@@ -230,9 +230,7 @@ async def _show(
             incident_records(result),
             command=ctx.invoked_command or "incidents show",
             execution_time_ms=int((monotonic() - started) * 1000),
-            server_truncation_state=(
-                "unknown" if ctx.config.api_backend == "portal-cookie" else "known-complete"
-            ),
+            server_truncation_state=client.profile.detail_truncation_state,
             session_id=ctx.session_id,
             session_label=ctx.session_label,
             session_attachment=ctx.session_attachment,

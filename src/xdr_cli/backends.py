@@ -7,16 +7,22 @@ from __future__ import annotations
 
 import re
 from collections.abc import AsyncIterator
-from enum import Enum, StrEnum
-from typing import Any
+from enum import Enum
 
 import httpx
 
 from xdr_cli.action_associations import load_action_device, remember_action_device
 from xdr_cli.auth import AuthManager
+from xdr_cli.backend_contract import (
+    PORTAL_PROFILE,
+    APIBackend,
+    Backend,
+    UnsupportedBackendCapability,
+)
 from xdr_cli.backend_selection import select_backend
 from xdr_cli.client import XDRClient
 from xdr_cli.config import Config
+from xdr_cli.continuation import validate_continuation
 from xdr_cli.device_fields import adapter_addresses, additional_device_fields, exclusion_reason
 from xdr_cli.exceptions import (
     APIError,
@@ -30,30 +36,13 @@ from xdr_cli.exceptions import (
     RateLimitError,
     TimeoutError,
     UsageError,
-    XDRError,
     parse_retry_after,
 )
+from xdr_cli.hunting_result import HuntingResult, _normalize_response
+from xdr_cli.official_backend import OfficialBackend
 from xdr_cli.output import err_console
 from xdr_cli.portal_auth import load_portal_cookies
 from xdr_cli.portal_client import CookieAuth
-
-
-class APIBackend(StrEnum):
-    AUTO = "auto"
-    OFFICIAL = "official"
-    PORTAL_COOKIE = "portal-cookie"
-
-
-class UnsupportedBackendCapability(XDRError):
-    exit_code = 3
-    error_code = "BACKEND_CAPABILITY_UNAVAILABLE"
-    suggested_fix = "Select --backend official for this operation."
-
-    def __init__(self) -> None:
-        super().__init__(
-            "This operation does not yet have a validated portal-cookie adapter. "
-            "No request was sent and no official authentication fallback was attempted."
-        )
 
 
 class _Operation(Enum):
@@ -79,8 +68,10 @@ class _Operation(Enum):
     HUNT = ("POST", "/apiproxy/hunting/huntingQueryExecutorService/queryExecutor/v1/external")
 
 
-class PortalBackend:
+class PortalBackend(Backend):
     """Named portal operations with authenticated tenant binding per client."""
+
+    profile = PORTAL_PROFILE
 
     def __init__(self, config: Config, timeout: float) -> None:
         if not config.tenant_id:
@@ -141,7 +132,7 @@ class PortalBackend:
             if mutating:
                 target = "device" if operation is _Operation.ACTION_CREATE else "incident"
                 message += f" Outcome unknown; inspect the {target} before retrying."
-            raise TimeoutError(message) from exc
+            raise TimeoutError(message, retryable=not mutating) from exc
         except httpx.TransportError as exc:
             message = "Portal transport failed."
             if mutating:
@@ -210,7 +201,7 @@ class PortalBackend:
             )
         self._verified = True
 
-    async def execute_hunting(self, query: str) -> dict:
+    async def execute_hunting(self, query: str) -> HuntingResult:
         await self.verify_tenant()
         result = await self._request(_Operation.HUNT, body={
             "QueryText": query, "EncodedQueryText": query,
@@ -226,7 +217,15 @@ class PortalBackend:
                    or not isinstance(col.get("Type"), str) for col in schema)
         ):
             raise APIError("Portal hunting returned an unexpected result shape.")
-        return result
+        normalized = _normalize_response(result)
+        normalized.schema = [{"name": col["name"], "type": col["type"]}
+                             for col in normalized.schema]
+        normalized.stats = {
+            "PortalSchema": result["Schema"],
+            **{key: result[key] for key in ("Quota", "EnhancedQueryStats") if key in result},
+        }
+        normalized.metadata = {"portal_query_stats": normalized.stats}
+        return normalized
 
     async def _graph_pages(
         self, operation: _Operation, *, params: dict | None = None, limit: int = 0,
@@ -247,7 +246,8 @@ class PortalBackend:
                 if not isinstance(row, dict) or not isinstance(row.get("id"), str):
                     raise APIError("Portal Graph collection returned an invalid object.")
                 if row["id"] in seen_ids:
-                    raise APIError("Portal Graph pagination repeated an object.")
+                    # Offset pages can overlap when the live collection changes.
+                    continue
                 seen_ids.add(row["id"])
                 yield row
                 count += 1
@@ -256,22 +256,13 @@ class PortalBackend:
             next_link = result.get("@odata.nextLink")
             if not next_link:
                 return
-            if not isinstance(next_link, str) or next_link in seen_links:
-                raise APIError("Portal Graph returned an invalid continuation.")
-            seen_links.add(next_link)
-            try:
-                url = httpx.URL(next_link)
-            except httpx.InvalidURL as exc:
-                raise APIError("Portal Graph returned an invalid continuation.") from exc
             path = operation.value[1]
-            permitted = (
-                (url.host == "graph.microsoft.com"
-                 and url.path == path.removeprefix("/apiproxy/msgraph"))
-                or (url.host == "security.microsoft.com" and url.path == path)
+            url = validate_continuation(
+                next_link, seen=seen_links, routes=frozenset({
+                    ("graph.microsoft.com", path.removeprefix("/apiproxy/msgraph")),
+                    ("security.microsoft.com", path),
+                }),
             )
-            if (not permitted or url.scheme != "https" or url.port not in (None, 443)
-                    or url.username or url.password or url.fragment or not url.query):
-                raise APIError("Refusing a Graph continuation outside the named operation.")
             # Transfer only query bytes onto the fixed portal route. Cookies
             # are never sent to Graph or to a continuation-supplied origin.
             query = url.query
@@ -372,7 +363,7 @@ class PortalBackend:
             _Operation.INCIDENT_COMMENT, identifier=incident_id, body={"comment": comment},
         )
 
-    async def find_device_by_hostname(self, hostname: str) -> dict | None:
+    async def find_device_by_hostname(self, hostname: str, *, enrich: bool = True) -> dict | None:
         if not hostname or len(hostname) > 253:
             raise UsageError("Device hostname must contain between 1 and 253 characters.")
         await self.verify_tenant()
@@ -393,7 +384,7 @@ class PortalBackend:
                         or not re.fullmatch(r"[0-9a-fA-F]{40}", machine_id)):
                     continue
                 if machine_id in seen:
-                    raise APIError("Portal device search repeated a device across pages.")
+                    continue
                 seen.add(machine_id)
                 name = row.get("ComputerDnsName")
                 if isinstance(name, str) and name.casefold() == hostname.casefold():
@@ -406,7 +397,7 @@ class PortalBackend:
             raise ConflictError("Multiple MDE devices match this hostname; supply a MachineId.")
         if not matches:
             return None
-        return await self.get_device(next(iter(matches)))
+        return await self.get_device(next(iter(matches)), enrich=enrich)
 
     async def get_device(self, device_id: str, *, enrich: bool = True) -> dict:
         if not re.fullmatch(r"[0-9a-fA-F]{40}", device_id):
@@ -460,7 +451,7 @@ class PortalBackend:
                     supplementary["inventory"] = inventory
                 except RateLimitError:
                     raise
-                except APIError as exc:
+                except (APIError, TimeoutError, NetworkError) as exc:
                     enrichment_errors["inventory"] = exc.error_code
             if (isinstance(result.get("LastSeen"), str) and result["LastSeen"]
                     and isinstance(hostname, str) and hostname):
@@ -477,7 +468,7 @@ class PortalBackend:
                     mapped["ipAddresses"] = addresses
                 except RateLimitError:
                     raise
-                except APIError as exc:
+                except (APIError, TimeoutError, NetworkError) as exc:
                     enrichment_errors["ip_adapters"] = exc.error_code
             if result.get("IsExcluded") is True:
                 try:
@@ -494,7 +485,7 @@ class PortalBackend:
                         mapped["exclusionReason"] = reason
                 except RateLimitError:
                     raise
-                except APIError as exc:
+                except (APIError, TimeoutError, NetworkError) as exc:
                     enrichment_errors["exclusion"] = exc.error_code
         additional, sources = additional_device_fields(result, inventory)
         mapped.update(additional)
@@ -544,11 +535,13 @@ class PortalBackend:
         }
         if action not in contracts:
             raise UnsupportedBackendCapability()
-        # Only captured modes are enabled until the remaining variants are validated.
+        # Invalid mode values are usage errors, not missing backend capabilities.
         if (action == "scan" and mode not in ("Full", "Quick")) or (
             action == "isolate" and mode not in ("Selective", "Full")
         ):
-            raise UnsupportedBackendCapability()
+            raise UsageError(
+                "Invalid device action mode. Scan: Quick or Full; isolate: Full or Selective."
+            )
         device = await self.get_device(device_id, enrich=False)
         raw = device["portal_source"]["raw"]
         if any(not isinstance(raw.get(k), str) or not raw[k]
@@ -693,19 +686,6 @@ class PortalBackend:
         })
         return result["url"]
 
-    async def get(self, *args: Any, **kwargs: Any) -> dict:
-        raise UnsupportedBackendCapability()
-
-    async def post(self, *args: Any, **kwargs: Any) -> dict:
-        raise UnsupportedBackendCapability()
-
-    async def patch(self, *args: Any, **kwargs: Any) -> dict:
-        raise UnsupportedBackendCapability()
-
-    async def paginate(self, *args: Any, **kwargs: Any) -> AsyncIterator[dict]:
-        raise UnsupportedBackendCapability()
-        yield  # pragma: no cover -- retain the async-iterator calling contract
-
     async def close(self) -> None:
         await self._client.aclose()
 
@@ -713,10 +693,12 @@ class PortalBackend:
 def create_client(
     config: Config, *, timeout: float | None = None,
     auth_factory=AuthManager, client_factory=XDRClient,
-) -> XDRClient | PortalBackend:
+) -> Backend:
     """Select before constructing auth; portal mode never initializes MSAL."""
     effective_timeout = config.api_timeout if timeout is None else timeout
     backend = select_backend(config)
     if backend == APIBackend.PORTAL_COOKIE:
         return PortalBackend(config, effective_timeout)
-    return client_factory(get_token=auth_factory(config).get_token, timeout=effective_timeout)
+    return OfficialBackend(
+        client_factory(get_token=auth_factory(config).get_token, timeout=effective_timeout),
+    )

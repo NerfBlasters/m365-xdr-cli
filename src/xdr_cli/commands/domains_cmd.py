@@ -8,7 +8,8 @@ import typer
 
 from xdr_cli.api.domains import iter_domains
 from xdr_cli.auth import AuthManager
-from xdr_cli.backends import PortalBackend, UnsupportedBackendCapability, create_client
+from xdr_cli.backend_contract import ad_unavailable
+from xdr_cli.backends import create_client
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import APIError, PartialSuccessError, XDRError
@@ -26,15 +27,6 @@ class DomainSource(StrEnum):
     AD = "active-directory"
 
 
-def _ad_unavailable() -> UnsupportedBackendCapability:
-    error = UnsupportedBackendCapability()
-    error.message = "Active Directory domain inventory requires the portal-cookie backend."
-    error.suggested_fix = (
-        "Use --backend portal-cookie, or domains list --source entra for Entra domains only."
-    )
-    return error
-
-
 @domains_app.command("list")
 def domains_list(
     ctx: typer.Context,
@@ -49,8 +41,8 @@ def domains_list(
     Entra and AD records retain distinct identifiers even when DNS names match.
     """
     app_ctx: AppContext = ctx.obj
-    if source == DomainSource.AD and app_ctx.config.api_backend != "portal-cookie":
-        raise _ad_unavailable()
+    if source == DomainSource.AD and not app_ctx.config.backend_profile.ad_domains:
+        raise ad_unavailable()
     asyncio.run(_domains_list(app_ctx, source))
 
 
@@ -78,8 +70,8 @@ async def _domains_list(ctx: AppContext, source: DomainSource) -> None:
             except XDRError as exc:
                 failed("entra", exc)
         if source != DomainSource.ENTRA:
-            if not isinstance(client, PortalBackend):
-                failed("active-directory", _ad_unavailable())
+            if not client.profile.ad_domains:
+                failed("active-directory", ad_unavailable())
             elif failures and int(failures[-1].exit_code) in (2, 4, 9, 10, 11):
                 coverage["active-directory"] = {"status": "not_attempted",
                                                  "reason": "previous_request_failed"}
@@ -111,8 +103,6 @@ async def _domains_list(ctx: AppContext, source: DomainSource) -> None:
                             ))
                 except XDRError as exc:
                     failed("active-directory", exc)
-                    if "rows" in coverage["active-directory"]:
-                        coverage["active-directory"]["status"] = "partial"
         if failures and not rows and not completed_source:
             raise failures[0]
         context = {"sources": coverage, "requested_source": source.value}

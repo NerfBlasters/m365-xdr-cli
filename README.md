@@ -120,7 +120,8 @@ With automatic selection, `auth login` can establish MSAL credentials even when
 cookies are currently selected; subsequent commands then prefer official auth.
 Explicit cookie mode directs `auth login` to cookie import. `auth logout` removes
 credentials for the selected backend, preserving the other store. This local
-logout does not revoke the browser session at Microsoft.
+logout does not revoke the browser session at Microsoft. Cookie-mode logout also
+clears any legacy portal OAuth token cache.
 Query results retain unknown truncation unless completion is established;
 optional portal query diagnostics are saved privately in hunt artifact metadata.
 `xdr auth portal-login` is retired; use `portal-cookie` instead.

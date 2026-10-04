@@ -8,6 +8,7 @@ import respx
 from typer.testing import CliRunner
 
 from xdr_cli.config import Config
+from xdr_cli.official_backend import OfficialBackend
 from xdr_cli.main import app
 from xdr_cli.portal_auth import save_portal_cookies
 from xdr_cli.results import tenant_fingerprint
@@ -89,15 +90,22 @@ def test_malformed_ad_keeps_entra(cookie_config, mocked_network, bad_rows):
     assert len(rows) == 1 and rows[0]["source"] == "entra"
 
 
-def test_count_failure_preserves_ad_records(cookie_config, mocked_network):
+@pytest.mark.parametrize('failed_endpoint,expected_rows,expected_status', [
+    (COUNT, 1, 'partial'), (AD, 0, 'unavailable'),
+])
+def test_ad_failure_reports_retained_coverage(
+    cookie_config, mocked_network, failed_endpoint, expected_rows, expected_status,
+):
     routes(mocked_network)
-    mocked_network.get(COUNT).respond(403)
-    result = CliRunner().invoke(app, ["domains", "list", "--source", "active-directory"])
+    mocked_network.get(failed_endpoint).respond(403)
+    result = CliRunner().invoke(app, ["domains", "list"])
     assert result.exit_code == 14
     receipt, rows = artifact(result)
-    assert len(rows) == 1 and rows[0]["source"] == "active-directory"
-    assert receipt["context"]["sources"]["active-directory"]["error_code"]
-    assert not any(str(c.request.url) == ENTRA for c in mocked_network.calls)
+    assert len(rows) == expected_rows + 1 and rows[0]["source"] == "entra"
+    coverage = receipt["context"]["sources"]["active-directory"]
+    assert coverage['status'] == expected_status
+    assert coverage['rows'] == expected_rows
+    assert coverage['error_code'] == 'PERMISSION_MISSING_SCOPE'
 
 
 def test_auth_failure_does_not_try_more_sources(cookie_config, mocked_network):
@@ -122,7 +130,9 @@ def test_official_combined_reports_ad_gap(cookie_config, mocked_network, monkeyp
     cookie_config.api_backend = "official"
     client = AsyncMock()
     client.get.return_value = {"value": [{"id": "contoso.com"}]}
-    monkeypatch.setattr("xdr_cli.commands.domains_cmd.create_client", lambda *a, **kw: client)
+    monkeypatch.setattr(
+        "xdr_cli.commands.domains_cmd.create_client", lambda *a, **kw: OfficialBackend(client),
+    )
     result = CliRunner().invoke(app, ["domains", "list"])
     assert result.exit_code == 14
     receipt, rows = artifact(result)
