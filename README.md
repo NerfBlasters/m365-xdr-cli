@@ -598,13 +598,17 @@ tenant growth and candidate routes:
 ```bash
 xdr schema export-opengraph current-schema.opengraph.json \
   --include-tenant \
-  --include-candidates
+  --include-candidates \
+  --custom-nodes current-schema.custom-nodes.json
 ```
 
 Upload the JSON through BloodHound's **Quick Upload**, then run a custom query
 under **Explore → Cypher**. A generic import is merged into the graph database;
-it does not appear as a named graph or saved query in Explore. Node Object IDs
-lead with readable schema names so the canvas remains legible. The detailed
+it does not appear as a named graph or saved query in Explore. For a
+table-level pivot map, run
+``MATCH p=(:XDR_Table)-[:`Join`|NormalizeJoin|SameEntity|Correlate|Bridge]->(:XDR_Table) RETURN p``.
+Nodes carry short `name` labels, and the optional `--custom-nodes` file gives
+each node kind its own icon through BloodHound's `/api/v2/custom-nodes` API. The detailed
 [semantic schema graph guide](docs/schema_graph.md) includes prerequisites,
 starter Cypher queries, layer/flag behavior, one-time migration from opaque
 pre-0.8.1 IDs, and the generic-graph limitations.

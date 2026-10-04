@@ -121,6 +121,8 @@ def test_schema_help_is_actionable_and_examples_are_copyable(config_dir):
         "xdr schema export-opengraph schema-graph.opengraph.json"
         in _normalized_help(export.stdout)
     )
+    assert "--custom-nodes" in _normalized_help(export.stdout)
+    assert "/api/v2/custom-nodes" in _normalized_help(export.stdout)
 
 
 def test_schema_validate_core_checks_and_updates_generated_document(tmp_path, monkeypatch):
@@ -335,6 +337,191 @@ def test_schema_opengraph_force_replaces_symlink_not_its_target(tmp_path, monkey
     assert result.exit_code == 0, result.output
     assert not destination.is_symlink()
     assert json.loads(destination.read_text())["graph"]["nodes"]
+    assert target.read_text() == "original"
+
+
+def test_schema_opengraph_export_writes_bloodhound_custom_nodes(tmp_path, monkeypatch):
+    from xdr_cli.schema_graph.opengraph import bloodhound_custom_nodes
+
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
+    destination = tmp_path / "schema.opengraph.json"
+    custom_nodes = tmp_path / "schema.custom-nodes.json"
+
+    result = runner.invoke(
+        app,
+        [
+            "schema",
+            "export-opengraph",
+            str(destination),
+            "--custom-nodes",
+            str(custom_nodes),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(destination.read_text())["graph"]["nodes"]
+    assert json.loads(custom_nodes.read_text()) == bloodhound_custom_nodes()
+    receipt = json.loads(result.stdout.splitlines()[0])
+    assert receipt["context"]["custom_nodes_path"] == str(custom_nodes.resolve())
+    if os.name == "posix":
+        assert custom_nodes.stat().st_mode & 0o777 == 0o600
+
+
+def test_schema_opengraph_export_receipt_omits_custom_nodes_without_flag(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
+    destination = tmp_path / "schema.opengraph.json"
+
+    result = runner.invoke(app, ["schema", "export-opengraph", str(destination)])
+
+    assert result.exit_code == 0, result.output
+    assert "custom_nodes_path" not in json.loads(result.stdout.splitlines()[0])["context"]
+
+
+def test_schema_opengraph_custom_nodes_conflict_writes_nothing(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
+    destination = tmp_path / "schema.opengraph.json"
+    custom_nodes = tmp_path / "schema.custom-nodes.json"
+    custom_nodes.write_text("keep")
+
+    result = runner.invoke(
+        app,
+        [
+            "schema",
+            "export-opengraph",
+            str(destination),
+            "--custom-nodes",
+            str(custom_nodes),
+        ],
+    )
+
+    assert result.exit_code == 13
+    assert not destination.exists()
+    assert custom_nodes.read_text() == "keep"
+
+
+def test_schema_opengraph_custom_nodes_must_differ_from_output(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
+    destination = tmp_path / "schema.opengraph.json"
+
+    result = runner.invoke(
+        app,
+        [
+            "schema",
+            "export-opengraph",
+            str(destination),
+            "--custom-nodes",
+            str(destination),
+        ],
+    )
+
+    assert result.exit_code == 6
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("force", [False, True])
+@pytest.mark.parametrize("failure", ["parent-file", "fsync"])
+def test_schema_opengraph_stages_both_files_before_publishing(
+    tmp_path, monkeypatch, force, failure
+):
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
+    destination = tmp_path / "graph.json"
+    blocked_parent = tmp_path / "file-not-directory"
+    blocked_parent.write_text("keep parent")
+    styles = (
+        blocked_parent / "styles.json" if failure == "parent-file" else tmp_path / "styles.json"
+    )
+    if failure == "fsync":
+        original = os.fsync
+        calls = 0
+
+        def fail_second_fsync(descriptor):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("disk write failed")
+            return original(descriptor)
+
+        monkeypatch.setattr(os, "fsync", fail_second_fsync)
+    if force:
+        destination.write_text("keep graph")
+    result = runner.invoke(app, [
+        "schema", "export-opengraph", str(destination),
+        "--custom-nodes", str(styles),
+        *(["--force"] if force else []),
+    ])
+    assert result.exit_code == 12, result.output
+    if force:
+        assert destination.read_text() == "keep graph"
+    else:
+        assert not destination.exists()
+    assert blocked_parent.read_text() == "keep parent"
+    assert not styles.exists()
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+@pytest.mark.parametrize("force", [False, True])
+def test_schema_opengraph_second_publication_failure_reports_partial(
+    tmp_path, monkeypatch, force
+):
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
+    destination = tmp_path / "graph.json"
+    styles = tmp_path / "styles.json"
+    if force:
+        destination.write_text("old graph")
+        styles.write_text("old styles")
+    original = os.replace if force else os.link
+
+    def fail_second(source, target, *args, **kwargs):
+        if Path(target) == styles:
+            if not force:
+                styles.write_text("concurrent styles")
+                raise FileExistsError("concurrent writer")
+            raise OSError("second publication failed")
+        return original(source, target, *args, **kwargs)
+
+    monkeypatch.setattr(os, "replace" if force else "link", fail_second)
+    result = runner.invoke(app, [
+        "schema", "export-opengraph", str(destination), "--custom-nodes", str(styles),
+        *(["--force"] if force else []),
+    ])
+    assert result.exit_code == 14, result.output
+    lines = [json.loads(line) for line in result.stdout.splitlines()]
+    assert lines[0]["context"]["output_path"] == str(destination)
+    assert "custom_nodes_path" not in lines[0]["context"]
+    assert lines[0]["context"]["failed_output_path"] == str(styles)
+    assert Path(lines[0]["data_path"]).exists()
+    assert lines[-1]["error"]["type"] == "PartialSuccessError"
+    assert json.loads(destination.read_text())["graph"]["nodes"]
+    assert styles.read_text() == ("old styles" if force else "concurrent styles")
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks unavailable")
+def test_schema_opengraph_force_replaces_custom_nodes_symlink_not_its_target(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
+    target = tmp_path / "do-not-overwrite.txt"
+    target.write_text("original")
+    destination = tmp_path / "schema.opengraph.json"
+    custom_nodes = tmp_path / "schema.custom-nodes.json"
+    custom_nodes.symlink_to(target)
+
+    result = runner.invoke(
+        app,
+        [
+            "schema",
+            "export-opengraph",
+            str(destination),
+            "--custom-nodes",
+            str(custom_nodes),
+            "--force",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert not custom_nodes.is_symlink()
+    assert json.loads(custom_nodes.read_text())["custom_types"]
     assert target.read_text() == "original"
 
 

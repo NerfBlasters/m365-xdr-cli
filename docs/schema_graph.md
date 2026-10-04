@@ -322,11 +322,119 @@ OpenGraph ingest merges nodes and edges into the database; it does not create a
 named graph or saved query. The Quick Upload ID is an ingest job ID.
 
 xdr-cli uses source kind `XDR_CLI`. Node Object IDs begin with readable schema
-locators, such as `DeviceProcessEvents.DeviceId_XDR_CLI_Field`, because
-BloodHound may render Object ID instead of `displayname` on the canvas. Exports
+locators, such as `DeviceProcessEvents.DeviceId_XDR_CLI_Field`. Exports
 from older builds that used opaque IDs remain separate nodes; remove the old
 `XDR_CLI` source under BloodHound database administration before uploading a
 replacement if a single clean snapshot is desired.
+
+### Node labels and icons
+
+BloodHound labels a node with its `name` property, then `displayname`, then
+Object ID, and its Explore canvas cuts labels after 20 characters. Every
+exported node therefore has a short `name`: the table name for tables, the
+column (with any JSON path joined by `.`) for fields, and the entity kind or
+namespace for meaning nodes. `displayname` keeps the full `Table.Column`
+locator, which BloodHound shows in the entity panel. Selecting a node also
+shows its canvas label unclipped.
+
+BloodHound CE 9.5.1 uppercases imported `name` values (and Object IDs), so
+canvas labels appear uppercase. The full `displayname` locator retains its
+original case.
+
+All node kinds otherwise render as the same icon. Write a styling file for
+BloodHound's custom-node API alongside the export:
+
+```bash
+xdr schema export-opengraph current-schema.opengraph.json \
+  --custom-nodes current-schema.custom-nodes.json
+```
+
+The file is the request body for `POST /api/v2/custom-nodes`. It gives
+`XDR_Table`, `XDR_Field`, `XDR_EntityKind`, and `XDR_IdentifierNamespace` their
+own Font Awesome icon and color. Send it once per BloodHound instance;
+xdr-cli never contacts BloodHound itself. The example uses a session JWT (the
+`session_token` from `POST /api/v2/login`). BloodHound API keys use signed
+requests instead of a bearer header.
+
+```bash
+curl -X POST "https://bloodhound.example/api/v2/custom-nodes" \
+  -H "Authorization: Bearer $BLOODHOUND_JWT" \
+  -H "Content-Type: application/json" \
+  --data @current-schema.custom-nodes.json
+```
+
+If a kind is already registered, the `POST` returns `409 Conflict`; update it
+with `PUT /api/v2/custom-nodes/{kind_name}` instead. The update body wraps that
+kind's styling in `config`, for example:
+
+```json
+{"config":{"icon":{"type":"font-awesome","name":"table","color":"#2F7DD1"}}}
+```
+
+`--custom-nodes` must name a different file than the export and follows the
+same `--force` rule. Both files are staged before either is published, so a
+staging failure leaves existing destination files unchanged. Publication is
+atomic per file, not across both files. If the graph is published but styling
+publication fails, the command emits a durable graph receipt followed by a
+partial-success error (exit 14). `context.failed_output_path` identifies the
+failed destination; `custom_nodes_path` is only reported after styling succeeds.
+
+The table-level map shows only `XDR_Table` nodes, so every node in that view
+uses the same blue table icon. To see all four styles together, run:
+
+```cypher
+MATCH p=(t:XDR_Table {xdrid:'table:DeviceInfo'})
+  -[:XDR_ContainsField]->
+  (f:XDR_Field {xdrid:'field:DeviceInfo.DeviceId'})
+  -[:XDR_RepresentsEntity|XDR_UsesNamespace]->()
+RETURN p
+```
+
+This shows a blue table, gray columns, an orange fingerprint for the entity
+kind, and a green key for the identifier namespace.
+
+### Table-level pivot map
+
+Besides the field-level graph, the export links tables directly: one edge per
+table pair and kind of pivot, summarizing the field relationships between
+them. This is the most readable view on the canvas:
+
+```cypher
+MATCH p=(:XDR_Table)-[:`Join`|NormalizeJoin|SameEntity|Correlate|Bridge]->(:XDR_Table)
+RETURN p
+```
+
+Keep the backticks around `Join`: BloodHound CE treats it as a reserved word.
+
+| Edge kind | Field relationship | Meaning |
+|---|---|---|
+| `Join` | `join-compatible` | Same identifier on both sides; join directly |
+| `NormalizeJoin` | `transform-required` | Same entity; normalize first, then join |
+| `SameEntity` | `semantic-equivalent` | Same entity, but the value can change |
+| `Correlate` | `correlation-only` | Shared values, not a key; match inside a time window |
+| `Bridge` | `bridge` | Contract-backed link between different identifiers (none ship today) |
+
+Each table edge carries `keys` (the `Source.Field=Target.Field` locator pairs
+it summarizes), `relationshipids` (the field-level relationship IDs), `count`,
+the weakest `status`/`evidencelevel` and `confidence` among them,
+`direction`, `join_safe`, and `traversable`. Status and confidence are
+conservative lower bounds for all listed keys. `statuses` and `confidences`
+list the distinct member values; `candidatecount` makes unreviewed members
+explicit. `traversable` is true only when every member is usable. Transform,
+cardinality, timing, and individual evidence details stay on the field-level
+edges, identified by `relationshipids`.
+
+There is one summary per emitted start table, end table, and kind. Bidirectional
+members use lexical table-name order; forward and reverse members follow their
+semantic direction. Overlapping bidirectional and forward groups merge, with
+`direction: "mixed"` and a `directions` list. The direction properties describe
+the data; they do not create reverse BloodHound edges. For a neighborhood view
+of bidirectional pivots, use an undirected pattern (`-[r]-`) and inspect the
+field-level direction before constructing a directed route.
+
+The table edge kinds are plain words so the canvas labels stay short. Other
+BloodHound sources may use the same words, so always anchor table-edge queries
+on `XDR_Table` at both ends, as above.
 
 Table-to-field structure:
 
