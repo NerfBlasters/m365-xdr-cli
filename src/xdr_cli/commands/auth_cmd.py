@@ -26,6 +26,7 @@ from xdr_cli.exceptions import (
     NetworkError,
     NotAuthenticatedError,
     TimeoutError,
+    UsageError,
 )
 from xdr_cli.output import OutputFormatter, err_console
 from xdr_cli.portal_auth import (
@@ -94,6 +95,13 @@ def login(
 ) -> None:
     """Authenticate interactively (WAM on Windows) with device code fallback."""
     app_ctx: AppContext = ctx.obj
+    if (app_ctx.config.api_backend == "portal-cookie"
+            and getattr(app_ctx.config, "_api_backend_requested", "portal-cookie") != "auto"):
+        raise UsageError(
+            "The portal-cookie backend uses an imported browser session. "
+            "Run xdr auth portal-cookie <cookie-source>.",
+            help_command="xdr auth portal-cookie --help",
+        )
 
     # Update config if CLI args provided
     if tenant_id:
@@ -125,12 +133,20 @@ def login(
 
 @auth_app.command()
 def logout(ctx: typer.Context) -> None:
-    """Clear cached authentication tokens."""
+    """Clear cached credentials for the selected backend."""
     app_ctx: AppContext = ctx.obj
-    auth = AuthManager(app_ctx.config)
-    cache_path = auth._cache_path()
-    cleared = cache_path.exists()
-    auth.logout()
+    if app_ctx.config.api_backend == "portal-cookie":
+        cache_path = get_config_home() / PORTAL_COOKIE_FILENAME
+        try:
+            cache_path.unlink()
+            cleared = True
+        except FileNotFoundError:
+            cleared = False
+    else:
+        auth = AuthManager(app_ctx.config)
+        cache_path = auth._cache_path()
+        cleared = cache_path.exists()
+        auth.logout()
 
     data = {
         "authenticated": False,
@@ -152,28 +168,12 @@ def portal_login(
         None, "--tenant-id", help="Override the configured tenant ID."
     ),
 ) -> None:
-    """Log in to the unofficial Defender XDR portal API (MSAL, Azure CLI FOCI).
-
-    Experimental and unverified — cookie auth (`xdr auth portal-cookie`) is the
-    validated method; prefer it. This attempts an interactive MSAL sign-in with
-    the Microsoft Azure CLI client ID (FOCI) and may not succeed in every
-    tenant. If it does, sign-ins are *intended* to attribute to "Microsoft
-    Azure CLI" (the FOCI client), not to xdr-cli — but this has not been
-    confirmed. See docs/device_timeline.md.
-    """
-    app_ctx: AppContext = ctx.obj
-    if tenant_id:
-        app_ctx.config.tenant_id = tenant_id
-
-    auth = PortalAuth(app_ctx.config)
-    auth.login()
-    info = auth.get_auth_status()
-
-    fmt = OutputFormatter(
-        session_id=app_ctx.session_id,
-        session_label=app_ctx.session_label,
+    """Retired portal OAuth route; use portal-cookie to import a browser session."""
+    raise UsageError(
+        "portal-login is retired: its Microsoft preauthorization flow was not validated. "
+        "Use xdr auth portal-cookie <cookie-source> instead.",
+        help_command="xdr auth portal-cookie --help",
     )
-    typer.echo(fmt.format_output(info))
 
 
 async def _verify_portal_cookies(
@@ -382,8 +382,8 @@ def portal_cookie(
 ) -> None:
     """Configure portal auth from a logged-in security.microsoft.com session.
 
-    The validated, recommended portal-auth method (the FOCI/MSAL `portal-login`
-    flow is experimental and unverified). Provide the WHOLE browser Cookie
+    Import cookies for the experimental portal backend; `portal-login` is
+    retired. Provide the WHOLE browser Cookie
     header: in Microsoft Edge (logged in to security.microsoft.com), open
     DevTools > Network, right-click the timeline apiproxy request > Copy >
     "Copy as cURL (bash)" (the cmd/PowerShell variants are untested), save it
@@ -438,9 +438,10 @@ def portal_cookie(
     if fingerprint is None:
         raise ConfigError(
             "A configured tenant is required before importing portal cookies. "
-            "Run `xdr auth login --tenant-id <ID> --client-id <ID>` first.",
+            'Set tenant_id = "<tenant-id>" in ~/.xdr-cli/config.toml first. '
+            "Cookie authentication does not require a client ID or MSAL login.",
             invalid={"kind": "missing_config", "value": "tenant_id"},
-            help_command="xdr auth login --help",
+            help_command="xdr auth portal-cookie --help",
         )
     cookie_data: dict = {
         "cookie_header": cookie_header,
@@ -512,8 +513,39 @@ def portal_logout(ctx: typer.Context) -> None:
 def status(ctx: typer.Context) -> None:
     """Show current authentication status."""
     app_ctx: AppContext = ctx.obj
+    if app_ctx.config.api_backend == "portal-cookie":
+        stored = load_portal_cookies(app_ctx.config.tenant_id) is not None
+        fmt = OutputFormatter(session_id=app_ctx.session_id, session_label=app_ctx.session_label)
+        typer.echo(fmt.format_output({
+            "backend": "portal-cookie",
+            "backend_preference": getattr(
+                app_ctx.config, "_api_backend_requested", app_ctx.config.api_backend,
+            ),
+            "portal": {"cookie_stored": stored, "session_validity": "not_checked"},
+            "capabilities": [
+                "hunting", "incidents-list", "incidents-show", "alerts-list", "alerts-show",
+                "investigate", "domains-list", "device-show", "device-timeline",
+                "device-action-status-with-device",
+                "device-download-package",
+                "incident-comments", "device-scan-quick", "device-isolate-selective",
+                "device-isolate-full", "device-unisolate", "device-collect-package",
+                "device-restrict", "device-unrestrict", "incidents-update", "device-scan-full",
+            ],
+            "unverified_capabilities": [],
+            "validation_caveats": [
+                "AD domains are capped at 100 observed records; incomplete coverage is reported.",
+                "Superseded device actions may be absent from portal status reads.",
+                "Native device and action response fields retain partial-contract provenance.",
+            ],
+            "full_parity": False,
+        }))
+        return
     auth = AuthManager(app_ctx.config)
     main_info = auth.get_auth_status()
+    main_info["backend"] = "official"
+    main_info["backend_preference"] = getattr(
+        app_ctx.config, "_api_backend_requested", app_ctx.config.api_backend,
+    )
 
     portal_auth = PortalAuth(app_ctx.config)
     portal_status = portal_auth.get_auth_status()

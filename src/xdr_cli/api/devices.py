@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from xdr_cli.backends import PortalBackend
 from xdr_cli.client import APISurface, XDRClient
 
 
 async def get_device(client: XDRClient, device_id: str) -> dict:
     """Get device details by ID."""
+    if isinstance(client, PortalBackend):
+        return await client.get_device(device_id)
     return await client.get(APISurface.MDE, f"machines/{device_id}")
 
 
@@ -14,6 +17,8 @@ async def find_device_by_hostname(
     client: XDRClient, hostname: str,
 ) -> dict | None:
     """Find a device by hostname. Returns the first match or None."""
+    if isinstance(client, PortalBackend):
+        return await client.find_device_by_hostname(hostname)
     result = await client.get(
         APISurface.MDE,
         "machines",
@@ -34,6 +39,10 @@ async def isolate_device(
     comment: str = "",
 ) -> dict:
     """Isolate a device from the network."""
+    if isinstance(client, PortalBackend):
+        return await client.submit_device_action(
+            device_id, "isolate", comment=comment, mode=isolation_type,
+        )
     return await client.post(
         APISurface.MDE,
         f"machines/{device_id}/isolate",
@@ -45,6 +54,8 @@ async def unisolate_device(
     client: XDRClient, device_id: str, *, comment: str = "",
 ) -> dict:
     """Release a device from network isolation."""
+    if isinstance(client, PortalBackend):
+        return await client.submit_device_action(device_id, "unisolate", comment=comment)
     return await client.post(
         APISurface.MDE,
         f"machines/{device_id}/unisolate",
@@ -60,6 +71,10 @@ async def run_av_scan(
     comment: str = "",
 ) -> dict:
     """Trigger an antivirus scan on a device."""
+    if isinstance(client, PortalBackend):
+        return await client.submit_device_action(
+            device_id, "scan", comment=comment, mode=scan_type,
+        )
     return await client.post(
         APISurface.MDE,
         f"machines/{device_id}/runAntiVirusScan",
@@ -71,6 +86,8 @@ async def collect_investigation_package(
     client: XDRClient, device_id: str, *, comment: str = "",
 ) -> dict:
     """Request a forensic investigation package."""
+    if isinstance(client, PortalBackend):
+        return await client.submit_device_action(device_id, "collect-package", comment=comment)
     return await client.post(
         APISurface.MDE,
         f"machines/{device_id}/collectInvestigationPackage",
@@ -82,6 +99,8 @@ async def restrict_code_execution(
     client: XDRClient, device_id: str, *, comment: str = "",
 ) -> dict:
     """Restrict app execution to Microsoft-signed binaries."""
+    if isinstance(client, PortalBackend):
+        return await client.submit_device_action(device_id, "restrict", comment=comment)
     return await client.post(
         APISurface.MDE,
         f"machines/{device_id}/restrictCodeExecution",
@@ -89,10 +108,25 @@ async def restrict_code_execution(
     )
 
 
+async def unrestrict_code_execution(
+    client: XDRClient, device_id: str, *, comment: str = "",
+) -> dict:
+    """Remove the Defender app-execution restriction."""
+    if isinstance(client, PortalBackend):
+        return await client.submit_device_action(device_id, "unrestrict", comment=comment)
+    return await client.post(
+        APISurface.MDE,
+        f"machines/{device_id}/unrestrictCodeExecution",
+        json={"Comment": comment},
+    )
+
+
 async def get_action_status(
-    client: XDRClient, action_id: str,
+    client: XDRClient, action_id: str, *, device_id: str | None = None,
 ) -> dict:
     """Check the status of a submitted machine action."""
+    if isinstance(client, PortalBackend):
+        return await client.get_action_status(action_id, device_id)
     return await client.get(
         APISurface.MDE, f"machineactions/{action_id}",
     )

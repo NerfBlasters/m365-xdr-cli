@@ -617,6 +617,8 @@ def resolve_session_for_invocation(
     timeout_seconds: int = DEFAULT_SESSION_TIMEOUT_SECONDS,
     anchor_incident: int | None = None,
     anchor_alert: str | None = None,
+    response_provenance: str = "graph-response",
+    api_backend: str = "official",
 ) -> tuple[Session | None, str]:
     """Resolve optional telemetry without ever blocking the real command."""
 
@@ -667,6 +669,7 @@ def resolve_session_for_invocation(
             if ended is not None:
                 _emit_retirement_feedback_notice(sole, "automatic-rotation")
             created = create_session(
+                upn="automatic" if api_backend == "portal-cookie" else None,
                 label=(
                     f"incident-{anchor_incident}"
                     if anchor_incident is not None
@@ -677,7 +680,7 @@ def resolve_session_for_invocation(
                 anchor_incident=anchor_incident,
                 anchor_alert=anchor_alert,
                 anchor_provenance=(
-                    "graph-response" if anchor_incident is not None else "argv"
+                    response_provenance if anchor_incident is not None else "argv"
                 ),
             )
             return created, "automatic-rotated"
@@ -705,6 +708,7 @@ def resolve_session_for_invocation(
         else f"auto-{datetime.now(UTC).strftime('%Y%m%d-%H%M')}"
     )
     created = create_session(
+        upn="automatic" if api_backend == "portal-cookie" else None,
         label=anchor_label,
         timeout_seconds=timeout_seconds,
         automatic=True,
@@ -723,15 +727,20 @@ def resolve_session_for_invocation(
 def resolve_operator_upn() -> str | None:
     """Return the cached MSAL account UPN, or ``None`` if no account is cached.
 
+    Cookie-only configuration returns ``None`` without consulting MSAL.
     Uses the same path ``xdr auth status`` uses — calls
     :class:`AuthManager.get_auth_status` and pulls ``account`` when
     ``authenticated`` is True. No re-implementation of token-cache reads here.
     """
     try:
         from xdr_cli.auth import AuthManager
+        from xdr_cli.backend_selection import select_backend
         from xdr_cli.config import load_config
 
-        info = AuthManager(load_config()).get_auth_status()
+        config = load_config()
+        if select_backend(config) == "portal-cookie":
+            return None
+        info = AuthManager(config).get_auth_status()
     except Exception:
         # MSAL discovery, network, config errors — operator UPN is best-effort.
         return None

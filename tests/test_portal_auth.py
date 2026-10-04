@@ -148,8 +148,8 @@ def test_get_token_raises_auth_error_on_interaction_required(
     assert not isinstance(exc_info.value, NotAuthenticatedError)
     message = str(exc_info.value)
     assert message  # non-empty, useful message
-    # Per the design doc, the remedy is re-running the portal login command.
-    assert "portal-login" in message
+    # The retired portal-login route must not be suggested as a recovery path.
+    assert "portal-cookie" in message
 
 
 # --- 5. login() falls back to device code when interactive auth fails ------

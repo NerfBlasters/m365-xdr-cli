@@ -66,7 +66,7 @@ def _required_permission(response: httpx.Response) -> str:
         return "WindowsDefenderATP / Machine.Scan"
     if "/collectinvestigationpackage" in path:
         return "WindowsDefenderATP / Machine.CollectForensics"
-    if "/restrictcodeexecution" in path:
+    if "/restrictcodeexecution" in path or "/unrestrictcodeexecution" in path:
         return "WindowsDefenderATP / Machine.RestrictExecution"
     if "/machines" in path or "/machineactions" in path:
         return (

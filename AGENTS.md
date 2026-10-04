@@ -65,6 +65,15 @@ Otherwise proceed with the CLI reference below.
     for intentional replacement.
     See `docs/device_timeline.md` for portal-auth and attribution caveats.
 
+### Backend selection
+
+The default `auto` preference uses official auth when configured app credentials
+or matching MSAL token material exist; with only a tenant-bound cookie store,
+commands select cookie mode automatically. `--backend official|portal-cookie`
+overrides config, and an explicit `api_backend` setting pins the choice.
+`auth status` reports the selected backend and preference. Selection is local,
+not a session-validity check. Do not retry a failed write under another backend.
+
 ### JSON-string column expansion
 
 Advanced Hunting returns a few columns as JSON-encoded strings rather than structured objects:
@@ -86,7 +95,7 @@ If a value in one of the listed columns fails to parse as JSON, the raw string i
 Device-state-changing commands must never be executed by the agent:
 
 - `xdr device isolate <id>` / `xdr device unisolate <id>`
-- `xdr device restrict <id>`
+- `xdr device restrict <id>` / `xdr device unrestrict <id>`
 - `xdr device scan <id>`
 - `xdr device collect-package <id>`
 
@@ -98,7 +107,7 @@ Read-only commands (`list`, `show`, `hunt run`, `library run`, `investigate`, `d
 
 ## 3. Artifact and compact-output shapes
 
-Successful artifact-first reads—`xdr hunt run`, library `list`/`run`, schema
+Successful artifact-first reads—`xdr domains list`, `xdr hunt run`, library `list`/`run`, schema
 `refresh`/`tables`/`show`, alert/incident `list`/`show`, `xdr investigate`, and
 default `xdr device timeline`—emit at most three compact JSON lines:
 
@@ -174,13 +183,28 @@ All audit-logged commands are recorded to `~/.xdr-cli/audit.log`: `incidents upd
 
 ## 7. Tenant domains
 
-Use `xdr domains list` to retrieve the authoritative list of verified domains in the Entra ID / M365 tenant. This calls `GET /v1.0/domains` on Microsoft Graph and returns each domain's ID, default/verified status, and authentication type.
+Use `xdr domains list` to retrieve source-labelled domain records as private JSONL.
+With portal-cookie auth, the default combines Entra tenant domains and AD domains
+observed by Defender for Identity. Rows contain `source` (`entra` or
+`active-directory`), `name`, and native provider fields. Same-named domains from
+different sources remain separate. Entra rows retain `isVerified`, `isDefault`
+and `authenticationType`; AD rows retain `dnsName`, `sid`, `distinguishedName`,
+`functionality` and `isDeleted`. Do not infer tenant verification from an AD row.
 
 ```bash
 xdr domains list
+xdr domains list --source entra
+xdr --backend portal-cookie domains list --source active-directory
 ```
 
-Use this during investigations to determine whether a domain (e.g., in a forwarding rule destination or sign-in UPN) is internal or external to the tenant.
+The official backend supports Entra only: default combined listing returns its
+durable results plus exit 14 for unavailable AD coverage; `--source entra` makes
+that scope explicit and succeeds normally. AD reads have a 100-record cap until
+a continuation contract is verified. Inspect receipt `context.sources` for
+source failures, native `has_more`, and count discrepancies; incomplete reads
+preserve useful records and return exit 14. MDI visibility is not exhaustive
+forest discovery. Use verified Entra rows when determining tenant-owned email
+domains, and preserve the source distinction when investigating AD namespaces.
 
 ## 8. Query library + schema reference
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from xdr_cli.backends import PortalBackend
 from xdr_cli.client import APISurface, XDRClient
 from xdr_cli.exceptions import ForbiddenError, NotFoundError
 from xdr_cli.output import err_console
@@ -73,7 +74,7 @@ def _normalize_response(response: dict) -> HuntingResult:
     )
 
 
-async def run_query(client: XDRClient, kql: str) -> HuntingResult:
+async def run_query(client: XDRClient | PortalBackend, kql: str) -> HuntingResult:
     """Execute a KQL query via the Advanced Hunting API.
 
     Primary path is Microsoft Graph (graph.microsoft.com/v1.0/security/runHuntingQuery)
@@ -83,6 +84,18 @@ async def run_query(client: XDRClient, kql: str) -> HuntingResult:
     (404) or the scope isn't consented (403) — auth failures, rate limits,
     and 5xx errors propagate so the caller can act on them.
     """
+    if isinstance(client, PortalBackend):
+        response = await client.execute_hunting(kql)
+        result = _normalize_response(response)
+        # Portal schema adds entity hints (often null). Keep the public
+        # schema contract identical to Graph, retaining hints privately with
+        # the diagnostics instead of discarding their source representation.
+        result.schema = [{"name": col["name"], "type": col["type"]} for col in result.schema]
+        result.stats = {
+            "PortalSchema": response["Schema"],
+            **{key: response[key] for key in ("Quota", "EnhancedQueryStats") if key in response},
+        }
+        return result
     try:
         # Graph's runHuntingQuery body uses lowercase "query"; ASP.NET's JSON
         # binding may be tolerant today, but the documented contract is

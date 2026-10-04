@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any
 
+from xdr_cli.backends import PortalBackend
 from xdr_cli.client import APISurface, XDRClient
 
 
@@ -19,6 +20,10 @@ async def list_incidents(
     params: dict[str, Any] = {"$top": top, "$orderby": "createdDateTime desc"}
     if odata_filter:
         params["$filter"] = odata_filter
+    if isinstance(client, PortalBackend):
+        async for item in client.list_incidents(params=params, limit=limit):
+            yield item
+        return
     async for item in client.paginate(APISurface.GRAPH, "incidents", params=params, limit=limit):
         yield item
 
@@ -30,6 +35,8 @@ async def get_incident(
     expand: list[str] | None = None,
 ) -> dict:
     """Get a single incident by ID, optionally expanding its alerts."""
+    if isinstance(client, PortalBackend):
+        return await client.get_incident(incident_id, expand=expand)
     params: dict[str, str] = {}
     if expand:
         params["$expand"] = ",".join(expand)
@@ -42,6 +49,8 @@ async def update_incident(
     payload: dict[str, Any],
 ) -> dict:
     """Update incident fields (status, classification, determination)."""
+    if isinstance(client, PortalBackend):
+        return await client.update_incident(incident_id, payload)
     return await client.patch(APISurface.GRAPH, f"incidents/{incident_id}", json=payload)
 
 
@@ -56,6 +65,8 @@ async def add_incident_comment(
     they cannot be PATCHed alongside status / classification / determination.
     Reference: https://learn.microsoft.com/en-us/graph/api/security-incident-post-comments
     """
+    if isinstance(client, PortalBackend):
+        return await client.add_incident_comment(incident_id, comment)
     return await client.post(
         APISurface.GRAPH,
         f"incidents/{incident_id}/comments",

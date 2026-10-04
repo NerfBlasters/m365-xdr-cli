@@ -483,16 +483,16 @@ def test_cached_msal_account_used_when_no_refresh_token_or_cookie(
 
 @patch("xdr_cli.commands.device_cmd.stream_device_timeline")
 @patch("xdr_cli.commands.device_cmd.PortalClient")
-def test_no_credentials_exits_nonzero_and_names_both_portal_commands(
+def test_no_credentials_exits_nonzero_and_names_cookie_import(
     mock_client_cls, mock_stream, home_dir,
 ):
     """No --refresh-token, no cookie file, no cached MSAL account -> exit
-    non-zero, error names BOTH `xdr auth portal-login` and
-    `xdr auth portal-cookie`. Nothing PortalClient-shaped is ever touched."""
+    non-zero, error names `xdr auth portal-cookie` and does not recommend the
+    retired portal-login route. Nothing PortalClient-shaped is ever touched."""
     result = runner.invoke(app, ["device", "timeline", MACHINE_ID])
 
     assert result.exit_code != 0
-    assert "portal-login" in result.stdout
+    assert "portal-login" not in result.stdout
     assert "portal-cookie" in result.stdout
     assert len(result.stdout.splitlines()) == 1
     mock_client_cls.assert_not_called()

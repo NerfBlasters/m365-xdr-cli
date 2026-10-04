@@ -19,6 +19,7 @@ from xdr_cli.secret_files import atomic_write_secret
 class Config:
     """XDR CLI configuration."""
 
+    api_backend: str = "auto"
     tenant_id: str = ""
     client_id: str = ""
     auth_mode: str = "device_code"  # "device_code" or "client_credentials"
@@ -43,6 +44,9 @@ class Config:
 
     def __post_init__(self) -> None:
         from xdr_cli.exceptions import ConfigError
+
+        if self.api_backend not in ("auto", "official", "portal-cookie"):
+            raise ConfigError("api_backend must be auto, official, or portal-cookie.")
 
         for name in (
             "schema_collect_on_session_end",
@@ -180,6 +184,7 @@ def save_config(config: Config) -> None:
     config_home = ensure_config_dir()
     config_file = config_home / "config.toml"
     data = asdict(config)
+    data["api_backend"] = getattr(config, "_api_backend_preference", config.api_backend)
     # Auth login must still save credentials during upkeep-config recovery.
     # Preserve the rejected settings instead of replacing them with defaults
     # that would silently enable queries on the next invocation.

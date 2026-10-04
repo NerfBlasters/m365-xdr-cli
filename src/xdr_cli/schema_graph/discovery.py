@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 
 from xdr_cli.api.hunting import run_query
 from xdr_cli.auth import AuthManager
+from xdr_cli.backends import create_client
 from xdr_cli.client import XDRClient
 from xdr_cli.config import get_config_home
 from xdr_cli.exceptions import ArtifactError, AuthError, PartialSuccessError
@@ -546,7 +547,10 @@ async def explore_saved_identifiers(
         )
         executed, added, failure, failure_run_id, attempted = 0, 0, None, None, 0
         if not plan_only and tasks:
-            client = XDRClient(get_token=AuthManager(ctx.config).get_token, timeout=timeout)
+            client = create_client(
+                ctx.config, timeout=timeout,
+                auth_factory=AuthManager, client_factory=XDRClient,
+            )
             try:
                 for args, origins in tasks[:max_queries]:
                     query = compile_discovery_query(**args)

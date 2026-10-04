@@ -11,6 +11,7 @@ import typer
 from xdr_cli._recording import _parse_execution_time_ms, run_kql_with_recording
 from xdr_cli.api.hunting import run_query
 from xdr_cli.auth import AuthManager
+from xdr_cli.backends import create_client
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import UsageError
@@ -128,9 +129,11 @@ async def _hunt_run(
     """
     # Top-level hunt run: write annotations onto the parent recorder
     # (ctx.recorder), which run() flushes in its try/finally. No anchor.
-    auth = AuthManager(ctx.config)
     effective_timeout = timeout if timeout is not None else ctx.config.api_timeout
-    client = XDRClient(get_token=auth.get_token, timeout=effective_timeout)
+    client = create_client(
+        ctx.config, timeout=effective_timeout,
+        auth_factory=AuthManager, client_factory=XDRClient,
+    )
     try:
         recorded = await run_kql_with_recording(
             ctx,
@@ -177,6 +180,9 @@ async def _hunt_run(
         source_hash=query_source_hash(library_query) if library_query else None,
         extra_metadata={
             "api_schema": result.schema,
+            "api_backend": ctx.config.api_backend,
+            **({"portal_query_stats": result.stats}
+               if ctx.config.api_backend == "portal-cookie" else {}),
             "raw_json_string_columns": raw,
         },
         tenant_id=ctx.config.tenant_id,

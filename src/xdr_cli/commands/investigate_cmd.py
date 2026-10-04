@@ -16,6 +16,7 @@ from xdr_cli.api.hunting import run_query
 from xdr_cli.api.incidents import get_incident
 from xdr_cli.artifact_records import investigation_records
 from xdr_cli.auth import AuthManager
+from xdr_cli.backends import create_client
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import PartialSuccessError
@@ -276,8 +277,10 @@ def investigate(
 
 
 async def _investigate(ctx: AppContext, incident_id: str, auto_enrich: bool) -> None:
-    auth = AuthManager(ctx.config)
-    client = XDRClient(get_token=auth.get_token, timeout=ctx.config.api_timeout)
+    client = create_client(
+        ctx.config, timeout=ctx.config.api_timeout,
+        auth_factory=AuthManager, client_factory=XDRClient,
+    )
     started = monotonic()
 
     try:
@@ -438,6 +441,8 @@ async def _investigate(ctx: AppContext, incident_id: str, auto_enrich: bool) -> 
                 "incident_id": incident_id,
                 "queries_run": len(enrichment_results),
                 "failed_queries": sorted(set(failed_queries)),
+                "api_backend": ctx.config.api_backend,
+                "source_contract": "microsoft-graph",
                 "partial": bool(failed_queries),
             },
             tenant_id=ctx.config.tenant_id,

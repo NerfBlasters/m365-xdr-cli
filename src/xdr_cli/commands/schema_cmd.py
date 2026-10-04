@@ -25,6 +25,7 @@ from filelock import Timeout as FileLockTimeout
 from xdr_cli._lock import exclusive_lock
 from xdr_cli.api.hunting import run_query
 from xdr_cli.auth import AuthManager
+from xdr_cli.backends import create_client
 from xdr_cli.client import XDRClient
 from xdr_cli.config import get_config_home
 from xdr_cli.context import AppContext
@@ -257,9 +258,9 @@ def schema_refresh(ctx: typer.Context) -> None:
 
 async def _schema_refresh(ctx: AppContext, *, on_result=None) -> None:
     query = load_query("sys_schema_probe")
-    client = XDRClient(
-        get_token=AuthManager(ctx.config).get_token,
-        timeout=ctx.config.api_timeout,
+    client = create_client(
+        ctx.config, timeout=ctx.config.api_timeout,
+        auth_factory=AuthManager, client_factory=XDRClient,
     )
     try:
         result = await run_query(client, query)
@@ -2483,9 +2484,9 @@ async def _schema_observe(
         )
         return
     _initialize_private_probe_debug(private_debug_output)
-    client = XDRClient(
-        get_token=AuthManager(ctx.config).get_token,
-        timeout=timeout if timeout is not None else ctx.config.api_timeout,
+    client = create_client(
+        ctx.config, timeout=timeout if timeout is not None else ctx.config.api_timeout,
+        auth_factory=AuthManager, client_factory=XDRClient,
     )
     stage_run_ids: list[str] = []
     source_artifact_run_id: str | None = None
@@ -3273,9 +3274,9 @@ async def _schema_candidate_review(
             f"candidate context query could not be compiled: {exc}",
             help_command="xdr schema candidate-review --help",
         ) from exc
-    client = XDRClient(
-        get_token=AuthManager(ctx.config).get_token,
-        timeout=timeout if timeout is not None else ctx.config.api_timeout,
+    client = create_client(
+        ctx.config, timeout=timeout if timeout is not None else ctx.config.api_timeout,
+        auth_factory=AuthManager, client_factory=XDRClient,
     )
     try:
         result = await run_query(client, compiled.kql)

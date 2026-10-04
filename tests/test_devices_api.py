@@ -110,3 +110,18 @@ async def test_get_action_status(client):
     ).respond(json={**SAMPLE_ACTION, "status": "Succeeded"})
     result = await get_action_status(client, "act-1")
     assert result["status"] == "Succeeded"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_unrestrict_code_execution(client):
+    from xdr_cli.api.devices import unrestrict_code_execution
+
+    route = respx.post(
+        'https://api.security.microsoft.com/api/machines/dev-1/unrestrictCodeExecution',
+    ).respond(json={**SAMPLE_ACTION, 'type': 'UnrestrictCodeExecution'}, status_code=201)
+    result = await unrestrict_code_execution(client, 'dev-1', comment='recovery')
+    assert result['type'] == 'UnrestrictCodeExecution'
+    assert route.call_count == 1
+    import json
+    assert json.loads(route.calls[0].request.content) == {'Comment': 'recovery'}

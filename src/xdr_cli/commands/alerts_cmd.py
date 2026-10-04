@@ -10,6 +10,7 @@ import typer
 from xdr_cli.api.alerts import get_alert, list_alerts
 from xdr_cli.artifact_records import alert_records
 from xdr_cli.auth import AuthManager
+from xdr_cli.backends import create_client
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
 from xdr_cli.helpers import build_odata_filter, split_csv, validate_filter_choices
@@ -68,9 +69,9 @@ async def _alerts_list(
     odata_filter = build_odata_filter(
         severity=severity, since=since, service_source=service,
     )
-    auth = AuthManager(ctx.config)
-    client = XDRClient(
-        get_token=auth.get_token, timeout=ctx.config.api_timeout,
+    client = create_client(
+        ctx.config, timeout=ctx.config.api_timeout,
+        auth_factory=AuthManager, client_factory=XDRClient,
     )
     try:
         started = monotonic()
@@ -91,6 +92,7 @@ async def _alerts_list(
             alert_id=ctx.anchor_alert,
             anchor_provenance=ctx.anchor_provenance,
             extra_metadata={
+                "api_backend": ctx.config.api_backend,
                 "filters_applied": {
                     "severity": severity,
                     "service": service,
@@ -116,13 +118,16 @@ def alerts_show(
 
 
 async def _alerts_show(ctx: AppContext, alert_id: str) -> None:
-    auth = AuthManager(ctx.config)
-    client = XDRClient(
-        get_token=auth.get_token, timeout=ctx.config.api_timeout,
+    client = create_client(
+        ctx.config, timeout=ctx.config.api_timeout,
+        auth_factory=AuthManager, client_factory=XDRClient,
     )
     try:
         started = monotonic()
         result = await get_alert(client, alert_id)
+        response_provenance = (
+            "portal-response" if ctx.config.api_backend == "portal-cookie" else "graph-response"
+        )
         incident_anchor: int | None = None
         if result.get("incidentId") is not None:
             try:
@@ -130,20 +135,22 @@ async def _alerts_show(ctx: AppContext, alert_id: str) -> None:
             except (TypeError, ValueError):
                 incident_anchor = None
 
-        # Alert identity is authoritative only after Graph returns incidentId.
+        # Alert identity is authoritative only after the selected backend returns incidentId.
         # Resolve here, not in the pre-dispatch leaf hook, so a new unrelated
         # alert cannot inherit and then overwrite the previous automatic session.
         session, attachment = resolve_session_for_invocation(
             ctx.invoked_command or "alerts show",
+            api_backend=ctx.config.api_backend,
             timeout_seconds=ctx.config.session_timeout_seconds,
             anchor_incident=incident_anchor,
             anchor_alert=alert_id,
+            response_provenance=response_provenance,
         )
         if session is not None and incident_anchor is not None:
             session = set_session_anchor_incident(
                 session.id,
                 incident_anchor,
-                provenance="graph-response",
+                provenance=response_provenance,
             ) or session
         ctx.session_attachment = attachment
         if ctx.recorder is not None:
@@ -153,7 +160,7 @@ async def _alerts_show(ctx: AppContext, alert_id: str) -> None:
                 ctx.recorder.annotate("anchor_incident", incident_anchor)
         if result.get("incidentId") is not None:
             ctx.anchor_incident = str(result["incidentId"])
-            ctx.anchor_provenance["incident_id"] = "graph-response"
+            ctx.anchor_provenance["incident_id"] = response_provenance
         ctx.anchor_alert = alert_id
         ctx.anchor_provenance["alert_id"] = "argv"
         if ctx.recorder is not None:
@@ -166,7 +173,9 @@ async def _alerts_show(ctx: AppContext, alert_id: str) -> None:
             alert_records(result, incident_id=result.get("incidentId")),
             command=ctx.invoked_command or "alerts show",
             execution_time_ms=int((monotonic() - started) * 1000),
-            server_truncation_state="known-complete",
+            server_truncation_state=(
+                "unknown" if ctx.config.api_backend == "portal-cookie" else "known-complete"
+            ),
             session_id=ctx.session_id,
             session_label=ctx.session_label,
             session_attachment=ctx.session_attachment,
@@ -178,6 +187,10 @@ async def _alerts_show(ctx: AppContext, alert_id: str) -> None:
             alert_id=alert_id,
             anchor_provenance=ctx.anchor_provenance,
             tenant_id=ctx.config.tenant_id,
+            extra_metadata={
+                "api_backend": ctx.config.api_backend,
+                "source_contract": "microsoft-graph",
+            },
         )
         emit_result(artifact)
     finally:

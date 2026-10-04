@@ -38,12 +38,19 @@ JSONL history remains.
 
 Normal `session start` rotates the selected current session. If multiple
 markers exist and `XDR_SESSION` does not explicitly select one, it rotates all
-of them before creating one new sequential session. It requires a cached
-authenticated account so the session has an operator identity:
+of them before creating one new sequential session. With the official backend,
+it requires a cached authenticated account so the session has an operator identity:
 
 ```bash
 xdr session start --label incident-12345 --timeout 1800
 ```
+
+With `--backend portal-cookie`, manual start requires locally stored cookies
+bound to the configured tenant; it does not check their remote validity. New
+manual and automatic cookie-mode sessions use the existing `automatic` identity
+placeholder (`aut-...` session IDs). This is not an authenticated operator UPN:
+the cookie backend never borrows an account from the official MSAL cache.
+Existing session attachment and rotation rules still apply.
 
 Preserve existing sessions only when parallel work is intentional:
 

@@ -1,6 +1,7 @@
 """Tests for domains CLI commands."""
 
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from typer.testing import CliRunner
@@ -38,11 +39,13 @@ def test_domains_list_json(
     mock_client.close = AsyncMock()
     mock_client_cls.return_value = mock_client
 
-    result = runner.invoke(app, ["domains", "list"])
+    result = runner.invoke(app, ["domains", "list", "--source", "entra"])
     assert result.exit_code == 0
-    parsed = json.loads(result.output)
-    assert len(parsed["data"]) == 2
-    assert parsed["data"][0]["id"] == "contoso.com"
+    parsed = json.loads(result.stdout.splitlines()[0])
+    rows = [json.loads(line) for line in Path(parsed["data_path"]).read_text().splitlines()]
+    assert len(rows) == 2
+    assert rows[0]["id"] == "contoso.com"
+    assert rows[0]["source"] == "entra"
 
 
 @patch("xdr_cli.commands.domains_cmd.AuthManager")
@@ -58,7 +61,7 @@ def test_domains_list_empty(
     mock_client.close = AsyncMock()
     mock_client_cls.return_value = mock_client
 
-    result = runner.invoke(app, ["domains", "list"])
+    result = runner.invoke(app, ["domains", "list", "--source", "entra"])
     assert result.exit_code == 0
-    parsed = json.loads(result.output)
-    assert parsed["data"] == []
+    parsed = json.loads(result.stdout.splitlines()[0])
+    assert parsed["rows"] == 0

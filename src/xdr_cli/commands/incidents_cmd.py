@@ -16,6 +16,7 @@ from xdr_cli.api.incidents import (
 )
 from xdr_cli.artifact_records import incident_records
 from xdr_cli.auth import AuthManager
+from xdr_cli.backends import create_client
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import ConflictError, PartialSuccessError, UsageError, XDRError
@@ -145,9 +146,9 @@ async def _list(
         assigned_to=assigned_to,
         since=since,
     )
-    auth = AuthManager(ctx.config)
-    client = XDRClient(
-        get_token=auth.get_token, timeout=ctx.config.api_timeout,
+    client = create_client(
+        ctx.config, timeout=ctx.config.api_timeout,
+        auth_factory=AuthManager, client_factory=XDRClient,
     )
     try:
         started = monotonic()
@@ -169,6 +170,7 @@ async def _list(
             alert_id=ctx.anchor_alert,
             anchor_provenance=ctx.anchor_provenance,
             extra_metadata={
+                "api_backend": ctx.config.api_backend,
                 "returned_count": len(items),
                 "filters_applied": {
                     "severity": severity,
@@ -215,9 +217,9 @@ def incidents_show(
 async def _show(
     ctx: AppContext, incident_id: str, expand: list[str] | None,
 ) -> None:
-    auth = AuthManager(ctx.config)
-    client = XDRClient(
-        get_token=auth.get_token, timeout=ctx.config.api_timeout,
+    client = create_client(
+        ctx.config, timeout=ctx.config.api_timeout,
+        auth_factory=AuthManager, client_factory=XDRClient,
     )
     try:
         started = monotonic()
@@ -228,14 +230,19 @@ async def _show(
             incident_records(result),
             command=ctx.invoked_command or "incidents show",
             execution_time_ms=int((monotonic() - started) * 1000),
-            server_truncation_state="known-complete",
+            server_truncation_state=(
+                "unknown" if ctx.config.api_backend == "portal-cookie" else "known-complete"
+            ),
             session_id=ctx.session_id,
             session_label=ctx.session_label,
             session_attachment=ctx.session_attachment,
             incident_id=incident_id,
             alert_id=ctx.anchor_alert,
             anchor_provenance=ctx.anchor_provenance,
-            extra_metadata={"expand": expand or []},
+            extra_metadata={
+                "expand": expand or [], "api_backend": ctx.config.api_backend,
+                "source_contract": "microsoft-graph",
+            },
             tenant_id=ctx.config.tenant_id,
         )
         emit_result(artifact)
@@ -388,9 +395,9 @@ async def _update(
     *,
     comment: str | None = None,
 ) -> None:
-    auth = AuthManager(ctx.config)
-    client = XDRClient(
-        get_token=auth.get_token, timeout=ctx.config.api_timeout,
+    client = create_client(
+        ctx.config, timeout=ctx.config.api_timeout,
+        auth_factory=AuthManager, client_factory=XDRClient,
     )
     try:
         if payload:
