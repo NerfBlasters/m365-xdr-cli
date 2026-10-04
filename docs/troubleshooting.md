@@ -455,7 +455,7 @@ error is raised locally: no request was sent and no fallback to the other
 backend was attempted, so the exit-3 class is misleading if you read it as
 an upstream failure. The two cases:
 
-- `xdr domains list --source ad` on the official backend: Active Directory
+- `xdr domains list --source active-directory` on the official backend: Active Directory
   domain inventory exists only in cookie mode. Use `--backend
   portal-cookie`, or `--source entra`. With the default `--source all` the
   Entra rows are still written and the AD failure is reported as

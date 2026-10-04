@@ -171,7 +171,8 @@ cookies supply the credential, also verifies a supplied MachineId there. With
 MachineId verification, and hostname lookup all use portal requests (an exact,
 unique match in the portal inventory's 180-day view); no app registration or
 MSAL credentials are required. On either backend an ambiguous hostname is
-rejected with the candidate MachineIds. Timeline events stream through the
+rejected (the official backend lists the candidate MachineIds; the portal
+backend asks for a MachineId). Timeline events stream through the
 same portal adapter.
 
 With no `--output`, the complete stream is atomically registered under

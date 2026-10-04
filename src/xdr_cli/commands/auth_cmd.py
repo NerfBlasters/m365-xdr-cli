@@ -365,7 +365,7 @@ def portal_cookie(
 ) -> None:
     """Configure portal auth from a logged-in security.microsoft.com session.
 
-    Import cookies for the experimental portal backend. Provide the WHOLE
+    Import cookies for the portal-cookie backend. Provide the WHOLE
     browser Cookie header: in Microsoft Edge (logged in to security.microsoft.com), open
     DevTools > Network, right-click the timeline apiproxy request > Copy >
     "Copy as cURL (bash)" (the cmd/PowerShell variants are untested), save it
@@ -378,8 +378,8 @@ def portal_cookie(
     header is required. The XSRF token is auto-extracted from the header (you're
     prompted only if it carries no `XSRF-TOKEN` cookie). Stored in
     ~/.xdr-cli/portal_cookies.json (0600), bound to the configured tenant's
-    non-reversible fingerprint — cookie values never reach argv. Legacy or
-    different-tenant stores must be re-imported.
+    non-reversible fingerprint — cookie values never reach argv. A store
+    bound to a different tenant must be re-imported.
 
     On a successful import the exact regular source file is overwritten and
     deleted on a best-effort basis; pass `--keep-source` to keep it. Symlinks
@@ -457,11 +457,18 @@ def portal_cookie(
 
 
 def _clear_portal_credentials(app_ctx: AppContext) -> dict:
-    """Delete the stored portal cookie store; a no-op when absent."""
+    """Delete the stored portal cookie store; a no-op when absent.
+
+    Also removes a ``portal_token_cache.json`` left behind by an earlier
+    release's portal sign-in, so one logout fully cleans an upgraded home.
+    """
     cookie_path = get_config_home() / PORTAL_COOKIE_FILENAME
     cookie_cleared = cookie_path.exists()
     if cookie_cleared:
         cookie_path.unlink()
+    stale_token_cache = get_config_home() / "portal_token_cache.json"
+    if stale_token_cache.is_file():
+        stale_token_cache.unlink(missing_ok=True)
 
     return {
         "authenticated": False,

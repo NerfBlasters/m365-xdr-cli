@@ -120,6 +120,28 @@ async def test_401_retry_reredeems_refresh_token_for_a_new_access_token():
 
 
 @respx.mock
+async def test_refresh_token_auth_gives_up_after_one_reredeem():
+    """The 401 retry is capped at one: a second 401 after a fresh redeem is
+    an authentication failure, not another redeem loop."""
+    tenant_id = "11111111-2222-3333-4444-555555555555"
+    token_route = respx.post(
+        f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+    ).respond(json={"access_token": "access"})
+    api_route = respx.get(f"{BASE_URL}some/path").mock(
+        side_effect=[httpx.Response(401), httpx.Response(401)]
+    )
+
+    client = PortalClient(
+        auth=RefreshTokenAuth(tenant_id=tenant_id, refresh_token="fake-refresh-token")
+    )
+    with pytest.raises(NotAuthenticatedError):
+        await client.get("some/path")
+
+    assert api_route.call_count == 2
+    assert token_route.call_count == 2  # original redeem + one re-redeem, no third
+
+
+@respx.mock
 async def test_401_with_cookie_auth_raises_immediately_without_retry():
     """A stored session cookie is static — there is nothing to refresh, so a
     401 must raise on the FIRST response instead of wasting a guaranteed-401

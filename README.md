@@ -97,7 +97,7 @@ Developers: see [Development](#development) for an editable install.
 | Setup | Minutes: copy one request from your browser's DevTools | Register an app, add permissions, get admin consent |
 | Talks to | The Defender portal's own `apiproxy` interface — **undocumented and unsupported by Microsoft; can break without notice** | Microsoft Graph security and Defender for Endpoint APIs — documented and supported |
 | Credential | Your browser session cookie: a bearer credential for *you*, subject to the same expiry, Conditional Access and sign-in-frequency rules as the portal. Renewal is manual (re-import). | MSAL tokens with refresh; or a service principal for automation |
-| Covers | Hunting, incidents, alerts, investigate, domains, device show/timeline, every response action, package download | Everything except package download and the AD domain inventory |
+| Covers | Hunting, incidents, alerts, investigate, domains, device show/timeline/action-status, every response action, package download | Everything except package download and the AD domain inventory |
 | Permissions | Whatever your user already has in the portal (Defender RBAC applies) | Delegated permissions you grant, plus the user's Defender roles |
 
 Start with the portal cookie if you want to try the tool today. Set up the app
@@ -517,8 +517,10 @@ must show *Granted for &lt;tenant&gt;*. Remember there are two token audiences
 sets of permissions are present.
 
 **`BACKEND_CAPABILITY_UNAVAILABLE` (exit 3)** — the selected backend cannot
-do this (for example `download-package` or AD domains on the official
+do this (for example `domains list --source active-directory` on the official
 backend). Nothing was sent; switch with `--backend` or import a cookie.
+`download-package` on the official backend is the one exception: it is a
+usage error (`CLI_USAGE_ERROR`, exit 6) with the same remedy.
 
 **`AADSTS50011` / redirect URI mismatch** — add `http://localhost` under
 *Authentication → Public client/native*.

@@ -556,11 +556,15 @@ def test_portal_logout_clears_cookie_store_leaves_main_cache(auth_dir):
     )
     main_cache = auth_dir / "token_cache.json"
     main_cache.write_text('{"main": true}')
+    # A portal OAuth cache left by an earlier release is cleaned up too.
+    stale_portal_cache = auth_dir / "portal_token_cache.json"
+    stale_portal_cache.write_text('{"stale": true}')
 
     result = runner.invoke(app, ["auth", "portal-logout"])
 
     assert result.exit_code == 0, result.output
     assert not (auth_dir / "portal_cookies.json").exists()
+    assert not stale_portal_cache.exists()
     assert main_cache.exists()
     assert main_cache.read_text() == '{"main": true}'
 
