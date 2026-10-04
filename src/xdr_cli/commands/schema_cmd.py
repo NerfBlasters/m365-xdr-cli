@@ -1288,7 +1288,14 @@ def collect_saved_results(
 @schema_app.command("collect")
 def schema_collect(
     ctx: typer.Context,
-    local_only: bool = typer.Option(False, "--local-only"),
+    local_only: bool = typer.Option(
+        False,
+        "--local-only",
+        help=(
+            "Mine saved results and publish local evidence without any tenant "
+            "query. Cannot be combined with --explore."
+        ),
+    ),
     explore: bool = typer.Option(
         False, "--explore", help="Find saved identifiers in unknown fields and nested paths."
     ),

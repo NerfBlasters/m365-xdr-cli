@@ -388,13 +388,18 @@ def device_download_package(
 ) -> None:
     """Download an existing investigation ZIP with portal-cookie auth, without extracting it.
 
-    Read-only: this does not request collection or change device state. Requires
-    --backend portal-cookie. Output is private and atomically published after
-    transfer and ZIP-container validation. Signed URLs never appear in output.
+    Read-only: this does not request collection or change device state. Needs the
+    portal-cookie backend, which is selected automatically when a cookie is the
+    only stored credential, or explicitly with --backend portal-cookie. Output is
+    private and atomically published after transfer and ZIP-container validation.
+    Signed URLs never appear in output.
     """
     app_ctx: AppContext = ctx.obj
     if not app_ctx.config.backend_profile.package_download:
-        raise UsageError("Package download requires --backend portal-cookie.")
+        raise UsageError(
+            "Package download needs the portal-cookie backend: import a cookie with "
+            "'xdr auth portal-cookie' or pass --backend portal-cookie."
+        )
     destination = package_destination(output, force=force)
     asyncio.run(_download_package(app_ctx, action_id, device_id, destination, force, max_bytes))
 
