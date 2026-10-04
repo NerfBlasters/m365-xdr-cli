@@ -5,6 +5,7 @@ import respx
 
 from xdr_cli.api.domains import list_domains
 from xdr_cli.client import XDRClient
+from xdr_cli.official_backend import OfficialBackend
 
 SAMPLE_DOMAINS = [
     {
@@ -24,7 +25,7 @@ SAMPLE_DOMAINS = [
 
 @pytest.fixture()
 def client():
-    return XDRClient(get_token=lambda scopes=None: "fake", timeout=5)
+    return OfficialBackend(XDRClient(get_token=lambda scopes=None: "fake", timeout=5))
 
 
 @respx.mock
@@ -48,3 +49,28 @@ async def test_list_domains_empty(client):
     )
     result = await list_domains(client)
     assert result == []
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_official_domains_pagination(client):
+    first = "https://graph.microsoft.com/v1.0/domains"
+    next_link = first + "?$skiptoken=opaque"
+    respx.get(first).respond(json={"value": [SAMPLE_DOMAINS[0]], "@odata.nextLink": next_link})
+    respx.get(next_link).respond(json={"value": [SAMPLE_DOMAINS[1]]})
+    assert await list_domains(client) == SAMPLE_DOMAINS
+    await client.close()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_official_domains_reject_foreign_pagination(client):
+    from xdr_cli.exceptions import APIError
+
+    respx.get("https://graph.microsoft.com/v1.0/domains").respond(json={
+        "value": SAMPLE_DOMAINS, "@odata.nextLink": "https://example.com/domains?next=1",
+    })
+    with pytest.raises(APIError, match="outside"):
+        await list_domains(client)
+    assert len(respx.calls) == 1
+    await client.close()

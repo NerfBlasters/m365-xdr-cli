@@ -1,11 +1,14 @@
-"""Domains API — Entra ID / M365 verified domains."""
+"""Entra domain reads through the selected operation backend."""
+from collections.abc import AsyncIterator
 
-from __future__ import annotations
-
-from xdr_cli.client import APISurface, XDRClient
+from xdr_cli.backend_contract import Backend
 
 
-async def list_domains(client: XDRClient) -> list[dict]:
-    """List all domains registered in the tenant."""
-    result = await client.get(APISurface.GRAPH_CORE, "domains")
-    return result.get("value", [])
+async def iter_domains(client: Backend) -> AsyncIterator[dict]:
+    async for row in client.iter_domains():
+        yield row
+
+
+async def list_domains(client: Backend) -> list[dict]:
+    """List tenant-associated Entra domains."""
+    return [row async for row in iter_domains(client)]

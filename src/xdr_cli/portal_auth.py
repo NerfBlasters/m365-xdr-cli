@@ -131,7 +131,7 @@ class PortalAuth:
         if not self.is_configured():
             raise AuthError(
                 "Not configured. Run `xdr auth login --tenant-id <ID>`, "
-                "then `xdr auth portal-login`."
+                "then `xdr auth portal-cookie <cookie-source>`."
             )
         authority = f"https://login.microsoftonline.com/{self._config.tenant_id}"
         self._app = msal.PublicClientApplication(
@@ -166,7 +166,7 @@ class PortalAuth:
             err_console.print(
                 f"[yellow]Warning:[/yellow] portal token cache at {path} is "
                 f"unreadable ({exc.__class__.__name__}: {exc}); "
-                "starting with an empty cache. Re-run `xdr auth portal-login` "
+                "starting with an empty cache. Re-run `xdr auth portal-cookie <cookie-source>` "
                 "if commands start prompting."
             )
             self._cache = msal.SerializableTokenCache()
@@ -234,7 +234,7 @@ class PortalAuth:
         if interaction_required:
             raise AuthError(
                 "Interactive authentication required for the Defender portal. "
-                "Run `xdr auth portal-login`."
+                "Run `xdr auth portal-cookie <cookie-source>`."
             )
 
         if error or error_desc:

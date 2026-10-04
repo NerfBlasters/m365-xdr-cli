@@ -40,7 +40,7 @@ def test_alert_show_records_graph_incident_anchor_provenance(tmp_path, monkeypat
     monkeypatch.setenv("XDR_CLI_HOME", str(home))
     monkeypatch.setattr(
         "xdr_cli.sessions.resolve_operator_upn",
-        lambda: "jane.doe@corp.com",
+        lambda **kwargs: "jane.doe@corp.com",
     )
     client = AsyncMock()
     client.close = AsyncMock()
@@ -85,7 +85,7 @@ def test_alert_show_rotates_automatic_session_for_different_incident(
     monkeypatch.setenv("XDR_CLI_HOME", str(home))
     monkeypatch.delenv("XDR_SESSION", raising=False)
     monkeypatch.setattr(
-        "xdr_cli.sessions.resolve_operator_upn", lambda: "jane.doe@corp.com"
+        "xdr_cli.sessions.resolve_operator_upn", lambda **kwargs: "jane.doe@corp.com"
     )
     client = AsyncMock()
     client.close = AsyncMock()
@@ -119,7 +119,7 @@ def test_alert_show_reuses_session_for_two_alerts_in_same_incident(
     monkeypatch.setenv("XDR_CLI_HOME", str(home))
     monkeypatch.delenv("XDR_SESSION", raising=False)
     monkeypatch.setattr(
-        "xdr_cli.sessions.resolve_operator_upn", lambda: "jane.doe@corp.com"
+        "xdr_cli.sessions.resolve_operator_upn", lambda **kwargs: "jane.doe@corp.com"
     )
     client = AsyncMock()
     client.close = AsyncMock()

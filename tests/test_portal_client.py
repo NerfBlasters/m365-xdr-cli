@@ -144,7 +144,7 @@ async def test_401_twice_raises_not_authenticated_with_portal_login_hint():
         await client.get("some/path")
 
     assert route.call_count == 2
-    assert "portal-login" in str(exc_info.value)
+    assert "portal-cookie" in str(exc_info.value)
 
 
 @respx.mock
@@ -208,7 +208,7 @@ async def test_401_with_cookie_auth_raises_immediately_without_retry():
         await client.get("some/path")
 
     assert route.call_count == 1  # NOT retried
-    assert "portal-login" in str(exc_info.value)
+    assert "portal-cookie" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +273,7 @@ async def test_440_is_auth_expiry_with_portal_recovery_guidance():
     assert error.exit_code == 2
     assert "440" in error.message
     assert "portal-cookie" in error.suggested_fix
-    assert "portal-login" in error.suggested_fix
+    assert "portal-cookie" in error.suggested_fix
     assert error.help_command == "xdr auth status"
 
 

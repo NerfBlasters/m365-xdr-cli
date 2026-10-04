@@ -357,7 +357,7 @@ def test_rationale_silently_dropped_on_non_invocation(tmp_path, monkeypatch):
     # Stub UPN resolution so session start succeeds without a real MSAL cache.
     monkeypatch.setattr(
         "xdr_cli.commands.session_cmd.resolve_operator_upn",
-        lambda: "jane.doe@corp.com",
+        lambda **kwargs: "jane.doe@corp.com",
     )
 
     # No active session yet. xdr --rationale "X" session start should succeed

@@ -10,6 +10,56 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.13.0] - 2026-10-04
+
+Experimental portal-cookie authentication, a shared API backend interface, and
+the reliability fixes identified during implementation and adversarial review.
+
+### Added
+
+- Experimental `portal-cookie` backend using the undocumented Defender portal
+  `apiproxy` interface. This is not an officially supported public integration
+  path. Tenant-bound browser cookies support hunting, incident/alert workflows,
+  domains, device reads/actions, and timelines without an app registration.
+- Automatic backend selection: prefer matching MSAL credentials or configured
+  app credentials; select cookies when they are the only usable local credentials.
+  Explicit `--backend` and configured preferences override automatic selection.
+- Combined Entra and MDI-observed Active Directory domain inventory through
+  `domains list`, with source labels, source selection, and coverage metadata.
+- `device unrestrict` for official and cookie authentication; cookie-based
+  investigation-package archive downloads with private atomic output and no
+  extraction or disclosure of signed download URLs.
+- Tenant-bound local action/device associations and device enrichment with
+  native source provenance and explicit unavailable-field reporting.
+
+### Changed
+
+- Both API backends implement a shared named-operation interface. API helpers
+  delegate through that contract; capability profiles supply backend differences.
+  Official domain and portal Graph reads share continuation URL validation.
+- `domains list` saves artifact receipts and reports partial success when a
+  requested source is unavailable. Use `--source entra` for Entra-only reads.
+- `auth portal-login` is retired and directs users to cookie import. Browser
+  renewal is documented as a separate follow-up, not included in this release.
+
+### Fixed
+
+- Overlapping portal pages no longer discard incident/alert listings or hostname
+  searches; duplicate IDs are skipped while continuation and page bounds remain.
+- Invalid backend configuration preserves diagnostics and reads, but blocks
+  tenant writes without an explicit backend choice. Auth recovery does not
+  silently change the invalid preference into a valid automatic selection.
+- Session attribution honors an explicit official-backend override. Auth status
+  diagnoses rejected cookie stores, and portal logout clears legacy portal tokens.
+- Optional device lookup timeouts/network failures preserve the primary response;
+  device detail is fetched once, and timeline verification skips enrichment.
+- AD source failures distinguish unavailable data from retained partial results.
+- Scan/isolation modes accept any letter case and reject invalid values before
+  confirmation. Unknown-outcome portal mutation timeouts are nonretryable.
+
+Full device-field and historical action parity remains limited by observed portal
+contracts. See [portal-cookie support and limits](docs/portal_cookie.md).
+
 ## [0.12.0] - 2026-10-04
 
 Documentation rewrite for the public launch, plus the fixes found while

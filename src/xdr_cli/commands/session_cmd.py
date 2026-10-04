@@ -84,7 +84,19 @@ def session_start(
     marker — no shared pointer file to race on.
     """
     del quiet  # accepted for caller compat
-    upn = resolve_operator_upn()
+    if ctx.obj.config.backend_profile.cookie_auth:
+        from xdr_cli.portal_auth import load_portal_cookies
+
+        if load_portal_cookies(ctx.obj.config.tenant_id) is None:
+            raise AuthError(
+                "No stored portal cookies. Import a browser session first.",
+                help_command="xdr auth portal-cookie --help",
+            )
+        # Cookie storage does not attest an operator UPN. Never borrow an
+        # unrelated account from the official backend's MSAL cache.
+        upn = "automatic"
+    else:
+        upn = resolve_operator_upn(api_backend=ctx.obj.config.api_backend)
     if upn is None:
         raise AuthError(
             "No cached account. Run 'xdr auth login' first.",

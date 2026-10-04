@@ -14,6 +14,7 @@ from filelock import Timeout as FileLockTimeout
 from xdr_cli._lock import exclusive_lock
 from xdr_cli.api.hunting import run_query
 from xdr_cli.auth import AuthManager
+from xdr_cli.backends import create_client
 from xdr_cli.client import XDRClient
 from xdr_cli.config import get_config_home
 from xdr_cli.exceptions import (
@@ -503,7 +504,10 @@ async def _collect_local(
     attempted = 0
     failure = None
     if not plan_only and not local_only and batches:
-        client = XDRClient(get_token=AuthManager(ctx.config).get_token, timeout=timeout)
+        client = create_client(
+            ctx.config, timeout=timeout,
+            auth_factory=AuthManager, client_factory=XDRClient,
+        )
         try:
             for compiled, items, seeds, time_column in batches[:max_queries]:
                 attempted += 1

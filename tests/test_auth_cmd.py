@@ -139,55 +139,12 @@ def test_logout_missing_cache_reports_cleared_false(auth_dir):
 
 
 @patch("xdr_cli.commands.auth_cmd.PortalAuth")
-def test_portal_login_emits_status_envelope(mock_portal_auth_cls, auth_dir):
-    mock_instance = mock_portal_auth_cls.return_value
-    # login()'s real return value carries a raw MSAL token payload — assert
-    # below that this never reaches stdout/stderr even though it's the
-    # return value of the mocked call.
-    mock_instance.login.return_value = {
-        "access_token": "super-secret-access-token-must-not-leak",
-        "token_type": "Bearer",
-    }
-    mock_instance.get_auth_status.return_value = {
-        "authenticated": True,
-        "configured": True,
-        "account": "user@test.com",
-        "tenant": "test-tenant",
-        "client_id": FOCI_CLIENT_ID,
-        "audit_app_name": MSAL_AUDIT_APP_NAME,
-    }
-
-    result = runner.invoke(app, ["auth", "portal-login"])
-
-    assert result.exit_code == 0, result.output
-    mock_instance.login.assert_called_once()
-    parsed = json.loads(result.stdout)
-    assert parsed["status"] == "success"
-    assert parsed["data"] == mock_instance.get_auth_status.return_value
-    assert "super-secret-access-token-must-not-leak" not in result.output
-
-
-@patch("xdr_cli.commands.auth_cmd.PortalAuth")
-def test_portal_login_tenant_id_override_applied_before_login(mock_portal_auth_cls, auth_dir):
-    mock_instance = mock_portal_auth_cls.return_value
-    mock_instance.login.return_value = {"access_token": "tok"}
-    mock_instance.get_auth_status.return_value = {
-        "authenticated": True,
-        "configured": True,
-        "account": "user@test.com",
-        "tenant": "override-tenant",
-        "client_id": FOCI_CLIENT_ID,
-        "audit_app_name": MSAL_AUDIT_APP_NAME,
-    }
-
-    result = runner.invoke(
-        app, ["auth", "portal-login", "--tenant-id", "override-tenant"]
-    )
-
-    assert result.exit_code == 0, result.output
-    # PortalAuth(app_ctx.config) — the config passed in must carry the override.
-    (config_arg,), _kwargs = mock_portal_auth_cls.call_args
-    assert config_arg.tenant_id == "override-tenant"
+@pytest.mark.parametrize("args", [[], ["--tenant-id", "override-tenant"]])
+def test_portal_login_retired_without_contacting_microsoft(mock_portal_auth_cls, auth_dir, args):
+    result = runner.invoke(app, ["auth", "portal-login", *args])
+    assert result.exit_code == 6, result.output
+    assert "portal-cookie" in result.output
+    mock_portal_auth_cls.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -771,12 +728,47 @@ def test_status_tolerates_corrupt_cookie_file(auth_dir):
         _bound_cookie_store(tenant_fingerprint=hashlib.sha256(b"other").hexdigest()),
     ],
 )
-def test_status_rejects_unbound_or_wrong_tenant_cookie_store(auth_dir, stored):
+def test_status_reports_unbound_or_wrong_tenant_cookie_store(auth_dir, stored):
     (auth_dir / "portal_cookies.json").write_text(json.dumps(stored))
 
     result = runner.invoke(app, ["auth", "status"])
 
-    assert result.exit_code == 4
-    error = json.loads(result.stdout)["error"]
+    assert result.exit_code == 0
+    portal = json.loads(result.stdout)["data"]["portal"]
+    assert portal["cookie_stored"] is False
+    error = portal["cookie_error"]
     assert error["code"] == "PORTAL_COOKIE_TENANT_MISMATCH"
     assert "xdr auth portal-cookie" in error["message"]
+
+
+def test_cookie_only_setup_import_and_status_without_app_registration(auth_dir, tmp_path):
+    (auth_dir / "config.toml").write_text(
+        f'tenant_id = "{TENANT_ID}"\napi_backend = "portal-cookie"\n'
+    )
+    with (
+        patch("xdr_cli.commands.auth_cmd.AuthManager", side_effect=AssertionError("MSAL")),
+        patch("xdr_cli.commands.auth_cmd.PortalAuth", side_effect=AssertionError("portal OAuth")),
+    ):
+        imported = runner.invoke(
+            app, ["auth", "portal-cookie", _curl_file(tmp_path), "--no-verify"]
+        )
+        assert imported.exit_code == 0, imported.output
+        status = runner.invoke(app, ["auth", "status"])
+        assert status.exit_code == 0, status.output
+    data = _parse_json_stdout(status)["data"]
+    assert data["backend"] == "portal-cookie"
+    assert data["portal"] == {"cookie_stored": True, "session_validity": "not_checked"}
+
+
+def test_cookie_import_missing_tenant_preserves_source_and_needs_no_msal(auth_dir, tmp_path):
+    (auth_dir / "config.toml").unlink()
+    source = Path(_curl_file(tmp_path))
+    original = source.read_bytes()
+    result = runner.invoke(app, ["auth", "portal-cookie", str(source), "--no-verify"])
+    assert result.exit_code == 4, result.output
+    error = _parse_json_stdout(result)["error"]
+    assert error["help_command"] == "xdr auth portal-cookie --help"
+    assert 'tenant_id = "<tenant-id>"' in error["message"]
+    assert "xdr auth login" not in error["message"]
+    assert source.read_bytes() == original
+    assert not (auth_dir / "portal_cookies.json").exists()

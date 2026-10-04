@@ -16,6 +16,117 @@ pipeable, and small enough for an agent's context window.
 
 *Demo tenant; tenant and object identifiers replaced for publication.*
 
+## Experimental portal-cookie backend
+
+See [support and limitations](docs/portal_cookie.md) for validated behavior and
+known portal gaps, including superseded actions and partial device fields.
+
+Backend selection defaults to `auto`: official Graph/MDE credentials take
+precedence; when only tenant-bound portal cookies are available, commands use
+cookie mode automatically. The cookie backend supports hunting (including library
+and schema hunting workflows),
+incident/alert lists and detail, expanded incident evidence, guided investigations,
+Entra domains, and device show/timeline. Graph-backed reads retain the existing
+Graph response contract; native device detail still has partial field mapping
+and retains raw portal fields. Hostname resolution requires an exact, unambiguous
+match among MDE devices in the portal's 180-day inventory view.
+
+Cookie authentication also supports incident status, classification, determination,
+and comment updates; Quick/Full antivirus scans; Selective/Full isolation and
+unisolation; investigation-package collection/download; and execution restriction.
+Use `xdr device unrestrict DEVICE_ID --comment "Recovery reason" --yes` to
+remove the restriction. Both authentication backends support this recovery action.
+Unsupported operations return `BACKEND_CAPABILITY_UNAVAILABLE` without silently
+falling back to MSAL. Native device and action responses differ from official APIs.
+Device output lists unavailable fields under `portal_source.unavailable_fields`.
+Device enrichment maps management, tags, value, group, IP adapters, and available
+exclusion/cloud/merge metadata while preserving source differences. Known bitness
+values map to `osArchitecture`; the deprecated processor field is
+not inferred. Native `lastSeen` follows portal observation semantics, which differ
+from the official API's last full device report.
+
+Cookie-only action status uses a private local device association saved after
+a correlated submission or successful status read. For an action first seen on
+this installation, supply the device association:
+`xdr --backend portal-cookie device action-status ACTION_ID --device MACHINE_ID`.
+It matches the exact action and device even when the portal returns other
+actions. Recognized scan, collection, isolation and restriction response types
+map to official operation names; unknown subtypes remain unmapped. Status values
+and raw fields retain the portal contract. A missing action in the portal's latest
+response does not establish absence from historical records. Action Center history
+can report `Completed` for failed actions, so it is not used as a success-status
+fallback.
+After a successful read, `action-status ACTION_ID` can omit `--device` on this
+installation and tenant. Missing or corrupt associations require `--device` again;
+the CLI always reads current status remotely. Association files under
+`~/.xdr-cli/action_associations/` contain IDs only and use private permissions.
+
+`xdr domains list` combines Entra tenant domains and MDI-observed Active Directory
+domains in cookie mode. Each private JSONL row has `source` (`entra` or
+`active-directory`), `name`, and provider-specific fields. Same-named domains are
+kept separate. Use `--source entra` or `--source active-directory` to select one
+inventory. The official backend supports Entra only: default combined listing
+preserves Entra results and returns exit 14 for missing AD coverage; use
+`domains list --source entra` for an explicit official-only read. AD search is
+capped at 100 records, with `has_more`, reported counts and source coverage in
+the receipt. Partial results return exit 14; observed AD domains do not establish
+Entra verification or exhaustive forest coverage.
+
+Download a completed investigation package without requesting a new collection:
+
+```bash
+xdr --backend portal-cookie device download-package ACTION_ID --device MACHINE_ID --output package.zip
+```
+
+The command requires a succeeded package-collection action, downloads the ZIP
+without extracting it, and emits a JSON envelope with its path, byte count and
+SHA-256. The destination directory must already exist. Output uses owner-only
+permissions and is published atomically after transfer and ZIP-container checks.
+Existing paths require `--force`; a symlink is replaced without writing to its
+target. The default transfer limit is 1 GiB; use `--max-bytes N` to change it.
+Portal cookies stay on the portal origin; archive transfers use a separate client
+and signed URLs are excluded from output. Package download currently requires
+the portal-cookie backend.
+
+For a fresh cookie-only setup, create `~/.xdr-cli/config.toml` with:
+
+```toml
+tenant_id = "<tenant-id>"
+```
+
+Replace `<tenant-id>` with your tenant ID. Import the browser session with
+`xdr auth portal-cookie COOKIE_SOURCE`, then run commands normally:
+
+```bash
+xdr hunt run "print CookieAuthProbe = 1"
+xdr auth status
+```
+
+No backend flag or setting is needed for a cookie-only setup. Explicit
+`--backend official|portal-cookie` overrides the configured preference; set
+`api_backend = "official"` or `"portal-cookie"` to pin a backend, or `"auto"` to
+restore automatic selection. `auth status` reports the selected backend.
+
+Automatic selection checks local credentials, not remote validity. A configured
+app secret or matching MSAL access/refresh token keeps official auth preferred,
+even if an access token has expired. Failed authentication, permissions, or API
+requests never cause a retry through another backend. A damaged MSAL cache is
+not treated as absent. No client ID or secret is required for cookie mode. The authenticated portal
+tenant must match configuration; expired sessions require fresh cookies.
+`auth status` reports stored credentials without asserting the session is valid.
+New cookie-mode [sessions](docs/sessions.md) use the `automatic` identity
+placeholder without consulting MSAL; manual start requires stored tenant-bound cookies.
+With automatic selection, `auth login` can establish MSAL credentials even when
+cookies are currently selected; subsequent commands then prefer official auth.
+Explicit cookie mode directs `auth login` to cookie import. `auth logout` removes
+credentials for the selected backend, preserving the other store. This local
+logout does not revoke the browser session at Microsoft. Cookie-mode logout also
+clears any legacy portal OAuth token cache.
+Query results retain unknown truncation unless completion is established;
+optional portal query diagnostics are saved privately in hunt artifact metadata.
+`xdr auth portal-login` is retired; use `portal-cookie` instead.
+See [device timeline](docs/device_timeline.md) for timeline output and credential details.
+
 ## What it does
 
 - **Incidents and alerts** — list, filter, show (with alerts and evidence
@@ -115,12 +226,12 @@ registration can be shared by everyone on the team.
    | Microsoft Graph | `SecurityIncident.ReadWrite.All` | `incidents list/show/update`, `investigate` |
    | Microsoft Graph | `SecurityAlert.Read.All` | `alerts list/show` |
    | Microsoft Graph | `ThreatHunting.Read.All` | `hunt run`, `library run`, `investigate`, `schema` |
-   | Microsoft Graph | `Domain.Read.All` | `domains list` |
+   | Microsoft Graph | `Domain.Read.All` | Entra portion of `domains list` |
    | WindowsDefenderATP¹ | `Machine.Read` | `device show`, `device action-status`, hostname lookups |
    | WindowsDefenderATP | `Machine.Isolate` | `device isolate` / `unisolate` |
    | WindowsDefenderATP | `Machine.Scan` | `device scan` |
    | WindowsDefenderATP | `Machine.CollectForensics` | `device collect-package` |
-   | WindowsDefenderATP | `Machine.RestrictExecution` | `device restrict` |
+   | WindowsDefenderATP | `Machine.RestrictExecution` | `device restrict`, `device unrestrict` |
    | WindowsDefenderATP | `AdvancedQuery.Read` | Hunting fallback only (see below) |
 
    ¹ Under **APIs my organization uses**, search for *WindowsDefenderATP*.
@@ -238,6 +349,7 @@ xdr device isolate <device-id> --comment "Incident 42" --yes       # do it
 xdr device unisolate <device-id> --comment "Remediated" --yes
 xdr device scan <device-id> --scan-type Full
 xdr device restrict <device-id> --comment "Suspicious activity" --yes
+xdr device unrestrict <device-id> --comment "Recovery approved" --yes
 xdr device collect-package <device-id>
 xdr device action-status <action-id>
 ```
@@ -376,7 +488,7 @@ attachment, feedback, cancellation and the two-record output contract.
 | Command | Description |
 |---|---|
 | `xdr auth login / status / logout` | Interactive sign-in (device-code fallback), status, clear tokens |
-| `xdr auth portal-cookie / portal-login / portal-logout` | Portal-session auth for the unofficial [device timeline](docs/device_timeline.md) |
+| `xdr auth portal-cookie / portal-logout` | Import or remove portal-session credentials for the experimental cookie backend and [device timeline](docs/device_timeline.md) |
 | `xdr incidents list / show / update` | List, view (`--expand alerts` adds alerts and their evidence), update status/classification |
 | `xdr alerts list / show` | List and view alerts |
 | `xdr investigate ID [--auto-enrich]` | Guided investigation of one incident |
@@ -384,7 +496,8 @@ attachment, feedback, cancellation and the two-record output contract.
 | `xdr hunt library-show NAME -p k=v` | Render a library query's resolved KQL without running it |
 | `xdr library list / show / run` | Browse (`--search`, `--tier`) and run library queries (`-p key=value`, repeatable) |
 | `xdr lists init` | Seed `~/.xdr-cli/lists/` reference data used by library queries |
-| `xdr device show / isolate / unisolate / scan / restrict / collect-package / action-status` | Device details and response actions |
+| `xdr device show / isolate / unisolate / scan / restrict / unrestrict / collect-package / action-status` | Device details and response actions |
+| `xdr device download-package` | Download an existing investigation ZIP using portal-cookie auth |
 | `xdr device timeline DEVICE` | Download a device's portal timeline (unofficial API) |
 | `xdr results list / show / head / rows / query / shape / prune` | Browse and manage local result artifacts |
 | `xdr schema status` / `xdr schema diagnostics` | Cache-only state of the tenant schema cache and semantic graph; `status` prints the exact `next_command` |
@@ -399,7 +512,7 @@ attachment, feedback, cancellation and the two-record output contract.
 | `xdr schema correlate` / `prune-evidence` / `validate-core` | Offline artifact correlation, evidence retirement, and packaged graph validation |
 | `xdr session start / end / resume / list / show / feedback` | Investigation sessions, learning mode, and append-only feedback — see [Built to improve with use](#built-to-improve-with-use) |
 | `xdr history [stats]`, `xdr annotate` | Browse recorded invocations, aggregate failure and coverage metrics, record a lesson |
-| `xdr domains list` | List the tenant's verified domains |
+| `xdr domains list` | Source-labelled Entra and observed AD domains; `--source` selects one inventory |
 
 Global options: `--quiet/-q`, `--no-quiet`, `--no-interactive`, `--debug`,
 `--rationale TEXT` (record intent on the session log), `--version/-v`.

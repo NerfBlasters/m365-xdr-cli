@@ -20,7 +20,7 @@ request is made.
 
 | Command | Description |
 |---|---|
-| `xdr auth portal-login` | Authenticate to the unofficial Defender portal API (MSAL) |
+| `xdr auth portal-login` | Retired; directs callers to portal-cookie |
 | `xdr auth portal-cookie` | Authenticate to the unofficial Defender portal API via browser cookies |
 | `xdr auth portal-logout` | Clear cached portal credentials (MSAL cache + cookie store) |
 | `xdr device timeline DEVICE` | Download device timeline (unofficial API) |
@@ -35,37 +35,21 @@ xdr device timeline my-workstation --days 30 --output timeline.jsonl
 
 ## Audit attribution by auth method
 
-The timeline endpoint requires portal session credentials, which xdr-cli can
-obtain two ways. They differ in what they *should* produce in your Entra
-sign-in logs, but this attribution has **not been independently verified**,
-so confirm it in your own tenant before relying on it:
+Use `xdr auth portal-cookie` to import an existing browser session. Activity
+uses that signed-in user's portal permissions. Audit attribution must be
+verified in your tenant; a local auth-status label is not evidence of the
+actual sign-in or activity-log attribution.
 
-- **`xdr auth portal-cookie` (cookie), the validated method.** Reuses your
-  *existing* logged-in security.microsoft.com browser session (the
-  `sccauth`/`xsrf-token` `Cookie` header captured via **Microsoft Edge**'s
-  DevTools "Copy as cURL (bash)" of the timeline apiproxy request). Because it
-  rides a session you already established in a browser, it should not mint a
-  new token or create new sign-in events.
-- **`xdr auth portal-login` (MSAL/FOCI), experimental and unverified.**
-  Attempts an interactive sign-in with the Microsoft Azure CLI FOCI client ID
-  (`04b07795-8ddb-461a-bbee-02f9e1bf7b46`) via a *separate* MSAL instance,
-  isolated from xdr-cli's own app registration. It may not succeed in every
-  tenant. If it does, the sign-in is *expected* to be attributed to
-  **"Microsoft Azure CLI"** (the FOCI client), not "xdr-cli", by design, but
-  this has not been confirmed.
+`xdr auth portal-login` is retired. Its Microsoft preauthorization flow was
+not validated and no longer initiates sign-in.
 
-`xdr auth status` reports which method is active and its `audit_app_name`
-label: `Microsoft Azure CLI` for the MSAL/FOCI path and
-`Microsoft Defender portal (browser session)` for the cookie path. Treat that
-label as the *intended* attribution, not a verified fact about how the
-activity appears in your logs.
+## Portal credentials
 
-## Three auth paths
-
-`device timeline` picks its credential by first-match-wins precedence:
-`--refresh-token`/`MDE_REFRESH_TOKEN`, then a stored cookie store, then a
-cached portal MSAL account. With none of those present it exits non-zero and
-names both portal auth commands.
+With `--backend portal-cookie`, timeline requires stored cookies;
+`--refresh-token` is rejected and no portal OAuth cache is selected. The default
+official backend retains the legacy timeline credential precedence: explicit
+refresh token, stored cookies, then an existing portal OAuth cache. These legacy
+token paths do not establish cookie-backend compatibility.
 
 ### 1. `xdr auth portal-cookie COOKIE_SOURCE` (recommended, validated)
 
@@ -114,13 +98,10 @@ Options:
   containing no `sccauth` cookie is rejected and left untouched (nothing is
   stored).
 
-### 2. `xdr auth portal-login` (experimental, unverified)
+### 2. `xdr auth portal-login` (retired)
 
-An interactive MSAL sign-in (browser or device code) using the Microsoft Azure
-CLI FOCI client. Takes `--tenant-id` to override the configured tenant. It may
-not complete in every tenant, and its Entra sign-in-log attribution is
-unconfirmed; prefer cookie auth (above). Tokens are cached in
-`~/.xdr-cli/portal_token_cache.json`.
+Returns a migration error directing callers to `portal-cookie`, without
+contacting Microsoft or changing the configured tenant.
 
 ### 3. `--refresh-token` (env `MDE_REFRESH_TOKEN`)
 
@@ -185,12 +166,15 @@ server-side.
 
 ### Resolution and output
 
-`device timeline` resolves `DEVICE` to a MachineId using the *official* MDE
-`machines` API (your normal `xdr auth login` credentials) before switching to
-the portal apiproxy client for the timeline events themselves; only the
-timeline fetch touches the unofficial API. With stored cookie auth, even a
-supplied 40-hex MachineId is verified through the configured official tenant
-before portal data is accepted.
+The official backend resolves devices through the MDE `machines` API;
+stored-cookie timeline runs also verify a supplied MachineId there.
+
+With `xdr --backend portal-cookie device timeline DEVICE`, the client instead
+verifies authenticated portal tenant context and the exact MachineId using
+portal requests. App registration and MSAL credentials are not required. Supply
+a 40-hex MachineId or an exact, unambiguous hostname. Hostname lookup searches
+the portal inventory over 180 days and rejects ambiguous matches. Timeline
+events continue through the existing portal streaming adapter.
 
 With no `--output`, the complete stream is atomically registered under
 `~/.xdr-cli/results/` and stdout is a receipt plus at most two preview rows.

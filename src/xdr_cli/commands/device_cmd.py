@@ -1,4 +1,4 @@
-"""Device commands: show, isolate, unisolate, scan, collect-package, restrict,
+"""Device commands: show, isolate, unisolate, scan, collect-package, restrict, unrestrict,
 action-status, timeline."""
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import sys
 import tempfile
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from pathlib import Path
 from time import monotonic
 from typing import TextIO
@@ -30,19 +31,29 @@ from xdr_cli.api.devices import (
     restrict_code_execution,
     run_av_scan,
     unisolate_device,
+    unrestrict_code_execution,
 )
 from xdr_cli.api.timeline import stream_device_timeline
 from xdr_cli.auth import AuthManager
+from xdr_cli.backend_contract import Backend
+from xdr_cli.backends import create_client
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import (
     ArtifactError,
     AuthError,
+    ConfigError,
     ConflictError,
+    NotAuthenticatedError,
     NotFoundError,
     UsageError,
 )
 from xdr_cli.output import OutputFormatter, err_console
+from xdr_cli.package_download import (
+    DEFAULT_MAX_BYTES,
+    download_package_archive,
+    package_destination,
+)
 from xdr_cli.portal_auth import PortalAuth, load_portal_cookies
 from xdr_cli.portal_client import (
     BearerAuth,
@@ -69,12 +80,22 @@ _MACHINE_ID_RE = re.compile(r"[a-fA-F0-9]{40}")
 _MAX_TIMELINE_DAYS = 180
 
 
-def _get_client(ctx: AppContext) -> tuple[AuthManager, XDRClient]:
-    auth = AuthManager(ctx.config)
-    client = XDRClient(
-        get_token=auth.get_token, timeout=ctx.config.api_timeout,
+class IsolationType(StrEnum):
+    FULL = "Full"
+    SELECTIVE = "Selective"
+
+
+class ScanType(StrEnum):
+    QUICK = "Quick"
+    FULL = "Full"
+
+
+def _get_client(ctx: AppContext) -> tuple[None, Backend]:
+    client = create_client(
+        ctx.config, timeout=ctx.config.api_timeout,
+        auth_factory=AuthManager, client_factory=XDRClient,
     )
-    return auth, client
+    return None, client
 
 
 def _confirm_action(
@@ -117,15 +138,7 @@ def device_show(
 async def _device_show(ctx: AppContext, device: str) -> None:
     _, client = _get_client(ctx)
     try:
-        # Try as hostname first if it doesn't look like a GUID
-        if "-" not in device or len(device) < 30:
-            found = await find_device_by_hostname(client, device)
-            if found:
-                result = found
-            else:
-                result = await get_device(client, device)
-        else:
-            result = await get_device(client, device)
+        result = await client.show_device(device)
 
         fmt = OutputFormatter(
             session_id=ctx.session_id,
@@ -140,8 +153,8 @@ async def _device_show(ctx: AppContext, device: str) -> None:
 def device_isolate(
     ctx: typer.Context,
     device_id: str = typer.Argument(help="Device ID."),
-    isolation_type: str = typer.Option(
-        "Full", "--type", "-t",
+    isolation_type: IsolationType = typer.Option(
+        IsolationType.FULL, "--type", "-t", case_sensitive=False,
         help="Isolation type: Full or Selective.",
     ),
     comment: str = typer.Option(
@@ -205,8 +218,8 @@ def device_unisolate(
 def device_scan(
     ctx: typer.Context,
     device_id: str = typer.Argument(help="Device ID."),
-    scan_type: str = typer.Option(
-        "Quick", "--scan-type", help="Quick or Full.",
+    scan_type: ScanType = typer.Option(
+        ScanType.QUICK, "--scan-type", case_sensitive=False, help="Quick or Full.",
     ),
     comment: str = typer.Option(
         "Scan triggered via xdr-cli",
@@ -321,14 +334,100 @@ def device_restrict(
     )
 
 
+@device_app.command("unrestrict")
+def device_unrestrict(
+    ctx: typer.Context,
+    device_id: str = typer.Argument(help="Device ID."),
+    comment: str = typer.Option(
+        ..., "--comment", "-c", help="Reason for removing restriction.",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip confirmation.",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would happen.",
+    ),
+) -> None:
+    """Remove the Defender app-execution restriction."""
+    app_ctx: AppContext = ctx.obj
+
+    if dry_run:
+        fmt = OutputFormatter(
+            session_id=app_ctx.session_id,
+            session_label=app_ctx.session_label,
+        )
+        typer.echo(fmt.format_output({
+            "dry_run": True,
+            "action": "unrestrict",
+            "device_id": device_id,
+        }))
+        return
+
+    _confirm_action(
+        app_ctx, "remove app-execution restriction from", device_id, yes,
+    )
+    asyncio.run(
+        _device_action(
+            app_ctx, "unrestrict", device_id, comment=comment,
+        )
+    )
+
+
+@device_app.command("download-package")
+def device_download_package(
+    ctx: typer.Context,
+    action_id: str = typer.Argument(help="Completed package-collection action ID."),
+    device_id: str = typer.Option(..., "--device", help="MachineId associated with the action."),
+    output: Path = typer.Option(..., "--output", "-o", help="Destination ZIP path."),
+    force: bool = typer.Option(
+        False, "--force", help="Atomically replace an existing output path.",
+    ),
+    max_bytes: int = typer.Option(
+        DEFAULT_MAX_BYTES, "--max-bytes", min=1, help="Maximum archive size (default 1 GiB).",
+    ),
+) -> None:
+    """Download an existing investigation ZIP with portal-cookie auth, without extracting it.
+
+    Read-only: this does not request collection or change device state. Requires
+    --backend portal-cookie. Output is private and atomically published after
+    transfer and ZIP-container validation. Signed URLs never appear in output.
+    """
+    app_ctx: AppContext = ctx.obj
+    if not app_ctx.config.backend_profile.package_download:
+        raise UsageError("Package download requires --backend portal-cookie.")
+    destination = package_destination(output, force=force)
+    asyncio.run(_download_package(app_ctx, action_id, device_id, destination, force, max_bytes))
+
+
+async def _download_package(
+    ctx: AppContext, action_id: str, device_id: str, output: Path, force: bool, max_bytes: int,
+) -> None:
+    _, client = _get_client(ctx)
+    try:
+        url = await client.get_package_download_url(action_id, device_id)
+        receipt = await download_package_archive(
+            url, output, force=force, max_bytes=max_bytes, timeout=ctx.config.api_timeout,
+        )
+        receipt.update(
+            action_id=action_id, device_id=device_id, api_backend=client.profile.name.value,
+        )
+        fmt = OutputFormatter(session_id=ctx.session_id, session_label=ctx.session_label)
+        typer.echo(fmt.format_output(receipt))
+    finally:
+        await client.close()
+
+
 @device_app.command("action-status")
 def device_action_status(
     ctx: typer.Context,
     action_id: str = typer.Argument(help="Machine action ID."),
+    device_id: str | None = typer.Option(
+        None, "--device", help="MachineId required when no local portal action association exists.",
+    ),
 ) -> None:
     """Check the status of a machine action."""
     app_ctx: AppContext = ctx.obj
-    asyncio.run(_action_status(app_ctx, action_id))
+    asyncio.run(_action_status(app_ctx, action_id, device_id))
 
 
 async def _device_action(
@@ -355,6 +454,9 @@ async def _device_action(
                 client, device_id,
                 comment=kwargs.get("comment", ""),
             ),
+            "unrestrict": lambda: unrestrict_code_execution(
+                client, device_id, comment=kwargs.get("comment", ""),
+            ),
             "restrict": lambda: restrict_code_execution(
                 client, device_id,
                 comment=kwargs.get("comment", ""),
@@ -378,10 +480,15 @@ async def _device_action(
         await client.close()
 
 
-async def _action_status(ctx: AppContext, action_id: str) -> None:
+async def _action_status(
+    ctx: AppContext, action_id: str, device_id: str | None = None,
+) -> None:
     _, client = _get_client(ctx)
     try:
-        result = await get_action_status(client, action_id)
+        if device_id is None:
+            result = await get_action_status(client, action_id)
+        else:
+            result = await get_action_status(client, action_id, device_id=device_id)
         fmt = OutputFormatter(
             session_id=ctx.session_id,
             session_label=ctx.session_label,
@@ -431,8 +538,10 @@ def _select_portal_auth_strategy(
        FOCI/MSAL is blocked in their tenant), so it takes precedence over a
        merely-cached MSAL account.
     3. A cached portal MSAL account -> BearerAuth.
-    4. None of the above -> exit non-zero, naming both portal auth commands.
+    4. None of the above -> exit non-zero with cookie-import recovery guidance.
     """
+    if ctx.config.backend_profile.cookie_auth and refresh_token:
+        raise ConfigError("--refresh-token cannot be combined with --backend portal-cookie.")
     if refresh_token:
         return RefreshTokenAuth(ctx.config.tenant_id, refresh_token)
 
@@ -448,11 +557,16 @@ def _select_portal_auth_strategy(
             cookie_header=stored_cookies.get("cookie_header"),
         )
 
+    if ctx.config.backend_profile.cookie_auth:
+        raise NotAuthenticatedError(
+            "No portal cookies found. Run xdr auth portal-cookie <cookie-source>."
+        )
+
     portal_auth = PortalAuth(ctx.config)
     if portal_auth.get_auth_status().get("authenticated"):
         return BearerAuth(portal_auth)
 
-    raise AuthError(
+    error = AuthError(
         "No Defender portal credentials found.",
         suggestions=[
             {
@@ -460,18 +574,15 @@ def _select_portal_auth_strategy(
                 "message": "xdr auth portal-cookie <cookie-source>",
                 "confidence": "exact",
             },
-            {
-                "reason": "portal_auth_experimental",
-                "message": "xdr auth portal-login",
-                "confidence": "exact",
-            },
         ],
         help_command="xdr device timeline --help",
     )
+    error.suggested_fix = "Run xdr auth portal-cookie <cookie-source>."
+    raise error
 
 
 async def _resolve_machine_id(
-    client: XDRClient,
+    client: Backend,
     device: str,
     *,
     verify_exact: bool = False,
@@ -479,11 +590,10 @@ async def _resolve_machine_id(
     """Resolve `device` (hostname or MachineId) to a MachineId.
 
     A 40-hex-char `device` is normally used directly. With ``verify_exact``
-    (stored-cookie timeline auth), it is first confirmed through the official
-    tenant. Hostnames resolve via `find_device_by_hostname` against the OFFICIAL
-    MDE API (the main `XDRClient`/`AuthManager`, not the portal apiproxy client),
-    so device resolution attributes to the user's own app registration in the
-    audit log. Only the timeline fetch itself uses the portal client.
+    (stored-cookie timeline auth), it is first confirmed through the selected
+    backend. Portal-cookie mode verifies authenticated tenant context and the
+    exact device ID without using official API credentials. Hostname resolution
+    uses an exact match within the selected backend's device inventory.
 
     `find_device_by_hostname` currently returns a single match (or None);
     normalizing to a list here also lets a caller supply/mock a list of
@@ -494,7 +604,7 @@ async def _resolve_machine_id(
         return device
 
     if _MACHINE_ID_RE.fullmatch(device):
-        found = await get_device(client, device)
+        found = await get_device(client, device, enrich=False)
         resolved = found.get("id") if isinstance(found, dict) else None
         if not isinstance(resolved, str) or resolved.casefold() != device.casefold():
             raise ConflictError(
@@ -504,7 +614,7 @@ async def _resolve_machine_id(
             )
         return resolved
 
-    found = await find_device_by_hostname(client, device)
+    found = await find_device_by_hostname(client, device, enrich=False)
     candidates = found if isinstance(found, list) else ([found] if found else [])
 
     if not candidates:
@@ -676,15 +786,11 @@ def device_timeline(
 
     This is a READ-ONLY command: it does not modify device state.
 
-    Talks to TWO different APIs. `device` is resolved to a MachineId via the
-    OFFICIAL MDE `machines` endpoint (xdr-cli's normal AuthManager/XDRClient)
-    when it isn't already a 40-hex MachineId. Cookie-authenticated runs also
-    verify an exact MachineId through that official tenant before fetching. The
-    timeline events themselves
-    come from the *unofficial* Defender-portal apiproxy
-    (security.microsoft.com/apiproxy/mtp/...) via PortalClient, authenticated
-    per the precedence in `xdr auth portal-login` / `portal-cookie` /
-    --refresh-token.
+    The official backend resolves devices through MDE before reading portal
+    timeline events. With --backend portal-cookie, supply a MachineId or hostname:
+    both tenant/device verification and timeline reads use portal cookies,
+    without an app registration or MSAL. Hostname lookup requires an exact,
+    unambiguous inventory match. Portal-cookie mode rejects --refresh-token.
 
     IDENTIFIERS. `device` is a DeviceName (hostname) or a 40-hex DeviceId
     (MachineId). The portal timeline's MachineId IS Advanced Hunting's

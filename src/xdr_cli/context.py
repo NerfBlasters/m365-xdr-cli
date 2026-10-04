@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from xdr_cli.auth import AuthManager
-    from xdr_cli.client import XDRClient
+    from xdr_cli.backend_contract import Backend
     from xdr_cli.config import Config
     from xdr_cli.sessions import Recorder
 
@@ -34,7 +34,7 @@ class AppContext:
     anchor_alert: str | None = None
     anchor_provenance: dict[str, str] = field(default_factory=dict)
     _auth: AuthManager | None = None
-    _client: XDRClient | None = None
+    _client: Backend | None = None
 
     @property
     def effective_quiet(self) -> bool:

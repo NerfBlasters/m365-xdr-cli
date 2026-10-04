@@ -82,7 +82,7 @@ class PortalAuthStrategy(Protocol):
 
 
 class BearerAuth:
-    """MSAL-backed bearer token — the default `xdr auth portal-login` path."""
+    """Legacy MSAL-backed bearer token for existing portal OAuth caches."""
 
     def __init__(self, portal_auth: PortalAuth) -> None:
         self._portal_auth = portal_auth
@@ -201,7 +201,7 @@ class RefreshTokenAuth:
                 message += f" {detail}"
             message += (
                 " The refresh token may be invalid or expired — supply a fresh one "
-                "or run `xdr auth portal-login`."
+                "or run `xdr auth portal-cookie <cookie-source>`."
             )
             raise AuthError(message)
 
@@ -213,7 +213,7 @@ class RefreshTokenAuth:
                 message += f" {detail}"
             message += (
                 " The refresh token may be invalid or expired — supply a fresh one "
-                "or run `xdr auth portal-login`."
+                "or run `xdr auth portal-cookie <cookie-source>`."
             )
             raise AuthError(message)
         return access_token
@@ -320,6 +320,13 @@ class PortalClient:
         retries = 0
         while True:
             request = self._client.build_request("GET", path, params=params)
+            url = request.url
+            if (
+                url.scheme != "https" or url.host != "security.microsoft.com"
+                or url.port not in (None, 443) or url.username or url.password
+                or not url.path.startswith("/apiproxy/mtp/")
+            ):
+                raise APIError("Refusing a portal request outside the permitted service origin.")
             try:
                 await self._auth.apply(request)
                 response = await self._client.send(request)
@@ -346,13 +353,12 @@ class PortalClient:
                 status = response.status_code
                 recovery = (
                     "Run 'xdr auth status', then refresh portal credentials with "
-                    "'xdr auth portal-cookie <cookie-source>' or "
-                    "'xdr auth portal-login'."
+                    "'xdr auth portal-cookie <cookie-source>'."
                 )
                 raise NotAuthenticatedError(
                     f"Portal session rejected ({status}). Your portal credentials "
                     "look expired or invalid. Run `xdr auth portal-cookie "
-                    "<cookie-source>` or `xdr auth portal-login` to refresh them.",
+                    "<cookie-source>` to refresh them.",
                     suggested_fix=recovery,
                     help_command="xdr auth status",
                 )

@@ -9,16 +9,21 @@ import stat
 import tomllib
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import tomli_w
 
 from xdr_cli.secret_files import atomic_write_secret
+
+if TYPE_CHECKING:
+    from xdr_cli.backend_contract import BackendProfile
 
 
 @dataclass
 class Config:
     """XDR CLI configuration."""
 
+    api_backend: str = "auto"
     tenant_id: str = ""
     client_id: str = ""
     auth_mode: str = "device_code"  # "device_code" or "client_credentials"
@@ -41,8 +46,18 @@ class Config:
     # A full semantic collection is advisory-only and due weekly by default.
     schema_collection_stale_seconds: int = 604800
 
+    @property
+    def backend_profile(self) -> BackendProfile:
+        from xdr_cli.backend_contract import backend_profile
+        from xdr_cli.backend_selection import select_backend
+
+        return backend_profile(select_backend(self))
+
     def __post_init__(self) -> None:
         from xdr_cli.exceptions import ConfigError
+
+        if self.api_backend not in ("auto", "official", "portal-cookie"):
+            raise ConfigError("api_backend must be auto, official, or portal-cookie.")
 
         for name in (
             "schema_collect_on_session_end",
@@ -94,6 +109,20 @@ class Config:
         error = getattr(self, "_maintenance_config_error", None)
         if error is not None:
             raise error
+
+    def check_mutation_backend(self) -> None:
+        """A recovered backend preference must not authorize tenant writes."""
+        if hasattr(self, "_invalid_api_backend") and not getattr(
+            self, "_api_backend_explicit", False,
+        ):
+            from xdr_cli.exceptions import ConfigError
+
+            raise ConfigError(
+                "Invalid api_backend in config.toml. Tenant writes require a corrected "
+                "configuration or an explicit --backend choice; no action was sent.",
+                allowed=["auto", "official", "portal-cookie"],
+                help_command="xdr --help",
+            )
 
 
 # Allowed keys for serialization. Unknown keys are diagnosed on load.
@@ -150,6 +179,14 @@ def load_config(*, validate_maintenance: bool = False) -> Config:
             markup=False,
         )
     known = {k: v for k, v in data.items() if k in _CONFIG_FIELDS}
+    invalid_backend = known.get("api_backend", "auto") not in ("auto", "official", "portal-cookie")
+    if invalid_backend:
+        err_console.print(
+            "Warning: invalid api_backend in config.toml; using auto for reads and diagnostics. "
+            "Set api_backend to auto, official, or portal-cookie, or pass --backend.",
+            markup=False,
+        )
+        known["api_backend"] = "auto"
     error = None
     try:
         config = Config(**known)
@@ -158,6 +195,8 @@ def load_config(*, validate_maintenance: bool = False) -> Config:
         # defaults cannot authorize upkeep: its entry point checks the error.
         config = Config(**{k: v for k, v in known.items() if k not in _MAINTENANCE_FIELDS})
         error = exc
+    if invalid_backend:
+        config._invalid_api_backend = data["api_backend"]
     if any(name.startswith("schema_") for name in unknown):
         error = ConfigError("Unknown schema config keys; correct config.toml before schema upkeep.")
     if error is not None:
@@ -180,6 +219,11 @@ def save_config(config: Config) -> None:
     config_home = ensure_config_dir()
     config_file = config_home / "config.toml"
     data = asdict(config)
+    data["api_backend"] = getattr(config, "_api_backend_preference", config.api_backend)
+    # Login/import may save credentials during recovery; do not silently turn
+    # an invalid pin into a valid auto preference that later permits writes.
+    if hasattr(config, "_invalid_api_backend"):
+        data["api_backend"] = config._invalid_api_backend
     # Auth login must still save credentials during upkeep-config recovery.
     # Preserve the rejected settings instead of replacing them with defaults
     # that would silently enable queries on the next invocation.

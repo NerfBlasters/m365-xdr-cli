@@ -15,6 +15,8 @@ import click
 import typer
 
 from xdr_cli import __version__
+from xdr_cli.backend_selection import select_backend
+from xdr_cli.backends import APIBackend
 from xdr_cli.commands.alerts_cmd import alerts_app
 from xdr_cli.commands.annotate_cmd import annotate
 from xdr_cli.commands.auth_cmd import auth_app
@@ -69,10 +71,12 @@ app.command("annotate")(annotate)
 # the resolved chain, not raw argv, means every syntax Click accepts (`--`,
 # clustered short flags, `--opt=value`) is covered and an argument that
 # happens to equal a command name is not.
-_WRITE_COMMANDS = frozenset({
+_TENANT_MUTATION_COMMANDS = frozenset({
     "device isolate", "device unisolate", "device scan",
-    "device collect-package", "device restrict",
+    "device collect-package", "device restrict", "device unrestrict",
     "incidents update",
+})
+_WRITE_COMMANDS = _TENANT_MUTATION_COMMANDS | frozenset({
     "auth login", "auth logout",
     "auth portal-login", "auth portal-cookie", "auth portal-logout",
     "investigate",
@@ -298,6 +302,9 @@ def main(
         False, "--version", "-v", callback=version_callback, is_eager=True,
         help="Show version and exit.",
     ),
+    backend: APIBackend | None = typer.Option(  # noqa: B008 - Typer option declaration
+        None, "--backend", help="API backend: auto (default), official, or portal-cookie.",
+    ),
     no_interactive: bool = typer.Option(
         False, "--no-interactive",
         help="Disable all interactive prompts.",
@@ -322,7 +329,13 @@ def main(
     ),
 ) -> None:
     """Microsoft 365 Defender XDR investigation CLI."""
-    config = load_config()
+    from copy import copy
+
+    config = copy(load_config())
+    config._api_backend_preference = config.api_backend
+    config._api_backend_requested = backend.value if backend is not None else config.api_backend
+    config._api_backend_explicit = backend is not None
+    config.api_backend = select_backend(config, config._api_backend_requested)
     app_ctx = AppContext(
         config=config,
         no_interactive=no_interactive,
@@ -388,6 +401,8 @@ def _capture_chain_from_leaf() -> None:
         names = names[1:]
     chain = " ".join(names) or None
     app_ctx.invoked_command = chain
+    if chain in _TENANT_MUTATION_COMMANDS and not click_ctx.params.get("dry_run", False):
+        app_ctx.config.check_mutation_backend()
     _audit_dispatched_command(chain, list(sys.argv[1:]))
     if app_ctx.recorder is not None:
         app_ctx.recorder.invoked_command = chain
@@ -426,6 +441,7 @@ def _capture_chain_from_leaf() -> None:
     else:
         session, attachment = resolve_session_for_invocation(
             chain,
+            api_backend=app_ctx.config.api_backend,
             timeout_seconds=app_ctx.config.session_timeout_seconds,
             anchor_incident=anchor_incident,
             anchor_alert=anchor_alert,
