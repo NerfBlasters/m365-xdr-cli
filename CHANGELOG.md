@@ -10,6 +10,45 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.11.1] - 2026-10-04
+
+Documentation rewrite for the public launch.
+
+### Changed
+
+- README rewritten as a landing page: what the tool is, who it is for, a
+  recorded demo, install, Entra app registration, a six-command quick start,
+  and a complete command reference. Long-form material moved to `docs/`.
+- Entra permissions table corrected against Microsoft's API references:
+  `Domain.Read.All` added for `xdr domains list`, `SecurityAlert.Read.All`
+  instead of `ReadWrite.All`, delegated Defender for Endpoint permission names
+  (`Machine.Read`/`Machine.ReadWrite`, `AdvancedQuery.Read`) instead of the
+  application-permission names.
+- README now describes `xdr auth login` as an interactive sign-in with
+  device-code fallback, documents `xdr lists init`, the `--rationale` global
+  flag, `xdr history stats`, and the real scope of `~/.xdr-cli/audit.log`.
+- Troubleshooting references the error codes the CLI actually emits
+  (`PERMISSION_MISSING_SCOPE`, not `FORBIDDEN`).
+- `docs/schema_graph.md` gained the bundle guarantees, `repair-overlay` /
+  `migrate-cache` behaviour, and the `validate-core` command-map row that
+  previously lived only in the README.
+- Launch documentation reconciled with 0.11.0: local-first discovery,
+  automatic session-end upkeep, output contracts, and evidence retention.
+
+### Added
+
+- `docs/device_timeline.md`: the unofficial device-timeline feature and portal
+  authentication, moved out of the README and corrected.
+- `docs/library.md`: every packaged KQL query with tier and parameters, the
+  parameter contract, and custom-query format.
+- `docs/troubleshooting.md`: long-form troubleshooting and the exit-code table.
+- `docs/media/investigate.gif` (with its asciinema source) recorded against a
+  demo tenant, with tenant and object identifiers replaced for publication.
+
+### Removed
+
+- References in the documentation to releases that predate this repository.
+
 ## [0.11.0] - 2026-10-04
 
 ### Added

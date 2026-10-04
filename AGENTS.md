@@ -63,7 +63,7 @@ Otherwise proceed with the CLI reference below.
     the artifact receipt; explicit `--output` atomically preserves direct
     raw-JSONL compatibility, refuses existing paths, and requires `--force`
     for intentional replacement.
-    See `README.md` §"Device Timeline" for portal-auth and attribution caveats.
+    See `docs/device_timeline.md` for portal-auth and attribution caveats.
 
 ### JSON-string column expansion
 

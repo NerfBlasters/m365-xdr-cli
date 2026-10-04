@@ -15,6 +15,8 @@ xdr schema diagnostics
 xdr schema collect --plan-only
 xdr schema collect
 xdr schema discoveries
+xdr schema pivot DeviceNetworkEvents.DeviceId
+xdr schema path DeviceNetworkEvents DeviceProcessEvents
 ```
 
 ## End-to-end workflow
@@ -368,10 +370,10 @@ OpenGraph ingest merges nodes and edges into the database; it does not create a
 named graph or saved query. The Quick Upload ID is an ingest job ID.
 
 xdr-cli uses source kind `XDR_CLI`. Node Object IDs begin with readable schema
-locators, such as `DeviceProcessEvents.DeviceId_XDR_CLI_Field`. Exports
-from older builds that used opaque IDs remain separate nodes; remove the old
-`XDR_CLI` source under BloodHound database administration before uploading a
-replacement if a single clean snapshot is desired.
+locators, such as `DeviceProcessEvents.DeviceId_XDR_CLI_Field`. Re-uploading
+a replacement export merges into the existing `XDR_CLI` source; remove that
+source under BloodHound database administration first if a single clean
+snapshot is desired.
 
 ### Node labels and icons
 
@@ -679,6 +681,17 @@ and never overwrites existing files. Imported observations are useful, but
 automatic validation still reopens the imported artifacts and enforces the
 same source/target contracts described above.
 
+Inspection streams a strict portable-member allowlist and rejects an archive
+whose uncompressed size exceeds 256 MiB. Credentials, configuration, cookies,
+locks, active-session markers, and audit logs are rejected if they are
+injected into an archive, not merely skipped. Import refuses collisions
+without relying on hard-link support, so the no-overwrite guarantee holds on
+filesystems that limit or forbid hard links, and it coordinates imported
+session IDs with the local per-initials session counters so relocated
+history cannot collide with sessions started later on the destination.
+Exported archives and every staged member are owner-only (`0600`) on POSIX,
+and a failed validation leaves no published output.
+
 ## Diagnostics and recovery
 
 ```bash
@@ -700,7 +713,7 @@ Common recovery paths:
 # Missing/stale/corrupt physical cache (tenant call)
 xdr schema refresh
 
-# Compatible legacy cache without content binding (local)
+# Valid physical cache without content binding (local)
 xdr schema migrate-cache --yes
 
 # Overlay compatibility or retained-generation repair (local)
@@ -709,6 +722,16 @@ xdr schema repair-overlay --yes
 # Last-resort empty overlay after repair reports no usable generation
 xdr schema repair-overlay --reset-empty --yes
 ```
+
+`repair-overlay` selects the newest structurally valid retained overlay
+generation. When the overlay contract has drifted, the exact prior overlay
+files are quarantined before a new generation is atomically published:
+compatible records are retained, obsolete provisional interpretations and
+their dependent observations are inactivated, and unsafe nested fields are
+excluded. Reviewed-contract conflicts fail closed without changing the
+active state. `migrate-cache` content-binds the exact bytes of a validated
+physical cache that has no digest binding yet; neither command contacts the
+tenant or reads result-row values.
 
 Maintenance advisories appear on stderr and never change stdout JSON. `--quiet`
 suppresses them; `--no-quiet` forces them even when stdout is piped.
@@ -732,6 +755,7 @@ suppresses them; `--no-quiet` forces them even when stdout is piped.
 | `schema pivot`, `schema path` | No | Explain usable field/table routes |
 | `schema candidate-review` | Yes | Optional bounded private context for one route |
 | `schema candidate-proposal` | No | Draft a contributor-owned core JSONL proposal |
+| `schema validate-core` | No | Validate the packaged graph/profile and check or update its generated reference block |
 | `schema correlate` | No | Correlate retained tenant-bound artifacts |
 | `schema export-opengraph` | No | Write a value-free BloodHound payload |
 | `schema repair-overlay`, `schema migrate-cache` | No | Repair compatible local state |

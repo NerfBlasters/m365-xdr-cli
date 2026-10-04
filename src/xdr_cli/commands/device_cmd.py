@@ -697,8 +697,8 @@ def device_timeline(
         DeviceProcessEvents
         | where DeviceId == '<40-hex MachineId>' and DeviceName =~ '<hostname>'
 
-    See README ("Identifiers & Advanced Hunting cross-reference") for the full
-    table list.
+    See docs/device_timeline.md ("Identifiers & Advanced Hunting cross-reference")
+    for the full table list.
     """
     app_ctx: AppContext = ctx.obj
 

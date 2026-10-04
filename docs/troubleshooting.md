@@ -1,0 +1,524 @@
+# Troubleshooting
+
+This is the long-form troubleshooting reference for `xdr`. Every symptom
+has its own `###` heading; where the CLI emits a stable error `code`, that
+code appears in the heading so you can search for it directly.
+
+Contents:
+
+- [How errors are reported](#how-errors-are-reported)
+- [Exit codes and error codes](#exit-codes-and-error-codes)
+- [Output streams, piping, and non-interactive mode](#output-streams-piping-and-non-interactive-mode)
+- [Authentication and consent](#authentication-and-consent)
+- [Command-line usage errors](#command-line-usage-errors)
+- [Query library](#query-library)
+- [Installation](#installation)
+- [Lookups, debugging, and multiple tenants](#lookups-debugging-and-multiple-tenants)
+- [Schema maintenance advisory](#schema-maintenance-advisory)
+- [Audit log](#audit-log)
+
+## How errors are reported
+
+When a command fails before it has produced durable output, `xdr` prints
+exactly one compact JSON line on **stdout** and exits with a non-zero
+class-specific code. The record always has the same shape:
+
+```json
+{"status":"error","error":{"schema_version":1,"type":"ForbiddenError",
+"message":"Insufficient permissions. Required scope: ...",
+"code":"PERMISSION_MISSING_SCOPE","exit_code":7,"retryable":false,
+"invalid":null,"allowed":[],"suggestions":[{"reason":"recovery",
+"message":"Check your Entra ID app permissions and RBAC roles.",
+"confidence":"exact"}],"corrected_argv":null,"help_command":null,
+"retry_after_seconds":null,"request_ids":null,"original":{}}}
+```
+
+Fields worth scripting against:
+
+| Field                 | Meaning                                                |
+| --------------------- | ------------------------------------------------------ |
+| `code`                | Stable string identifier (see table below)             |
+| `exit_code`           | The process exit code, duplicated for convenience      |
+| `retryable`           | `true` for timeouts and rate limits                    |
+| `retry_after_seconds` | Set on `API_RATE_LIMITED`                              |
+| `invalid`             | `{kind, value}` naming the offending option/argument   |
+| `allowed`             | Valid choices when `invalid` is an enum or option name |
+| `suggestions`         | Recovery hints; `confidence` is `exact` or `heuristic` |
+| `corrected_argv`      | A full replacement command line, when one is known     |
+| `help_command`        | The `--help` invocation that documents the fix         |
+
+## Exit codes and error codes
+
+Exit codes are grouped by the recovery action they require. The `code`
+strings below are the ones you will most commonly see for each class; a
+class may carry more than one code.
+
+| Exit | Class                | Common `code` values                                                    | What to do                                                        |
+| ---- | -------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| 0    | `SUCCESS`            | --                                                                      | --                                                                |
+| 1    | `INTERNAL_ERROR`     | `INTERNAL_ERROR`, `CLI_COMMAND_FAILED`                                  | Re-run with `--debug`; report a bug                               |
+| 2    | `AUTH_ERROR`         | `AUTH_LOGIN_REQUIRED`, `NOT_AUTHENTICATED`, `TOKEN_EXPIRED`             | `xdr auth status`, then `xdr auth login`                          |
+| 3    | `UPSTREAM_API_ERROR` | `API_ERROR`                                                             | Inspect `original.status` / `original.detail`                     |
+| 4    | `CONFIG_ERROR`       | `CONFIG_ERROR`                                                          | Check `~/.xdr-cli/config.toml`                                    |
+| 5    | `QUERY_ERROR`        | `QUERY_ERROR`, `QUERY_UNKNOWN_TABLE`, `QUERY_UNKNOWN_COLUMN`, `QUERY_SEMANTIC_ERROR` | Fix KQL; `xdr schema tables --search <name>`         |
+| 6    | `USAGE_ERROR`        | `CLI_USAGE_ERROR`, `CLI_UNKNOWN_COMMAND`, `CLI_UNKNOWN_OPTION`, `CLI_REMOVED_OPTION`, `CLI_INVALID_VALUE`, `CLI_INVALID_ENUM`, `CLI_MISSING_VALUE` | Follow `help_command` / `corrected_argv` |
+| 7    | `PERMISSION_ERROR`   | `PERMISSION_MISSING_SCOPE`, `PERMISSION_DENIED`                         | Grant the missing API permission and admin consent                |
+| 8    | `NOT_FOUND`          | `API_NOT_FOUND`, `LOCAL_NOT_FOUND`, `RESULT_QUERY_NOT_FOUND`            | Verify the ID or run-id                                           |
+| 9    | `RATE_LIMIT`         | `API_RATE_LIMITED`                                                      | Wait `retry_after_seconds`, then retry                            |
+| 10   | `TIMEOUT`            | `API_TIMEOUT`                                                           | Raise `--timeout` / `api_timeout`; narrow the query               |
+| 11   | `NETWORK_ERROR`      | `API_NETWORK_ERROR`                                                     | Check connectivity / proxy                                        |
+| 12   | `ARTIFACT_ERROR`     | `ARTIFACT_WRITE_FAILED`                                                 | Check free space and permissions under `~/.xdr-cli/results`       |
+| 13   | `CONFLICT`           | `STATE_CONFLICT`                                                        | Resolve the conflicting local state, then retry                   |
+| 14   | `PARTIAL_SUCCESS`    | `PARTIAL_SUCCESS`                                                       | Receipt was written; inspect the trailing error for failed parts  |
+| 130  | (SIGINT)             | --                                                                      | Command was interrupted with Ctrl-C; POSIX convention             |
+
+Note that there is no `FORBIDDEN` code. An HTTP 403 from either API is
+reported as `PERMISSION_MISSING_SCOPE` with exit code 7.
+
+## Output streams, piping, and non-interactive mode
+
+### Progress and warnings appear mixed into JSON output
+
+They should not, and will not unless you merge the streams yourself.
+`xdr` keeps a strict contract:
+
+- **stdout** carries data: artifact receipts, previews, and (on failure)
+  structured errors. Lifecycle and raw-render commands have the exceptions
+  documented in [AGENTS.md](../AGENTS.md#3-artifact-and-compact-output-shapes).
+- **stderr** carries progress messages, warnings, deprecation notices,
+  and the schema maintenance advisory.
+
+Do not use `2>&1`. Doing so interleaves human-oriented text with the
+machine-readable stream and breaks `jq`-based consumers. Redirect stderr
+separately if you need to keep it:
+
+```bash
+xdr incidents list --since 24h 2>progress.log | jq .
+```
+
+### No progress output when piping
+
+This is expected. Stderr progress is auto-silenced whenever stdout is not
+a TTY (for example, when piped into `jq` or redirected to a file). The
+flag is tri-state:
+
+| Invocation       | Behaviour                                              |
+| ---------------- | ------------------------------------------------------ |
+| (default)        | Progress shown on a TTY, silenced when stdout is piped |
+| `--quiet` / `-q` | Always silenced (useful when stderr is also captured)  |
+| `--no-quiet`     | Always shown, even when stdout is piped                |
+
+```bash
+xdr --no-quiet hunt run 'DeviceEvents | where Timestamp > ago(1h) | take 10' | jq -c .
+```
+
+### Command exited 14 (`PARTIAL_SUCCESS`) but a receipt was written
+
+Exit 14 means the durable part of the operation succeeded and one or more
+sub-operations did not. The CLI emits the receipt and previews on stdout
+first, then a final `PARTIAL_SUCCESS` JSON line naming the failed
+sub-operations. Treat the artifact as valid and inspect the trailing error
+for what to retry. When consuming with `jq`, read all lines (`jq -c .`
+or `jq -s .`) rather than assuming a single document.
+
+Explicit `session end` has a lifecycle-specific shape: a `session-end` record
+with feedback instructions, followed by a `session-maintenance` record. Upkeep
+failure or incomplete work returns 14; cancellation returns 130. The session
+is already closed, so do not retry `session end`. Inspect `maintenance.cause`
+and follow its recovery command. Use `session end --no-maintenance` to skip
+upkeep for an end that has not yet run. See [sessions](sessions.md).
+
+Configuration warnings can still appear on stderr in quiet mode. Invalid
+schema-maintenance settings prevent upkeep but leave core recovery commands
+and `session end --no-maintenance` available.
+
+### A prompt was skipped, or a destructive action refused to run
+
+Confirmation prompts are auto-skipped whenever stdin **or** stdout is not a
+TTY. You can force this with `--no-interactive`. Destructive device-action
+commands (`isolate`, `unisolate`, `restrict`, `scan`, `collect-package`)
+require `--yes` to execute without a prompt; without it in a non-TTY
+context they will not proceed.
+
+`auth login` is a separate interactive flow and is not made unattended by
+`--no-interactive`. Agents should surface authentication failures to a human
+rather than retrying login in a subprocess.
+
+```bash
+xdr --no-interactive device isolate <machine-id> --yes --comment "IR-1234"
+```
+
+## Authentication and consent
+
+### `xdr auth status` shows `"configured": false`
+
+No `tenant_id` / `client_id` is present in `~/.xdr-cli/config.toml`. Run
+the login once with both IDs; they are saved to the config file:
+
+```bash
+xdr auth login --tenant-id <TENANT-ID> --client-id <CLIENT-ID>
+```
+
+Any later command that needs a token before configuration exists raises
+`CONFIG_ERROR` (exit 4) with the same hint.
+
+### `NOT_AUTHENTICATED` or `TOKEN_EXPIRED`
+
+Your cached token is missing or has expired and could not be refreshed
+silently. Re-run `xdr auth login`. The token cache lives at
+`~/.xdr-cli/token_cache.json`; `xdr auth logout` deletes it if you want a
+clean start.
+
+If the message says *Interactive authentication required for scope ...*,
+the cache holds a Graph token but the Defender for Endpoint audience has
+never been consented. Run `xdr auth logout && xdr auth login`; if that
+still fails, see the `AADSTS65001` entry below.
+
+### Sign-in hangs, never opens a browser, or rejects the device code
+
+`xdr auth login` is interactive. On Windows it uses the WAM broker (so the
+device's Primary Refresh Token satisfies Conditional Access device
+policies); elsewhere it opens a browser on this machine. If no display or
+broker is available (headless host, SSH session, CI), it prints
+*Interactive auth unavailable ... falling back to device code* on stderr
+and shows a URL plus a one-time code to enter from another device.
+
+After the primary Graph token is acquired, the login pre-warms the other
+API audiences. A warning such as *could not pre-warm scope ...* is
+non-fatal: the Graph token is already saved, and the first command that
+needs the other audience will prompt for it.
+
+If the flow stalls or the code is rejected:
+
+- Make sure **Allow public client flows** is enabled in the app
+  registration's **Authentication** blade.
+- Confirm redirect URI `http://localhost` is registered as a **Public
+  client/native** redirect (see `AADSTS50011` below).
+- If a browser did open but you dismissed it, re-run the command; the
+  cancelled dialog is reported as an `AUTH_LOGIN_REQUIRED` error, not a
+  hang.
+- In a headless environment, make sure stdin and stderr are attached so
+  you can see the device code.
+
+### `PERMISSION_MISSING_SCOPE` / HTTP 403 on API calls
+
+The token lacks a required scope, or the permission exists on the app
+registration but has not been consented. Re-check the API permissions
+table in the README and click **Grant admin consent for [tenant]**.
+Permissions take effect only after consent, and existing cached tokens do
+not pick up new scopes until you `xdr auth logout && xdr auth login`.
+
+The error's `message` names the required scope when the CLI knows it
+(for example `ThreatHunting.Read.All` or `Machine.Isolate`).
+
+`PERMISSION_DENIED` (also exit 7) is the local equivalent: the operation
+was refused for a reason other than a missing OAuth scope, such as RBAC
+on the tenant side.
+
+### `AADSTS65001` ("user or administrator has not consented")
+
+The app registration is missing admin consent for one of the **two token
+audiences** the CLI needs:
+
+- **Microsoft Graph** (incidents, alerts, Graph hunting) -- consent for
+  Microsoft Graph permissions.
+- **Defender for Endpoint** (device actions, fallback hunting) -- consent
+  for **WindowsDefenderATP** permissions.
+
+In **API permissions**, verify every required permission shows *Granted
+for [tenant]* in the Status column. If any are missing, click **Grant
+admin consent for [tenant]** again, then `xdr auth logout && xdr auth
+login` so the cache is rebuilt with the new consent.
+
+In `client_credentials` mode the same AADSTS code is surfaced as a
+`PERMISSION_MISSING_SCOPE` error naming the scope.
+
+### Why WindowsDefenderATP audience vs. api.security.microsoft.com endpoint?
+
+Defender for Endpoint endpoints live at
+`api.security.microsoft.com/api/...`, but their tokens must be issued for
+the **legacy `api.securitycenter.microsoft.com` audience**. This is
+Microsoft's current guidance (see the
+[Defender for Endpoint APIs docs](https://learn.microsoft.com/en-us/defender-endpoint/api/exposed-apis-create-app-nativeapp)).
+That is why the permissions you add in the portal are listed under
+**WindowsDefenderATP** -- the audience has not migrated even though the
+endpoint URLs have.
+
+### `AADSTS50011` / redirect URI mismatch during login
+
+The app registration is missing the `http://localhost` redirect URI under
+**Authentication** > **Platform configurations** > **Mobile and desktop
+applications** (shown as *Public client/native*). Add it and retry.
+
+### `auth_mode = "client_credentials"`: `xdr auth status` says `authenticated: false`
+
+This can be expected. In `client_credentials` mode the CLI uses a
+confidential client and acquires an application token with the client
+secret on demand. `xdr auth status` derives `authenticated` from the presence
+of a cached delegated user account. With no such account it reports:
+
+```json
+{"authenticated": false, "configured": true, "account": null, "tenant": "..."}
+```
+
+If a delegated account remains from an earlier login, the field can instead
+be `true`. Neither value validates the client secret. Commands attempt to obtain
+application tokens on demand when configured. `xdr auth login` is **not applicable** in this mode -- it
+drives the interactive user flow, which a confidential client does not
+support. If token acquisition itself fails you will see
+`AUTH_LOGIN_REQUIRED` with *Client credentials auth failed: ...*, or
+`PERMISSION_MISSING_SCOPE` when the description mentions consent. Check
+that `client_secret` is set, has not expired, and that the app has
+**application** (not delegated) permissions with admin consent.
+
+## Command-line usage errors
+
+### `CLI_REMOVED_OPTION` for `--jq`, `--fields`, or hunt `--limit`
+
+These flags do not exist. `xdr` does not project, filter, or truncate
+results locally; every run writes a JSONL artifact and you shape it with
+shell tools. The one-line error includes `corrected_argv` (the same
+command with the offending flag and its value stripped) and a
+`suggestions` entry explaining the replacement:
+
+| Flag                 | Instead                                                            |
+| -------------------- | ------------------------------------------------------------------ |
+| `--fields`           | `xdr results shape <run-id>` to see columns; filter with `rg`/`jq -s` |
+| `--jq`               | Run `jq` on the saved JSONL artifact                                |
+| hunt `--limit`       | Limit at the source in KQL (`\| take 100`) or filter the artifact    |
+
+```bash
+xdr incidents list
+xdr results shape <run-id>
+jq -s 'map(.id)' <data_path>
+```
+
+### `CLI_UNKNOWN_COMMAND` / `CLI_UNKNOWN_OPTION`
+
+The command or option was not recognised. `allowed` lists the valid names
+at that level and `suggestions` carries up to three nearest matches with
+`confidence: "heuristic"`. Run the `help_command` from the error to see
+the full option list for that subcommand.
+
+### `CLI_INVALID_ENUM`, `CLI_INVALID_VALUE`, `CLI_MISSING_VALUE`
+
+A value was rejected. For enums, `allowed` contains every accepted choice.
+For a missing value, `invalid.value` names the option or argument that
+still needs one.
+
+## Query library
+
+### `xdr library list` reports a query is missing `-- tier:` frontmatter
+
+Every `.kql` file must declare `-- tier:` in its frontmatter. The loader
+does not abort the whole library when it meets a bad file; it skips that
+file and prints `warning: skipping builtin query ...` or `warning:
+skipping user query ...` on stderr, so the listing simply omits the
+query. Two common causes:
+
+1. **A user-installed `.kql` in `~/.xdr-cli/queries/` is missing
+   `-- tier:`** or has another malformed-frontmatter problem (unknown
+   tier, or `-- tier: deprecated` without `-- alias_of:`). Either delete
+   the file or add the required header:
+
+   ```
+   -- name: my_query
+   -- description: ...
+   -- tier: r3
+   -- params: hours=24
+   ```
+
+   Choose a supported tier (`r1`, `r2`, `r3`, `n`, `beta`, `pivot`, `utility`,
+   or `deprecated`). Keep explanations outside the header value; inline
+   comments become part of the parsed tier and make it invalid.
+
+2. **Stale build artifacts in a source install.** See
+   [Installation](#installation) below.
+
+### `API_TIMEOUT`: `xdr library run` times out when the same query completes in the portal
+
+Library queries with joins or aggregations can exceed the configured HTTP
+timeout even though they eventually finish in the Defender portal. The CLI
+reports this as a one-line `API_TIMEOUT` error with exit code 10 and
+`retryable: true`; because the failure precedes durable output, no result
+artifact is created. Either raise the per-call timeout:
+
+```bash
+xdr library run qry_inbox_rule_activity -p account_upn=alice@corp.com --timeout 240
+```
+
+or raise the default in `~/.xdr-cli/config.toml`:
+
+```toml
+api_timeout = 240
+```
+
+To compare what the CLI is about to send against the portal, render the
+fully resolved KQL without executing it:
+
+```bash
+xdr hunt library-show qry_inbox_rule_activity -p account_upn=alice@corp.com
+```
+
+`xdr library show NAME` prints the entry's descriptor instead (parameters
+with types and defaults, referenced tables, declared output fields, cost
+hint, and example invocations).
+
+After a successful artifact-producing run, `xdr results query <run-id>`
+prints the exact KQL stored with that result, which is what was sent to
+the API.
+
+### `--param` only captured the first argument
+
+`--param` / `-p` is a **repeatable** flag, not a comma-separated list.
+Pass each parameter as its own `-p`:
+
+```bash
+# Wrong -- sets account_upn to the literal "alice@corp.com,mode=detail"
+xdr library run qry_inbox_rule_activity -p account_upn=alice@corp.com,mode=detail
+
+# Right
+xdr library run qry_inbox_rule_activity \
+  -p account_upn=alice@corp.com \
+  -p mode=detail
+```
+
+### `RESULT_QUERY_NOT_FOUND` from `xdr results query`
+
+The result exists but its metadata has no stored `query` field (for
+example, a non-hunt artifact). Use `xdr results show <run-id>` to inspect
+what the artifact does contain.
+
+## Installation
+
+### Stale build artifacts after `pipx install` / `pipx upgrade` from source
+
+Leftover `build/`, `dist/`, or `*.egg-info/` directories in a source
+clone can confuse setuptools' `package-data` glob, so the installed
+package ships the wrong set of bundled `.kql` files or other data. A
+typical symptom is `xdr library list` warning about a built-in query that
+looks fine on disk. Clean them out and reinstall:
+
+```powershell
+# from your xdr-cli source clone (PowerShell)
+Remove-Item -Recurse -Force build, dist, src\xdr_cli.egg-info -ErrorAction SilentlyContinue
+pip cache remove "xdr*"
+pipx uninstall xdr-cli
+pipx install .
+```
+
+```bash
+# Linux / macOS
+rm -rf build dist src/xdr_cli.egg-info
+pip cache remove "xdr*"
+pipx uninstall xdr-cli
+pipx install .
+```
+
+## Lookups, debugging, and multiple tenants
+
+### Incident or device not found (`API_NOT_FOUND`)
+
+Incident IDs come from `xdr incidents list` or from the Defender portal
+URL. Device IDs are machine GUIDs, not hostnames -- get them from
+`xdr incidents show <id> --expand evidence` or from a hunting query
+(`DeviceInfo | project DeviceId, DeviceName`). A `LOCAL_NOT_FOUND` with
+the same exit code (8) means a local artifact, session, or cache entry
+was not found; check the run-id with `xdr results list`.
+
+### Inspecting HTTP traffic
+
+Add the global `--debug` flag to emit MSAL and httpx debug logs on
+stderr. Keep stderr separate from stdout so the JSON output stays clean:
+
+```bash
+xdr --debug incidents list --since 24h 2>debug.log
+```
+
+The debug log can contain request URLs and headers; review it before
+sharing.
+
+### Multiple tenants
+
+Set `XDR_CLI_HOME` to isolate config, token cache, results, schema cache,
+sessions, and the audit log per tenant:
+
+```bash
+XDR_CLI_HOME=~/.xdr-cli-prod  xdr auth login --tenant-id <PROD>  --client-id <ID>
+XDR_CLI_HOME=~/.xdr-cli-dev   xdr auth login --tenant-id <DEV>   --client-id <ID>
+```
+
+Export the variable in a shell profile or wrapper script so every
+subsequent command uses the same home.
+
+## Schema maintenance advisory
+
+### Stderr says "Schema maintenance due (...). Run: ... or inspect: xdr schema status"
+
+When running in a TTY, the CLI checks the local semantic schema cache
+before executing your command. If the cache is stale, or a periodic
+collection is overdue, it prints a one-line advisory on **stderr** that
+names the reason and the exact next command. The advisory is informational
+only:
+
+- It never blocks or alters the command you asked for.
+- It is suppressed when stdout is piped (auto-quiet) or `--quiet` is set,
+  so it cannot contaminate scripted output.
+- It is not shown while you are already running a `schema status`,
+  `schema diagnostics`, `schema collect`, `schema repair-overlay`,
+  `schema migrate-cache`, or `schema bundle ...` command.
+
+Run `xdr schema status` to see the full maintenance state and the
+recommended action, then run the suggested command when convenient. State
+definitions, staleness thresholds (`schema_stale_seconds`,
+`schema_collection_stale_seconds` in `config.toml`), and recovery
+procedures are documented in the
+[semantic schema graph guide](schema_graph.md).
+
+## Audit log
+
+### Where the audit log is and what it records
+
+`xdr` appends a line to `~/.xdr-cli/audit.log` (or
+`$XDR_CLI_HOME/audit.log`) each time it is invoked with a command that
+modifies state. The file is created with mode `0600` inside a `0700`
+directory, matching the token and cookie stores, because it is effectively
+your command history. Each line is a timestamp followed by `CMD:` and the
+**raw argument vector** exactly as typed:
+
+```
+2026-10-03 09:14:22,118 CMD: device isolate 1a2b3c... --yes --comment IR-1234
+```
+
+Commands that are logged (matched as a contiguous token sequence anywhere
+in argv):
+
+- Device actions: `isolate`, `unisolate`, `scan`, `collect-package`,
+  `restrict`
+- Incident updates: `update`
+- Authentication: `login`, `logout`, `portal-login`, `portal-cookie`,
+  `portal-logout`
+- Guided investigation: `investigate`
+- Lists: `lists init`
+- Schema cache writes: `schema repair-overlay`, `schema migrate-cache`,
+  `schema bundle import`
+
+Commands that are **not** logged include, among others: all `session`
+commands, `results prune`, `schema refresh`, `schema collect`,
+`schema observe`, `device timeline`, and every read-only command
+(`incidents list`, `hunt run`, `library run`, and so on). If you need a
+complete per-invocation record, use sessions (`docs/sessions.md`), which
+capture every command while active.
+
+Two cautions:
+
+- Because the line is the raw argv, any value you pass on the command
+  line (comments, UPNs, IDs) lands in the file as typed. The only
+  redaction applied anywhere is to `--refresh-token` values in the
+  **session** recorder; the audit log itself is unredacted.
+- This is a local convenience log, not a tamper-evident audit trail. It
+  can be edited or deleted by anyone with access to the home directory,
+  and it records that a command was *attempted*, not whether it
+  succeeded. For authoritative records of device actions and incident
+  changes, use the Defender portal's action center and Microsoft Entra
+  sign-in / audit logs.
