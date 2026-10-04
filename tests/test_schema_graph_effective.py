@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from xdr_cli.schema_graph.effective import (
@@ -143,7 +145,10 @@ def test_promoted_core_reconciles_tenant_annotations_but_not_contract_changes():
         )
 
 
-def test_tenant_observations_create_observed_pivots_but_never_replace_reviewed_edges():
+@pytest.mark.parametrize("bidirectional", [False, True])
+def test_tenant_observations_create_observed_pivots_but_never_replace_reviewed_edges(
+    bidirectional,
+):
     canonical = load_packaged_graph()
     observation = ObservationRecord(
         observation_id="probe:device-events-direct",
@@ -156,7 +161,15 @@ def test_tenant_observations_create_observed_pivots_but_never_replace_reviewed_e
         provenance=("tenant-observation:device-events-direct",),
         outcome="matched",
     )
-    effective = compose_effective_graph([], canonical=canonical, observations=(observation,))
+    observations = (observation,)
+    if bidirectional:
+        observations += (replace(
+            observation,
+            observation_id="probe:device-events-reverse",
+            source_interpretation=observation.target_interpretation,
+            target_interpretation=observation.source_interpretation,
+        ),)
+    effective = compose_effective_graph([], canonical=canonical, observations=observations)
     discoveries = [
         item
         for item in effective.graph.relationships.values()
@@ -167,6 +180,11 @@ def test_tenant_observations_create_observed_pivots_but_never_replace_reviewed_e
     assert discoveries[0].relationship.value == "correlation-only"
     assert discoveries[0].cardinality.value == "unknown"
     assert discoveries[0].extra["join_safe"] is False
+    assert discoveries[0].extra["observation_ids"] == sorted(
+        item.observation_id for item in observations
+    )
+    for identifier, relationship in canonical.relationships.items():
+        assert effective.graph.relationships[identifier] == relationship
 
 
 def test_tenant_only_relationship_cannot_self_assert_reviewed_status():

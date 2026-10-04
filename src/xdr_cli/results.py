@@ -398,6 +398,7 @@ class ResultStreamWriter:
                 "library_entry": self.library_entry,
                 "resolved_parameters": self.resolved_parameters,
                 "query": self.query,
+                "column_lineage": _column_lineage(self.query),
                 "query_sha256": query_hash,
                 "source_hash": self.source_hash,
                 "physical_lineage": (
@@ -588,6 +589,7 @@ def write_result(
             "library_entry": library_entry,
             "resolved_parameters": resolved_parameters or {},
             "query": query,
+            "column_lineage": _column_lineage(query),
             "query_sha256": query_hash,
             "source_hash": source_hash,
             "physical_lineage": (
@@ -675,6 +677,18 @@ def _ingest_shape_if_attributed(
             "status": "failed",
             "error_type": type(exc).__name__,
         }
+
+
+def _column_lineage(query: str | None) -> dict | None:
+    if not query:
+        return None
+    from xdr_cli.schema_graph.lineage import UnsupportedLineage, recover_field_origins
+    from xdr_cli.schema_graph.model import GraphValidationError
+
+    try:
+        return recover_field_origins(query).to_dict()
+    except (UnsupportedLineage, GraphValidationError, RecursionError):
+        return None
 
 
 def emit_result(artifact: ResultArtifact) -> None:

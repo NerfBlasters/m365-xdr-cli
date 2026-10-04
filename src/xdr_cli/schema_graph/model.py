@@ -482,6 +482,30 @@ class ObservationRecord:
 
     RECORD_TYPE: ClassVar[str] = "observation"
 
+    @property
+    def evidence_run_ids(self) -> tuple[str, ...]:
+        references = {self.source_artifact_run_id, self.target_artifact_run_id}
+        if self.extra.get("evidence_stage") in {"local-overlap", "local-validation"}:
+            pair = self.extra.get("local_pair")
+            if not isinstance(pair, dict):
+                raise GraphValidationError(
+                    "local observation requires original evidence references"
+                )
+            for name in ("source_run", "target_run"):
+                run = pair.get(name)
+                if not isinstance(run, str) or not _ARTIFACT_RUN_ID.fullmatch(run):
+                    raise GraphValidationError("local observation artifact run id is invalid")
+                references.add(run)
+        if self.extra.get("evidence_stage") == "identifier-search":
+            runs = self.extra.get("discovery_source_runs")
+            if not isinstance(runs, list) or not runs:
+                raise GraphValidationError("search evidence requires original seed artifacts")
+            for run in runs:
+                if not isinstance(run, str) or not _ARTIFACT_RUN_ID.fullmatch(run):
+                    raise GraphValidationError("invalid search seed artifact reference")
+                references.add(run)
+        return tuple(sorted(run for run in references if run is not None))
+
     def __post_init__(self) -> None:
         if not _STABLE_ID.fullmatch(self.observation_id):
             raise GraphValidationError("observation id is not stable")
@@ -535,6 +559,7 @@ class ObservationRecord:
                 raise GraphValidationError("observation timestamp must include a timezone")
         if self.lookback is not None and not re.fullmatch(r"[1-9][0-9]{0,4}[smhd]", self.lookback):
             raise GraphValidationError("observation lookback is invalid")
+        _ = self.evidence_run_ids
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> ObservationRecord:
@@ -679,10 +704,12 @@ def empirical_relationship_from_observations(
     if not positive:
         raise GraphValidationError("empirical pivot requires a positive observation")
     first = positive[0]
+    # The pivot is bidirectional, even though each evidence record retains
+    # the direction in which its source identifiers were sampled and tested.
     semantic_coordinates = {
         (
-            item.source_interpretation,
-            item.target_interpretation,
+            min(item.source_interpretation, item.target_interpretation),
+            max(item.source_interpretation, item.target_interpretation),
             item.transform,
         )
         for item in positive
@@ -696,6 +723,8 @@ def empirical_relationship_from_observations(
         item
         for item in positive
         if item.observation_id in verified_observation_ids
+        and item.extra.get("evidence_stage") != "local-overlap"
+        and item.extra.get("eligible_shared_values", item.matched_seeds) >= 2
     )
     evidence_pairs = {
         (item.source_artifact_run_id, item.target_artifact_run_id)
@@ -725,8 +754,26 @@ def empirical_relationship_from_observations(
         )
         and matched / tested >= 0.8
     )
+    strong_overlap = any(
+        item.extra.get(
+            "eligible_shared_values", item.matched_seeds if item.transform != "identity" else 0
+        )
+        >= 3
+        for item in positive
+        if item.extra.get("evidence_stage") == "local-overlap"
+    )
+    local_only = all(item.extra.get("evidence_stage") == "local-overlap" for item in positive)
+    # Local overlap is corroboration, never an independent tenant probe.
+    if local_only:
+        validation_passed = False
     status = RelationshipStatus.VALIDATED if validation_passed else RelationshipStatus.OBSERVED
+    if (local_only and not strong_overlap) or not any(
+        item.extra.get("eligible_shared_values", item.matched_seeds) > 0 for item in positive
+    ):
+        status = RelationshipStatus.CANDIDATE
     confidence = Confidence.HIGH if validation_passed else Confidence.MEDIUM
+    if local_only or status == RelationshipStatus.CANDIDATE:
+        confidence = Confidence.LOW
     observation_ids = sorted(item.observation_id for item in positive)
     return RelationshipRecord(
         id=relationship_id(
@@ -742,15 +789,28 @@ def empirical_relationship_from_observations(
         direction=direction,
         transform=first.transform,
         cardinality=Cardinality.UNKNOWN,
-        temporal="bounded-lookback-search",
+        temporal=(
+            "historical-result-overlap"
+            if all(item.extra.get("evidence_stage") == "local-overlap" for item in positive)
+            else "bounded-lookback-search"
+        ),
         status=status,
         confidence=confidence,
         provenance=tuple(sorted({value for item in positive for value in item.provenance})),
         extra={
             "observation_ids": observation_ids,
             "validation_policy": "tenant-search-pivot-v1",
-            "validation_decision": ("passed" if validation_passed else "observed-only"),
+            "validation_decision": (
+                "passed"
+                if validation_passed
+                else "candidate-only"
+                if status == RelationshipStatus.CANDIDATE
+                else "observed-only"
+            ),
             "join_safe": False,
+            "evidence_stages": sorted(
+                {item.extra.get("evidence_stage", "active-probe") for item in positive}
+            ),
         },
     )
 

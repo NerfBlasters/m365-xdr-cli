@@ -87,65 +87,6 @@ def _schema_cache_state(root: Path) -> dict[str, Any]:
     return schema_cache_status(root, expected_tenant_key=root.name)
 
 
-def _crawl_checkpoint_status(
-    root: Path,
-    *,
-    current_generation: str | None,
-    completed_at: datetime | None,
-) -> dict[str, Any]:
-    """Summarize value-free collection checkpoints without exposing task details."""
-
-    checkpoint_root = root / "collection-checkpoints"
-    states: dict[str, int] = {}
-    invalid = 0
-    incompatible = 0
-    superseded = 0
-    incomplete: list[tuple[datetime, str]] = []
-    if checkpoint_root.is_dir():
-        for path in checkpoint_root.glob("collect-*.json"):
-            try:
-                value = json.loads(path.read_text(encoding="utf-8"))
-                resume_id = value["resume_id"]
-                state = value["state"]
-                updated = _parse_time(value.get("updated_at"))
-                if (
-                    not isinstance(resume_id, str)
-                    or path.name != f"{resume_id}.json"
-                    or state not in {"running", "paused", "complete"}
-                    or updated is None
-                ):
-                    raise ValueError("invalid checkpoint identity")
-            except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
-                invalid += 1
-                continue
-            states[state] = states.get(state, 0) + 1
-            if state != "complete":
-                plan = value.get("plan")
-                pinned_generation = (
-                    plan.get("schema_generation") if isinstance(plan, dict) else None
-                )
-                if completed_at is not None and updated <= completed_at:
-                    superseded += 1
-                elif isinstance(pinned_generation, str) and (
-                    pinned_generation != current_generation
-                ):
-                    incompatible += 1
-                else:
-                    incomplete.append((updated, resume_id))
-    newest = max(incomplete, default=None)
-    return {
-        "states": dict(sorted(states.items())),
-        "invalid": invalid,
-        "incompatible": incompatible,
-        "superseded": superseded,
-        "incomplete": len(incomplete),
-        "resume_id": newest[1] if newest else None,
-        "next_command": (
-            f"xdr schema collect --resume {newest[1]}" if newest else None
-        ),
-    }
-
-
 def _current_generation_time(root: Path, manifest_name: str, prefix: str) -> datetime | None:
     """Read only the small current manifest/metadata pair for advisory use."""
 
@@ -215,6 +156,8 @@ def maintenance_advisory_status(
         "next_command": (
             "xdr schema repair-overlay --yes"
             if any(reason.startswith("semantic-overlay-") for reason in reasons)
+            else "xdr schema refresh"
+            if any(reason.startswith("physical-cache-") for reason in reasons)
             else "xdr schema collect"
         ),
     }
@@ -305,6 +248,13 @@ def maintenance_status(
         )
         if collection_state == "stale":
             reasons.append("semantic-collection-stale")
+    summary = collection.get("summary", {}) if isinstance(collection, dict) else {}
+    has_gaps = isinstance(summary, dict) and bool(
+        summary.get("quarantined_tables") or summary.get("coverage_gaps")
+        or summary.get("remaining_queries")
+    )
+    if has_gaps:
+        reasons.append("semantic-collection-incomplete")
     from xdr_cli.schema_graph.overlay import tenant_overlay_status
 
     overlay = tenant_overlay_status(tenant_id)
@@ -315,19 +265,6 @@ def maintenance_status(
         "incompatible",
     }:
         reasons.append("semantic-overlay-" + overlay["state"])
-    crawl = _crawl_checkpoint_status(
-        root,
-        current_generation=(
-            str(cache_metadata["generation"])
-            if isinstance(cache_metadata.get("generation"), str)
-            else None
-        ),
-        completed_at=collected,
-    )
-    if crawl["incomplete"]:
-        reasons.append("semantic-collection-incomplete")
-    if crawl["incompatible"]:
-        reasons.append("semantic-collection-checkpoint-incompatible")
     return {
         "configured": True,
         "due": bool(reasons),
@@ -344,21 +281,8 @@ def maintenance_status(
         "semantic_collection": {
             "state": collection_state,
             "outcome": (
-                "complete-with-gaps"
-                if isinstance(collection, dict)
-                and isinstance(collection.get("summary"), dict)
-                and collection["summary"].get("quarantined_tables")
-                else "complete"
-                if collected is not None
-                else None
-            ),
-            "quarantined_tables": (
-                list(collection["summary"].get("quarantined_tables", []))
-                if isinstance(collection, dict)
-                and isinstance(collection.get("summary"), dict)
-                and isinstance(collection["summary"].get("quarantined_tables", []), list)
-                else []
-            ),
+                "complete-with-gaps" if has_gaps else "complete"
+            ) if collected is not None else None,
             "completed_at": collected.isoformat().replace("+00:00", "Z")
             if collected
             else None,
@@ -367,15 +291,13 @@ def maintenance_status(
         "semantic_overlay": overlay,
         "semantic_evidence": _semantic_evidence_status(tenant_id, current),
         "passive_ingestion": _passive_ingestion_status(),
-        "crawl_checkpoints": crawl,
         "next_command": (
             overlay["repair_command"]
-            or crawl["next_command"]
             or (
                 "xdr schema migrate-cache --yes"
                 if cache_state == "legacy-unbound"
                 else "xdr schema refresh"
-                if cache_state == "invalid"
+                if cache_state in {"invalid", "missing", "stale"}
                 else "xdr schema collect"
             )
         ),

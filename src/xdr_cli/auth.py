@@ -2,19 +2,30 @@
 
 from __future__ import annotations
 
+import asyncio
+import multiprocessing
+import time
+from collections.abc import Callable
 from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 import msal
+from filelock import Timeout as FileLockTimeout
+from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import Timeout as RequestsTimeout
 
 from xdr_cli._lock import exclusive_lock
 from xdr_cli.config import Config, ensure_config_dir, get_config_home
 from xdr_cli.exceptions import (
     AuthError,
     ConfigError,
+    NetworkError,
     NotAuthenticatedError,
     PermissionError,
+    XDRError,
 )
+from xdr_cli.exceptions import TimeoutError as XDRTimeoutError
 from xdr_cli.output import err_console
 from xdr_cli.secret_files import atomic_write_secret
 
@@ -34,6 +45,116 @@ SCOPES_MDE = ["https://api.securitycenter.microsoft.com/.default"]
 # prompt mid-command. Graph covers incidents/alerts/hunting; MDE covers
 # device actions and the legacy hunting endpoint used as a fallback.
 _ALL_LOGIN_SCOPES = [SCOPES_GRAPH, SCOPES_MDE]
+
+_TOKEN_BUDGET: ContextVar[tuple[float, Callable[[], int]] | None] = ContextVar(
+    "xdr_token_budget", default=None,
+)
+
+
+@contextmanager
+def bounded_token_acquisition(deadline: float, cancelled: Callable[[], int]):
+    """Bound synchronous token/cache I/O without leaving a writing thread behind."""
+    token = _TOKEN_BUDGET.set((deadline, cancelled))
+    try:
+        yield
+    finally:
+        _TOKEN_BUDGET.reset(token)
+
+
+def _token_deadline_error() -> XDRTimeoutError:
+    error = XDRTimeoutError(
+        "Session-end schema maintenance reached its token acquisition deadline.",
+        help_command="xdr auth status",
+    )
+    error.error_code = "SESSION_SCHEMA_MAINTENANCE_TIMEOUT"
+    return error
+
+
+def _token_worker(connection, config: Config, scopes, timeout: float):
+    """Own all token I/O in a process that the caller can stop and reap."""
+    try:
+        # get_token only uses silent acquisition; never call login or an
+        # interactive/device-code fallback, including on broker platforms.
+        manager = AuthManager(config, token_timeout=timeout)
+        connection.send(("token", manager.get_token(scopes)))
+    except XDRError as exc:
+        connection.send(("error", type(exc).__name__, vars(exc)))
+    except RequestsTimeout:
+        error = XDRTimeoutError(
+            "Noninteractive token acquisition timed out.", help_command="xdr auth status",
+        )
+        connection.send(("error", "TimeoutError", vars(error)))
+    except RequestsConnectionError:
+        error = NetworkError(
+            "Noninteractive token acquisition could not connect.", help_command="xdr auth status",
+        )
+        connection.send(("error", "NetworkError", vars(error)))
+    except Exception as exc:
+        # Do not expose SDK response bodies, tokens, or arbitrary exception text.
+        error = AuthError("Noninteractive token acquisition failed: " + type(exc).__name__)
+        connection.send(("error", "AuthError", vars(error)))
+    finally:
+        connection.close()
+
+
+def _acquire_bounded_token(config: Config, scopes, budget) -> str:
+    deadline, cancelled = budget
+
+    def check_budget():
+        # asyncio.run's first SIGINT cancels its task while synchronous code
+        # is still executing. Poll that cancellation here instead of requiring
+        # a second interrupt to break the cache lock or HTTP request.
+        if cancelled():
+            raise asyncio.CancelledError
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise _token_deadline_error()
+        return remaining
+
+    remaining = check_budget()
+    context = multiprocessing.get_context("spawn")
+    receive, send = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_token_worker, args=(send, config, scopes, min(config.api_timeout, remaining)),
+        name="xdr-token",
+    )
+    started = False
+    try:
+        process.start()
+        started = True
+        send.close()
+        while not receive.poll(min(0.025, check_budget())):
+            if not process.is_alive():
+                raise AuthError("Noninteractive token acquisition ended without a result.")
+        check_budget()
+        try:
+            result = receive.recv()
+        except EOFError as exc:
+            raise AuthError("Noninteractive token acquisition ended without a result.") from exc
+        if result[0] == "token":
+            return result[1]
+        from xdr_cli import exceptions
+
+        error_type = getattr(exceptions, result[1], AuthError)
+        if not isinstance(error_type, type) or not issubclass(error_type, XDRError):
+            error_type = AuthError
+        error = error_type.__new__(error_type)
+        XDRError.__init__(error, result[2]["message"])
+        error.__dict__.update(result[2])
+        raise error
+    finally:
+        send.close()
+        receive.close()
+        if started:
+            # Completion, timeout, and cancellation all guarantee that no
+            # child remains able to write the cache after this call returns.
+            if process.is_alive():
+                process.terminate()
+            process.join(timeout=0.5)
+            if process.is_alive():
+                process.kill()
+                process.join()
+            process.close()
 
 
 def _missing_scope_error(scope: str, description: str) -> PermissionError:
@@ -59,10 +180,14 @@ def _missing_scope_error(scope: str, description: str) -> PermissionError:
 class AuthManager:
     """Manage OAuth2 tokens via MSAL."""
 
-    def __init__(self, config: Config) -> None:
+    def __init__(
+        self, config: Config, *, token_timeout: float | None = None,
+    ) -> None:
         self._config = config
+        self._token_timeout = token_timeout if token_timeout is not None else config.api_timeout
         self._cache = msal.SerializableTokenCache()
-        self._load_cache()
+        if _TOKEN_BUDGET.get() is None:
+            self._load_cache()
         self._app: msal.ClientApplication | None = None
         self._is_confidential = (
             config.auth_mode == "client_credentials" and bool(config.client_secret)
@@ -88,6 +213,7 @@ class AuthManager:
                 authority=authority,
                 token_cache=self._cache,
                 validate_authority=False,
+                timeout=self._token_timeout,
             )
         else:
             self._app = msal.PublicClientApplication(
@@ -95,6 +221,7 @@ class AuthManager:
                 authority=authority,
                 token_cache=self._cache,
                 validate_authority=False,
+                timeout=self._token_timeout,
                 # Use WAM broker on Windows so the device's Primary Refresh Token
                 # (PRT) is passed, satisfying Conditional Access device compliance
                 # and platform policies. Falls back gracefully on non-Windows.
@@ -134,12 +261,12 @@ class AuthManager:
         atomic_write_secret(self._cache_path(), self._cache.serialize())
 
     @contextmanager
-    def _cache_transaction(self):
+    def _cache_transaction(self, *, timeout: float = -1):
         """Serialize cache reload/acquisition/save across xdr processes."""
 
         path = self._cache_path()
         ensure_config_dir()
-        with exclusive_lock(path, timeout=-1):
+        with exclusive_lock(path, timeout=timeout):
             refreshed = msal.SerializableTokenCache()
             if path.exists():
                 try:
@@ -156,8 +283,16 @@ class AuthManager:
 
     def get_token(self, scopes: list[str] | None = None) -> str:
         """Get a valid access token for the given scopes (Graph by default)."""
-        with self._cache_transaction():
-            return self._get_token_locked(scopes)
+        if budget := _TOKEN_BUDGET.get():
+            return _acquire_bounded_token(self._config, scopes, budget)
+        try:
+            with self._cache_transaction(timeout=min(5.0, self._token_timeout)):
+                return self._get_token_locked(scopes)
+        except FileLockTimeout as exc:
+            error = XDRTimeoutError("Token cache is busy; retry after the current login finishes.")
+            error.help_command = "xdr auth status"
+            error.error_code = "AUTH_CACHE_LOCK_TIMEOUT"
+            raise error from exc
 
     def _get_token_locked(self, scopes: list[str] | None = None) -> str:
         """Acquire one token while the cross-process cache lock is held."""
@@ -175,6 +310,7 @@ class AuthManager:
                 raise AuthError(
                     f"Client credentials auth failed: {error_description}"
                 )
+            self._save_cache()
             return result["access_token"]
 
         accounts = app.get_accounts()

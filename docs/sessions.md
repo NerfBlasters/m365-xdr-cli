@@ -62,6 +62,51 @@ end.
 
 ## Ending and append-only feedback
 
+Explicit `xdr session end` closes the session first, then runs three foreground
+maintenance stages: refresh a missing or stale physical cache, mine saved results
+and validate their overlaps, and explore new identifier locations. All are enabled
+by default. `schema_collect_on_session_end = false` in `~/.xdr-cli/config.toml`
+disables the entire workflow. Set `schema_refresh_on_session_end = false` or
+`schema_explore_on_session_end = false` to disable just that stage.
+
+`schema_explore_max_queries = 5` controls the exploration query budget per explicit
+session end (integer 1–1000). Focused validation retains its separate 20-query
+budget; a needed refresh adds one schema query. A validation budget pause still
+allows exploration its budget. Upstream failures, including authentication and
+rate limits, stop subsequent stages. Completed work is reused at later explicit
+session ends. Refresh uses the existing `schema_stale_seconds` threshold, which
+defaults to one day. Ordinary commands and startup do not run this workflow.
+Idle expiry, automatic rotation, and ending an already closed or missing session
+never trigger maintenance. No scheduler or new session is created.
+
+The first JSON line is a `record_type: "session-end"` receipt, flushed immediately
+after durable closure with feedback `next_action`. The second is a
+`record_type: "session-maintenance"` completion record containing `maintenance`
+and, when available, an artifact receipt with the individual stage receipts.
+Maintenance has an overall deadline of `schema_maintenance_timeout_seconds = 90`
+seconds (maximum 3,600 seconds). Local synchronous parsing can finish its current
+operation before the deadline is checked. Use `session end --no-maintenance`
+to skip upkeep once.
+Failure or partial completion leaves the session ended and returns exit 14 with
+the cause classification in the terminal record. Cancellation returns exit 130.
+Do not retry session
+end; inspect `maintenance.status`, honor any
+`retry_after_seconds`, and follow the reported recovery command. Use
+`xdr schema collect` for focused validation or `xdr schema collect --explore`
+for exploration; both reuse completed work. The feedback
+`next_action` remains available. An unconfigured tenant skips collection.
+Underlying API/authentication errors retain their classification in
+`maintenance.cause`; follow `maintenance.next_command` for recovery (for example,
+`xdr auth status`). Concurrent collection reports a conflict; retry once the
+other collection finishes.
+
+Unknown configuration keys produce a warning. Invalid schema-maintenance
+settings prevent automatic upkeep from running, but do not block core commands
+or `session end --no-maintenance`. Correct the reported setting before retrying
+collection; saving authentication settings preserves the invalid entry rather
+than silently replacing it with a default that enables tenant queries.
+
+
 `xdr session end` first appends a deterministic `session_summary`, then a
 terminal `session_ended` record, and durably removes the marker. It does not
 prompt by default—even on a TTY. Its structured `next_action` asks the agent
@@ -90,8 +135,8 @@ means the analyst supplied the substance; an agent must never infer or invent
 it. Feedback may be added after explicit end, inactivity timeout, or automatic
 rotation.
 
-`xdr session end --prompt-feedback` is the only interactive path. The session
-is already closed before prompting, so interruption cannot leave it active.
+Session end never prompts for feedback. Follow its first record's `next_action`
+and append feedback with `xdr session feedback`.
 
 Supported outcomes:
 

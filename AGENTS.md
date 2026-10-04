@@ -124,11 +124,17 @@ Failures before a durable result emit exactly one compact
 `{status:"error",error:{...}}` line. Exit 14 is different: a partial command
 first emits its durable result receipt/previews, then a final error record
 naming the failed suboperations. Branch on the exit code before parsing lines.
+Session end is an explicit exception: after durable closure its terminal record
+has `record_type: "session-maintenance"`, `status: "partial"`, and an `error`
+object on incomplete upkeep (exit 14). Cancellation returns exit 130.
 
 Control-plane success output is command-specific:
 
 - `xdr session start` and `xdr session resume` return a bare session ID;
-- `xdr session end` and `xdr session feedback` return compact status objects;
+- `xdr session end` returns a flushed `session-end` status record followed by a
+  `session-maintenance` status record when it closes a session; with no active
+  session it returns one no-op status object;
+- `xdr session feedback` returns one compact status object;
 - `xdr annotate` returns a plain-text confirmation;
 - `xdr session show` emits raw session JSONL;
 - `xdr results query` emits raw KQL.
@@ -212,11 +218,27 @@ private result bundle and are flagged as operator-supplied evidence requiring
 origin review; concrete values never enter the tenant overlay.
 
 Run `xdr schema status` to inspect value-free maintenance state. `xdr schema
-collect --plan-only` shows the representative collection scope, and `xdr
-schema collect` performs the bounded physical refresh, observations, and
-candidate triage. A periodic maintenance advisory may appear on stderr for any
-command; it is nonblocking, never changes stdout JSON, and explicit `--quiet`
-suppresses it.
+collect --plan-only` indexes saved hunt/library results and previews focused
+validation; it performs no tenant queries and does not publish observations.
+`schema collect --local-only` also publishes local overlap evidence without
+network activity. Default `schema collect` validates locally discovered field
+pairs using saved identifiers and cached physical availability. It performs no
+broad scan when local evidence is absent. `--explore` explicitly searches all eligible saved identifiers across cached,
+time-bounded tables and nested JSON paths. It has no starter-field matrix or
+target-column sweep. The per-invocation query budget still applies.
+Rerun after a budget pause to reuse completed searches and continue; inspect
+reported depth, result-cap, and unsupported-path gaps. Refresh physical
+availability separately with `schema refresh`.
+
+Local discovery recovers direct field origins from saved KQL, including projections,
+aliases, nested properties and direct summary grouping keys. Unsupported query
+shapes and low-information values are reported as coverage gaps. Repeated runs
+verify artifact integrity but avoid reparsing/reindexing unchanged data. Local
+historical overlaps are observed pivots, never blanket join assertions. Validation
+reuses fresh results for one day; exit 14 after a query-budget pause means rerun
+collection to continue. Collection does not install a background scheduler.
+A periodic maintenance advisory may appear on stderr; it never changes stdout
+JSON, and explicit `--quiet` suppresses it.
 
 Status reports byte integrity separately from packaged semantic-contract
 compatibility. Follow its exact recovery command: `xdr schema repair-overlay
@@ -249,7 +271,9 @@ evidence.
 
 ## 9. Sessions
 
-Sessions are optional local telemetry and never gate investigation work.
+Sessions track local investigation telemetry. Explicit session end also runs
+the configured tenant schema maintenance; startup and ordinary session attachment
+do not gate investigation work on maintenance.
 `hunt run`, `library run`, `schema observe`, `schema candidate-review`,
 `investigate`, and alert/incident `show`
 auto-create a session when none exists; other commands may attach to exactly
@@ -258,8 +282,19 @@ one existing session but do not create one. Inactivity expires a session after
 With multiple unmatched live sessions, the command runs unattached and prints
 explicit POSIX/PowerShell attachment syntax.
 
-Use `xdr session start --concurrent` only for deliberate parallel work. After
-`xdr session end`, follow its `next_action` and append one truthful
+Use `xdr session start --concurrent` only for deliberate parallel work.
+Explicit `xdr session end` closes the session, then refreshes a missing/stale
+schema cache, validates locally discovered pairs, and runs bounded exploration.
+`schema_collect_on_session_end = false` disables all stages. Exploration defaults
+to `schema_explore_max_queries = 5`; `schema_explore_on_session_end = false`
+disables it, and `schema_refresh_on_session_end = false` disables automatic
+refresh. Idle expiry and rotation never collect. Session end prints a durable
+`session-end` record with `next_action` before upkeep, followed by a
+`session-maintenance` record. The configurable overall deadline defaults to
+`schema_maintenance_timeout_seconds = 90`; `--no-maintenance` skips upkeep once.
+Incomplete upkeep returns exit 14; inspect the cause and honor any retry delay.
+Do not retry session end: closure remains durable. Follow the first record's
+`next_action` and append one truthful
 `--source agent` assessment when context is sufficient. If the analyst later
 supplies feedback, append a new `--source analyst` record; never overwrite or
 invent analyst feedback.

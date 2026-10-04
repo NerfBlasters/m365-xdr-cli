@@ -80,12 +80,11 @@ def test_schema_help_is_actionable_and_examples_are_copyable(config_dir):
     assert "xdr schema tables" in normalized_collect_help
     assert "xdr schema show DeviceNetworkEvents" in normalized_collect_help
     assert (
-        "xdr schema collect --source DeviceNetworkEvents.DeviceId --lookback 7d"
+        "xdr schema collect --explore --source DeviceNetworkEvents.DeviceId --lookback 7d"
         in normalized_collect_help
     )
-    assert (
-        "xdr schema observe DeviceNetworkEvents.DeviceId --plan-only"
-        in _normalized_help(observe.stdout)
+    assert "xdr schema observe DeviceNetworkEvents.DeviceId --plan-only" in _normalized_help(
+        observe.stdout
     )
     assert "--from-file seeds.txt" in _normalized_help(observe.stdout)
     assert "operator-supplied origin" in _normalized_help(observe.stdout)
@@ -94,18 +93,14 @@ def test_schema_help_is_actionable_and_examples_are_copyable(config_dir):
     assert "--exclude-table" in _normalized_help(observe.stdout)
     assert "xdr schema pivot EntraIdSignInEvents.AccountUpn" in _normalized_help(pivot.stdout)
     assert "xdr schema show EntraIdSignInEvents" in _normalized_help(pivot.stdout)
-    assert (
-        "xdr schema path EntraIdSignInEvents CloudAppEvents" in _normalized_help(path.stdout)
-    )
+    assert "xdr schema path EntraIdSignInEvents CloudAppEvents" in _normalized_help(path.stdout)
     assert "xdr schema tables" in _normalized_help(path.stdout)
     assert "xdr results list" in _normalized_help(correlate.stdout)
     assert "data digest" in _normalized_help(correlate.stdout)
     assert "observed investigation pivot" in _normalized_help(discoveries.stdout)
     assert "Compatibility alias" in _normalized_help(candidates.stdout)
     assert "xdr schema candidate-review" in _normalized_help(candidates.stdout)
-    assert (
-        "xdr schema discoveries --include-evidence-refs" in _normalized_help(review.stdout)
-    )
+    assert "xdr schema discoveries --include-evidence-refs" in _normalized_help(review.stdout)
     assert "xdr results head RUN_ID" in _normalized_help(review.stdout)
     normalized_proposal_help = _normalized_help(proposal.stdout)
     assert "xdr schema discoveries" in normalized_proposal_help
@@ -117,9 +112,8 @@ def test_schema_help_is_actionable_and_examples_are_copyable(config_dir):
     assert "--all-local" in _normalized_help(repair.stdout)
     assert "--reset-empty" in _normalized_help(repair.stdout)
     assert "xdr schema validate-core --document" in _normalized_help(validate.stdout)
-    assert (
-        "xdr schema export-opengraph schema-graph.opengraph.json"
-        in _normalized_help(export.stdout)
+    assert "xdr schema export-opengraph schema-graph.opengraph.json" in _normalized_help(
+        export.stdout
     )
     assert "--custom-nodes" in _normalized_help(export.stdout)
     assert "/api/v2/custom-nodes" in _normalized_help(export.stdout)
@@ -298,9 +292,7 @@ def test_schema_opengraph_export_ignores_stale_legacy_temp(tmp_path, monkeypatch
     assert stale.read_text() == "stale"
 
 
-def test_schema_opengraph_export_does_not_overwrite_concurrent_destination(
-    tmp_path, monkeypatch
-):
+def test_schema_opengraph_export_does_not_overwrite_concurrent_destination(tmp_path, monkeypatch):
     monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
     destination = tmp_path / "schema.opengraph.json"
     original_link = os.link
@@ -444,11 +436,17 @@ def test_schema_opengraph_stages_both_files_before_publishing(
         monkeypatch.setattr(os, "fsync", fail_second_fsync)
     if force:
         destination.write_text("keep graph")
-    result = runner.invoke(app, [
-        "schema", "export-opengraph", str(destination),
-        "--custom-nodes", str(styles),
-        *(["--force"] if force else []),
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "schema",
+            "export-opengraph",
+            str(destination),
+            "--custom-nodes",
+            str(styles),
+            *(["--force"] if force else []),
+        ],
+    )
     assert result.exit_code == 12, result.output
     if force:
         assert destination.read_text() == "keep graph"
@@ -460,9 +458,7 @@ def test_schema_opengraph_stages_both_files_before_publishing(
 
 
 @pytest.mark.parametrize("force", [False, True])
-def test_schema_opengraph_second_publication_failure_reports_partial(
-    tmp_path, monkeypatch, force
-):
+def test_schema_opengraph_second_publication_failure_reports_partial(tmp_path, monkeypatch, force):
     monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
     destination = tmp_path / "graph.json"
     styles = tmp_path / "styles.json"
@@ -480,10 +476,17 @@ def test_schema_opengraph_second_publication_failure_reports_partial(
         return original(source, target, *args, **kwargs)
 
     monkeypatch.setattr(os, "replace" if force else "link", fail_second)
-    result = runner.invoke(app, [
-        "schema", "export-opengraph", str(destination), "--custom-nodes", str(styles),
-        *(["--force"] if force else []),
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "schema",
+            "export-opengraph",
+            str(destination),
+            "--custom-nodes",
+            str(styles),
+            *(["--force"] if force else []),
+        ],
+    )
     assert result.exit_code == 14, result.output
     lines = [json.loads(line) for line in result.stdout.splitlines()]
     assert lines[0]["context"]["output_path"] == str(destination)
@@ -497,9 +500,7 @@ def test_schema_opengraph_second_publication_failure_reports_partial(
 
 
 @pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks unavailable")
-def test_schema_opengraph_force_replaces_custom_nodes_symlink_not_its_target(
-    tmp_path, monkeypatch
-):
+def test_schema_opengraph_force_replaces_custom_nodes_symlink_not_its_target(tmp_path, monkeypatch):
     monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
     target = tmp_path / "do-not-overwrite.txt"
     target.write_text("original")
@@ -525,444 +526,6 @@ def test_schema_opengraph_force_replaces_custom_nodes_symlink_not_its_target(
     assert target.read_text() == "original"
 
 
-def test_schema_collect_converts_child_process_timeout_to_resumable_failure(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
-    seen_kwargs = {}
-
-    def timed_out(argv, **kwargs):
-        seen_kwargs.update(kwargs)
-        raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
-
-    with (
-        patch("xdr_cli.main.load_config", return_value=Config(tenant_id="tenant")),
-        patch("xdr_cli.commands.schema_cmd._run_collection_process", side_effect=timed_out),
-    ):
-        result = runner.invoke(
-            app,
-            ["schema", "collect", "--source", "DeviceNetworkEvents.DeviceId"],
-        )
-
-    assert result.exit_code == 14
-    receipt, rows = _artifact_rows(result.stdout)
-    assert receipt["context"]["pending_commands"] == 3
-    assert rows[0]["ErrorCode"] == "CHILD_PROCESS_TIMEOUT"
-    assert rows[0]["Retryable"] is True
-    assert isinstance(seen_kwargs["timeout"], int)
-
-
-def test_schema_collect_rejects_oversized_child_control_output(tmp_path, monkeypatch):
-    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
-
-    def oversized(argv, **_kwargs):
-        return subprocess.CompletedProcess(argv, 0, "x" * (1024 * 1024 + 1), "")
-
-    with (
-        patch("xdr_cli.main.load_config", return_value=Config(tenant_id="tenant")),
-        patch("xdr_cli.commands.schema_cmd._run_collection_process", side_effect=oversized),
-    ):
-        result = runner.invoke(
-            app,
-            ["schema", "collect", "--source", "DeviceNetworkEvents.DeviceId"],
-        )
-
-    assert result.exit_code == 14
-    _, rows = _artifact_rows(result.stdout)
-    assert rows[0]["ErrorCode"] == "CHILD_OUTPUT_LIMIT"
-    assert rows[0]["Retryable"] is False
-
-
-def test_collection_process_stops_retaining_output_at_cap(tmp_path):
-    from xdr_cli.commands.schema_cmd import _run_collection_process
-
-    limit = 32 * 1024
-    completed = _run_collection_process(
-        [sys.executable, "-c", "import sys; sys.stdout.write('x' * (4 * 1024 * 1024))"],
-        timeout=10,
-        env=dict(os.environ),
-        cwd=tmp_path,
-        output_limit=limit,
-    )
-
-    assert completed.stdout_limited is True
-    assert len(completed.stdout.encode("utf-8")) == limit + 1
-
-
-def test_schema_collect_rejects_excessive_source_matrix(tmp_path, monkeypatch):
-    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
-    arguments = ["schema", "collect"]
-    for index in range(101):
-        arguments.extend(("--source", f"Table{index}.DeviceId"))
-
-    with patch("xdr_cli.main.load_config", return_value=Config(tenant_id="tenant")):
-        result = runner.invoke(app, arguments)
-
-    assert result.exit_code == 6
-    payload = json.loads(result.stdout)
-    assert payload["error"]["code"] == "CLI_USAGE_ERROR"
-    assert "at most 100 sources" in payload["error"]["message"]
-
-
-def test_schema_collect_runs_the_default_matrix_and_marks_completion(tmp_path, monkeypatch):
-    home = tmp_path / "xdr-home"
-    monkeypatch.setenv("XDR_CLI_HOME", str(home))
-    calls = []
-
-    def fake_run(argv, **kwargs):
-        calls.append((argv, kwargs))
-        receipt = {
-            "status": "success",
-            "run_id": f"run-{len(calls)}",
-            "data_path": "/private/result.jsonl",
-            "meta_path": "/private/result.meta.json",
-        }
-        if argv[4:] == ["schema", "refresh"]:
-            receipt["context"] = {"schema_cache_generation": "generation-1"}
-        elif argv[4:6] == ["schema", "observe"] and len(calls) == 2:
-            receipt["context"] = {
-                "outcome": "source-no-valid-identifiers",
-                "targets_probed": 0,
-                "targets_completed": 0,
-            }
-        return subprocess.CompletedProcess(argv, 0, json.dumps(receipt) + "\n", "")
-
-    with (
-        patch("xdr_cli.main.load_config", return_value=Config(tenant_id="tenant")),
-        patch("xdr_cli.commands.schema_cmd._run_collection_process", side_effect=fake_run),
-    ):
-        result = runner.invoke(app, ["schema", "collect"])
-
-    assert result.exit_code == 0, result.output
-    receipt = json.loads(result.stdout.splitlines()[0])
-    assert receipt["context"]["maintenance_complete"] is True
-    assert receipt["context"]["empty_sources"] == 1
-    assert receipt["context"]["next_command"] == "xdr schema discoveries"
-    assert receipt["context"]["results_command"] == (
-        f"xdr results rows {receipt['run_id']} --offset 0 --limit 100"
-    )
-    assert len(calls) == 8
-    assert calls[0][0][:4] == [sys.executable, "-I", "-m", "xdr_cli"]
-    assert calls[0][0][4:] == ["schema", "refresh"]
-    assert sum(call[0][4:6] == ["schema", "observe"] for call in calls) == 6
-    assert calls[-1][0][4:] == ["schema", "discoveries"]
-    assert all(call[1]["env"]["XDR_SCHEMA_MAINTENANCE_CHILD"] == "1" for call in calls)
-    assert all("PYTHONPATH" not in call[1]["env"] for call in calls)
-    assert all("PYTHONHOME" not in call[1]["env"] for call in calls)
-    assert all(call[1]["cwd"] == Path(sys.executable).resolve().parent for call in calls)
-    status = maintenance_status(
-        "tenant",
-        cache_stale_seconds=86400,
-        collection_stale_seconds=604800,
-    )
-    assert status["semantic_collection"]["state"] == "fresh"
-
-
-def test_schema_collect_treats_unavailable_default_source_as_honest_skip(tmp_path, monkeypatch):
-    home = tmp_path / "xdr-home"
-    monkeypatch.setenv("XDR_CLI_HOME", str(home))
-    calls = 0
-
-    def fake_run(argv, **kwargs):
-        nonlocal calls
-        calls += 1
-        if argv[4:6] == ["schema", "observe"] and calls == 2:
-            receipt = {
-                "status": "error",
-                "error": {"code": "SCHEMA_FIELD_UNAVAILABLE"},
-            }
-            return subprocess.CompletedProcess(argv, 8, json.dumps(receipt) + "\n", "")
-        receipt = {
-            "status": "success",
-            "run_id": f"run-{calls}",
-            "data_path": "/private/result.jsonl",
-            "meta_path": "/private/result.meta.json",
-        }
-        if argv[4:] == ["schema", "refresh"]:
-            receipt["context"] = {"schema_cache_generation": "generation-1"}
-        return subprocess.CompletedProcess(argv, 0, json.dumps(receipt) + "\n", "")
-
-    with (
-        patch("xdr_cli.main.load_config", return_value=Config(tenant_id="tenant")),
-        patch("xdr_cli.commands.schema_cmd._run_collection_process", side_effect=fake_run),
-    ):
-        result = runner.invoke(app, ["schema", "collect"])
-
-    assert result.exit_code == 0, result.output
-    receipt, rows = _artifact_rows(result.stdout)
-    assert receipt["context"]["maintenance_complete"] is True
-    assert receipt["context"]["skipped_unavailable_sources"] == 1
-    assert [row["Outcome"] for row in rows if row.get("Outcome") is not None] == [
-        "source-unavailable"
-    ]
-
-
-def test_schema_collect_does_not_hide_unavailable_custom_source(tmp_path, monkeypatch):
-    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
-    calls = 0
-
-    def fake_run(argv, **kwargs):
-        nonlocal calls
-        calls += 1
-        if calls == 2:
-            receipt = {
-                "status": "error",
-                "error": {"code": "SCHEMA_FIELD_UNAVAILABLE"},
-            }
-            return subprocess.CompletedProcess(argv, 8, json.dumps(receipt) + "\n", "")
-        receipt = {"status": "success", "run_id": f"run-{calls}"}
-        if argv[4:] == ["schema", "refresh"]:
-            receipt["context"] = {"schema_cache_generation": "generation-1"}
-        return subprocess.CompletedProcess(argv, 0, json.dumps(receipt) + "\n", "")
-
-    with (
-        patch("xdr_cli.main.load_config", return_value=Config(tenant_id="tenant")),
-        patch("xdr_cli.commands.schema_cmd._run_collection_process", side_effect=fake_run),
-    ):
-        result = runner.invoke(
-            app,
-            ["schema", "collect", "--source", "DeviceNetworkEvents.DeviceId"],
-        )
-
-    assert result.exit_code == 14
-    receipt = json.loads(result.stdout.splitlines()[0])
-    assert receipt["context"]["maintenance_complete"] is False
-    assert receipt["context"]["failed"] == 1
-
-
-def test_schema_collect_pauses_when_refresh_receipt_omits_generation(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
-    calls = []
-
-    def fake_run(argv, **kwargs):
-        calls.append(argv[4:])
-        receipt = {"status": "success", "run_id": "refresh-without-generation"}
-        return subprocess.CompletedProcess(argv, 0, json.dumps(receipt) + "\n", "")
-
-    with (
-        patch("xdr_cli.main.load_config", return_value=Config(tenant_id="tenant")),
-        patch("xdr_cli.commands.schema_cmd._run_collection_process", side_effect=fake_run),
-    ):
-        result = runner.invoke(
-            app,
-            ["schema", "collect", "--source", "DeviceNetworkEvents.DeviceId"],
-        )
-
-    assert result.exit_code == 14
-    receipt, rows = _artifact_rows(result.stdout)
-    assert calls == [["schema", "refresh"]]
-    assert rows[0]["ErrorCode"] == "SCHEMA_REFRESH_RECEIPT_INVALID"
-    assert receipt["context"]["maintenance_complete"] is False
-    assert receipt["context"]["pending_commands"] == 3
-
-
-def test_schema_collect_quarantines_partial_observe_and_finishes_other_steps(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
-    calls = 0
-
-    def fake_run(argv, **kwargs):
-        nonlocal calls
-        calls += 1
-        if calls == 2:
-            success = {
-                "status": "success",
-                "run_id": "partial-observe-run",
-                "context": {
-                    "targets_probed": 40,
-                    "targets_completed": 20,
-                    "page_complete": True,
-                    "quarantined_tables": ["CloudAppEvents"],
-                },
-            }
-            error = {
-                "status": "error",
-                "error": {
-                    "code": "PARTIAL_SUCCESS",
-                    "retryable": False,
-                    "original": {
-                        "type": "PartialSchemaObservation",
-                        "failed_batch": 2,
-                        "completed_targets": 20,
-                        "private_value": "must-not-be-copied",
-                    },
-                },
-            }
-            return subprocess.CompletedProcess(
-                argv, 14, f"{json.dumps(success)}\n{json.dumps(error)}\n", ""
-            )
-        success = {"status": "success", "run_id": f"run-{calls}"}
-        if argv[4:] == ["schema", "refresh"]:
-            success["context"] = {"schema_cache_generation": "generation-1"}
-        return subprocess.CompletedProcess(argv, 0, json.dumps(success) + "\n", "")
-
-    with (
-        patch("xdr_cli.main.load_config", return_value=Config(tenant_id="tenant")),
-        patch("xdr_cli.commands.schema_cmd._run_collection_process", side_effect=fake_run),
-    ):
-        result = runner.invoke(
-            app,
-            ["schema", "collect", "--source", "DeviceNetworkEvents.DeviceId"],
-        )
-
-    assert result.exit_code == 0, result.output
-    receipt, rows = _artifact_rows(result.stdout)
-    failed = next(row for row in rows if row["ExitCode"] == 14)
-    assert failed["RunId"] == "partial-observe-run"
-    assert failed["ErrorCode"] == "PARTIAL_SUCCESS"
-    assert failed["TargetsCompleted"] == 20
-    assert failed["ErrorDetails"] == {
-        "type": "PartialSchemaObservation",
-        "failed_batch": 2,
-        "completed_targets": 20,
-    }
-    assert "private_value" not in json.dumps(failed)
-    assert failed["Outcome"] == "completed-with-quarantined-targets"
-    assert receipt["context"]["maintenance_complete"] is True
-    assert receipt["context"]["quarantined_tables"] == ["CloudAppEvents"]
-    assert receipt["context"]["collection_outcome"] == "complete-with-gaps"
-    assert receipt["context"]["next_command"] == "xdr schema discoveries"
-
-
-def test_schema_collect_automatically_continues_checkpointed_observe_pages(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
-    calls = []
-
-    def fake_run(argv, **kwargs):
-        calls.append(argv[4:])
-        command = argv[4:]
-        receipt = {"status": "success", "run_id": f"run-{len(calls)}"}
-        if command == ["schema", "refresh"]:
-            receipt["context"] = {"schema_cache_generation": "generation-1"}
-        elif command[:2] == ["schema", "observe"] and "--from-run" not in command:
-            receipt["context"] = {
-                "page_complete": False,
-                "plan_fingerprint": "plan-1",
-                "next_command": (
-                    "xdr schema observe DeviceNetworkEvents.DeviceId --from-run source-1 "
-                    "--start-query 20 --schema-generation generation-1 --lookback 30d "
-                    "--samples 5 --batch-size 20 --max-queries 20 --max-targets 40"
-                ),
-            }
-        elif command[:2] == ["schema", "observe"]:
-            receipt["context"] = {
-                "page_complete": True,
-                "plan_fingerprint": "plan-1",
-            }
-        return subprocess.CompletedProcess(argv, 0, json.dumps(receipt) + "\n", "")
-
-    with (
-        patch("xdr_cli.main.load_config", return_value=Config(tenant_id="tenant")),
-        patch("xdr_cli.commands.schema_cmd._run_collection_process", side_effect=fake_run),
-    ):
-        result = runner.invoke(
-            app,
-            ["schema", "collect", "--source", "DeviceNetworkEvents.DeviceId"],
-        )
-
-    assert result.exit_code == 0, result.output
-    receipt = json.loads(result.stdout.splitlines()[0])
-    assert receipt["context"]["maintenance_complete"] is True
-    assert receipt["context"]["commands"] == 4
-    assert calls[0] == ["schema", "refresh"]
-    assert calls[1][:3] == ["schema", "observe", "DeviceNetworkEvents.DeviceId"]
-    assert calls[1][-2:] == ["--schema-generation", "generation-1"]
-    assert "--from-run" in calls[2]
-    assert calls[3] == ["schema", "discoveries"]
-
-
-def test_schema_collect_resume_retries_only_the_checkpointed_command(tmp_path, monkeypatch):
-    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / "xdr-home"))
-    calls = []
-    failed_once = False
-
-    def fake_run(argv, **kwargs):
-        nonlocal failed_once
-        command = argv[4:]
-        calls.append(command)
-        if command[:2] == ["schema", "observe"] and not failed_once:
-            failed_once = True
-            error = {"status": "error", "error": {"code": "API_ERROR", "retryable": True}}
-            return subprocess.CompletedProcess(argv, 3, json.dumps(error) + "\n", "")
-        receipt = {"status": "success", "run_id": f"run-{len(calls)}"}
-        if command == ["schema", "refresh"]:
-            receipt["context"] = {"schema_cache_generation": "generation-1"}
-        elif command[:2] == ["schema", "observe"]:
-            receipt["context"] = {"page_complete": True}
-        return subprocess.CompletedProcess(argv, 0, json.dumps(receipt) + "\n", "")
-
-    with (
-        patch("xdr_cli.main.load_config", return_value=Config(tenant_id="tenant")),
-        patch("xdr_cli.commands.schema_cmd._run_collection_process", side_effect=fake_run),
-    ):
-        first = runner.invoke(
-            app,
-            ["schema", "collect", "--source", "DeviceNetworkEvents.DeviceId"],
-        )
-        first_receipt = json.loads(first.stdout.splitlines()[0])
-        resume_id = first_receipt["context"]["resume_id"]
-        resumed = runner.invoke(app, ["schema", "collect", "--resume", resume_id])
-
-    assert first.exit_code == 14
-    assert first_receipt["context"]["pending_commands"] == 2
-    assert resumed.exit_code == 0, resumed.output
-    resumed_receipt = json.loads(resumed.stdout.splitlines()[0])
-    assert resumed_receipt["context"]["maintenance_complete"] is True
-    assert calls.count(["schema", "refresh"]) == 1
-    assert calls[-1] == ["schema", "discoveries"]
-
-
-def test_schema_collect_plan_only_preflights_once_and_returns_execution_command(
-    tmp_path, monkeypatch
-):
-    home = tmp_path / "xdr-home"
-    monkeypatch.setenv("XDR_CLI_HOME", str(home))
-    with (
-        patch("xdr_cli.main.load_config", return_value=Config(tenant_id="tenant")),
-        patch("xdr_cli.commands.schema_cmd._run_collection_process") as child,
-    ):
-        missing = runner.invoke(app, ["schema", "collect", "--plan-only"])
-    assert missing.exit_code == 8
-    assert json.loads(missing.stdout)["error"]["code"] == "SCHEMA_CACHE_MISSING"
-    child.assert_not_called()
-
-    _schema_cache(tmp_path, monkeypatch, [("DeviceNetworkEvents", "DeviceId")])
-
-    def fake_plan(argv, **kwargs):
-        success = {"status": "success", "run_id": "plan-run"}
-        return subprocess.CompletedProcess(argv, 0, json.dumps(success) + "\n", "")
-
-    with (
-        patch("xdr_cli.main.load_config", return_value=Config(tenant_id="default")),
-        patch("xdr_cli.commands.schema_cmd._run_collection_process", side_effect=fake_plan),
-    ):
-        planned = runner.invoke(
-            app,
-            [
-                "schema",
-                "collect",
-                "--plan-only",
-                "--source",
-                "DeviceNetworkEvents.DeviceId",
-                "--lookback",
-                "7d",
-                "--samples",
-                "3",
-            ],
-        )
-    assert planned.exit_code == 0, planned.output
-    next_command = json.loads(planned.stdout.splitlines()[0])["context"]["next_command"]
-    assert next_command.startswith("xdr schema collect --lookback 7d --samples 3")
-    assert "--source DeviceNetworkEvents.DeviceId" in next_command
-    assert "--plan-only" not in next_command
-    assert next_command != "xdr schema candidates"
-
-
 def test_schema_maintenance_advisory_is_nonblocking_stderr(config_dir):
     with patch("xdr_cli.main.load_config", return_value=Config(tenant_id="tenant")):
         result = runner.invoke(app, ["--no-quiet", "results", "list"])
@@ -971,7 +534,7 @@ def test_schema_maintenance_advisory_is_nonblocking_stderr(config_dir):
 
     assert result.exit_code == automatic.exit_code == quiet.exit_code == 0
     assert "Schema maintenance due" in result.stderr
-    assert "xdr schema collect" in result.stderr
+    assert "xdr schema refresh" in result.stderr
     assert "Schema maintenance due" not in automatic.stderr
     assert "Schema maintenance due" not in quiet.stderr
     assert json.loads(result.stdout)["status"] == "success"
@@ -1614,8 +1177,7 @@ def test_schema_observe_discovers_unmodeled_cross_name_target(tmp_path, monkeypa
     assert candidate_rows[0]["JoinSafe"] is False
     assert candidate_rows[0]["EvidenceGate"] == "insufficient"
     assert (
-        "needs-at-least-two-verified-sampled-positive-runs"
-        in candidate_rows[0]["BlockingReasons"]
+        "needs-at-least-two-verified-sampled-positive-runs" in candidate_rows[0]["BlockingReasons"]
     )
     assert candidate_rows[0]["ReviewDecision"] == "programmatic"
     assert candidate_rows[0]["EvidenceLevel"] == "observed"
@@ -1855,9 +1417,7 @@ def test_schema_observe_pages_reuse_source_artifact_and_pinned_plan(tmp_path, mo
             normalizer="hex40-lower",
         )
     )
-    sampled = HuntingResult(
-        schema=[], results=[{"Value": "a" * 40, "Occurrences": 1}], stats={}
-    )
+    sampled = HuntingResult(schema=[], results=[{"Value": "a" * 40, "Occurrences": 1}], stats={})
 
     def target_result(table: str, column: str) -> HuntingResult:
         return HuntingResult(
@@ -1928,9 +1488,7 @@ def test_schema_observe_pages_reuse_source_artifact_and_pinned_plan(tmp_path, mo
     assert query_mock.await_count == 3
 
 
-def test_schema_candidate_review_collects_private_context_and_updates_gate(
-    tmp_path, monkeypatch
-):
+def test_schema_candidate_review_collects_private_context_and_updates_gate(tmp_path, monkeypatch):
     home = _schema_cache(
         tmp_path,
         monkeypatch,
@@ -1979,10 +1537,7 @@ def test_schema_candidate_review_collects_private_context_and_updates_gate(
             {"Value": "0" * 40, "Occurrences": 1000},
         ],
         command="schema observe source-sample",
-        query=(
-            "SourceTable\n| where TimeGenerated > ago(30d)\n"
-            "| project Value=tostring(DeviceId)"
-        ),
+        query=("SourceTable\n| where TimeGenerated > ago(30d)\n| project Value=tostring(DeviceId)"),
         extra_metadata={
             "probe_stage": "source-sample",
             "locator": "SourceTable.DeviceId",
@@ -2152,10 +1707,7 @@ def test_schema_candidate_review_collects_private_context_and_updates_gate(
         reused_candidates = runner.invoke(app, ["schema", "candidates"])
     _, reused_rows = _artifact_rows(reused_candidates.stdout)
     assert "needs-at-least-two-independent-evidence-bundles" in reused_rows[0]["BlockingReasons"]
-    assert (
-        "needs-at-least-two-distinct-sampled-seed-cohorts"
-        in reused_rows[0]["BlockingReasons"]
-    )
+    assert "needs-at-least-two-distinct-sampled-seed-cohorts" in reused_rows[0]["BlockingReasons"]
     publish_tenant_overlay(
         "default",
         observations=(
@@ -2268,9 +1820,9 @@ def test_schema_candidate_review_collects_private_context_and_updates_gate(
         observations=tuple(
             replace(
                 item,
-                observed_at=(datetime.now(UTC) - timedelta(days=100)).isoformat().replace(
-                    "+00:00", "Z"
-                ),
+                observed_at=(datetime.now(UTC) - timedelta(days=100))
+                .isoformat()
+                .replace("+00:00", "Z"),
             )
             if item.observation_id == third_observation.observation_id
             else item
@@ -2501,7 +2053,7 @@ def test_candidate_proposal_requires_confirmation_and_includes_missing_dependenc
         proposal_binding["binding_sha256"]
         == hashlib.sha256(
             json.dumps(unsigned_binding, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
+        ).hexdigest()
     )
     records = [json.loads(line) for line in (tmp_path / "proposal.jsonl").read_text().splitlines()]
     assert [record["record_type"] for record in records] == [

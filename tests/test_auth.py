@@ -45,6 +45,44 @@ def test_auth_manager_not_configured_does_not_crash(auth_dir):
     }
 
 
+def test_token_worker_preserves_silent_broker_auth_without_interactive_fallback(config, auth_dir):
+    from xdr_cli.auth import _token_worker
+
+    connection = MagicMock()
+    application = MagicMock()
+    application.get_accounts.return_value = [{"username": "synthetic@example.invalid"}]
+    application.acquire_token_silent_with_error.return_value = {
+        "error": "interaction_required",
+    }
+    with patch("xdr_cli.auth.msal.PublicClientApplication", return_value=application) as msal_app:
+        _token_worker(connection, config, ["synthetic-scope"], 0.5)
+    assert msal_app.call_args.kwargs["timeout"] == 0.5
+    assert msal_app.call_args.kwargs["enable_broker_on_windows"] is True
+    application.acquire_token_silent_with_error.assert_called_once()
+    application.acquire_token_interactive.assert_not_called()
+    application.initiate_device_flow.assert_not_called()
+    application.acquire_token_by_device_flow.assert_not_called()
+    assert connection.send.call_args.args[0][0:2] == ("error", "AuthError")
+    connection.close.assert_called_once()
+
+
+@pytest.mark.parametrize("failure,error_type", [("timeout", "TimeoutError"), (
+    "connection", "NetworkError",
+)])
+def test_token_worker_preserves_transport_failure_class(config, auth_dir, failure, error_type):
+    from requests.exceptions import ConnectionError, Timeout
+
+    from xdr_cli.auth import _token_worker
+
+    connection = MagicMock()
+    error = Timeout("private detail") if failure == "timeout" else ConnectionError("private detail")
+    with patch("xdr_cli.auth.AuthManager.get_token", side_effect=error):
+        _token_worker(connection, config, None, 0.5)
+    result = connection.send.call_args.args[0]
+    assert result[0:2] == ("error", error_type)
+    assert "private detail" not in result[2]["message"]
+
+
 def test_get_token_raises_when_not_authenticated(config, auth_dir):
     mgr = AuthManager(config)
     with pytest.raises(NotAuthenticatedError):

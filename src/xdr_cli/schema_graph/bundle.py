@@ -22,33 +22,19 @@ from xdr_cli._lock import exclusive_lock
 from xdr_cli.results import tenant_fingerprint
 from xdr_cli.schema_graph.cache import schema_cache_status
 from xdr_cli.schema_graph.diagnostics import SCHEMA_CAPABILITIES, source_commit
-from xdr_cli.schema_graph.model import FieldLocator, GraphValidationError, RelationshipStatus
+from xdr_cli.schema_graph.model import RelationshipStatus
 from xdr_cli.schema_graph.overlay import load_tenant_overlay_from_root
 
 BUNDLE_SCHEMA_VERSION = 1
 _RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}")
-_COLLECTION_ID = re.compile(r"collect-[0-9a-f]{24}")
 _SESSION_ID = re.compile(r"([a-z]{1,3})-([1-9][0-9]*)")
 _GENERATION = re.compile(r"[A-Za-z0-9_-]{1,128}")
-_DURATION = re.compile(r"[1-9][0-9]{0,4}[smhd]")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-_TABLE = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,127}")
 _RESULT_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _MAX_FILES = 20_000
 _MAX_FILE_BYTES = 256 * 1024 * 1024
 _MAX_TOTAL_BYTES = 256 * 1024 * 1024
-DEFAULT_COLLECTION_SOURCES = (
-    "DeviceNetworkEvents.DeviceId",
-    "EntraIdSignInEvents.AccountUpn",
-    "EntraIdSignInEvents.AccountObjectId",
-    "DeviceFileEvents.SHA256",
-    "EmailEvents.NetworkMessageId",
-    "CloudAppEvents.RawEventData#/UserId",
-)
-MAX_COLLECTION_SOURCES = 100
-_MAX_COLLECTION_TARGETS = 10_000
-_MAX_COLLECTION_TIMEOUT = 3_600
-_MAX_COLLECTION_QUERIES_PER_PAGE = 1_000
+
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,13 +108,6 @@ def _portable_member_sensitivity(name: str, tenant_key: str) -> str:
                     remainder.removesuffix(suffix)
                 ):
                     return "value-free-schema"
-    if (
-        len(parts) == 4
-        and parts[:3] == ("schema", tenant_key, "collection-checkpoints")
-        and parts[3].endswith(".json")
-        and _COLLECTION_ID.fullmatch(parts[3].removesuffix(".json"))
-    ):
-        return "value-free-schema"
     if len(parts) == 3 and parts[0] == "results" and _RESULT_DATE.fullmatch(parts[1]):
         filename = parts[2]
         for suffix in (".jsonl", ".meta.json"):
@@ -362,300 +341,6 @@ def _result_files(home: Path, run_id: str) -> tuple[Path, Path]:
     return data[0], meta[0]
 
 
-def _positive_int(value: str, *, maximum: int | None = None) -> bool:
-    try:
-        parsed = int(value)
-    except ValueError:
-        return False
-    return str(parsed) == value and parsed >= 1 and (maximum is None or parsed <= maximum)
-
-
-def _validate_collection_child(
-    arguments: list[str], *, filename: str, plan: dict[str, Any] | None = None
-) -> str | None:
-    """Validate a checkpoint child and return its retained source run, if any."""
-
-    if arguments in (["schema", "refresh"], ["schema", "discoveries"]):
-        return None
-    if len(arguments) < 3 or arguments[:2] != ["schema", "observe"]:
-        raise ValueError(f"collection checkpoint child command is unsafe: {filename}")
-    try:
-        FieldLocator.parse(arguments[2])
-    except GraphValidationError as exc:
-        raise ValueError(f"collection checkpoint source locator is invalid: {filename}") from exc
-
-    value_flags = {
-        "--lookback",
-        "--samples",
-        "--batch-size",
-        "--max-targets",
-        "--timeout",
-        "--max-queries",
-        "--from-run",
-        "--start-query",
-        "--schema-generation",
-        "--target-table",
-        "--exclude-table",
-    }
-    repeatable = {"--target-table", "--exclude-table"}
-    boolean_flags = {"--exhaustive"}
-    values: dict[str, list[str]] = {}
-    booleans: set[str] = set()
-    index = 3
-    while index < len(arguments):
-        flag = arguments[index]
-        if flag in boolean_flags:
-            if flag in booleans:
-                raise ValueError(f"collection checkpoint option is duplicated: {filename}")
-            booleans.add(flag)
-            index += 1
-            continue
-        if flag not in value_flags or index + 1 >= len(arguments):
-            raise ValueError(f"collection checkpoint option is unsafe: {filename}")
-        if flag not in repeatable and flag in values:
-            raise ValueError(f"collection checkpoint option is duplicated: {filename}")
-        values.setdefault(flag, []).append(arguments[index + 1])
-        index += 2
-
-    required = {"--lookback", "--samples", "--batch-size", "--timeout", "--max-queries"}
-    target_scope_is_ambiguous = ("--max-targets" in values) == (
-        "--exhaustive" in booleans
-    )
-    if not required.issubset(values) or target_scope_is_ambiguous:
-        raise ValueError(f"collection checkpoint observe plan is incomplete: {filename}")
-    if not _DURATION.fullmatch(values["--lookback"][0]):
-        raise ValueError(f"collection checkpoint lookback is invalid: {filename}")
-    integer_contracts = {
-        "--samples": 100,
-        "--batch-size": 50,
-        "--max-targets": _MAX_COLLECTION_TARGETS,
-        "--timeout": _MAX_COLLECTION_TIMEOUT,
-        "--max-queries": _MAX_COLLECTION_QUERIES_PER_PAGE,
-    }
-    for flag, maximum in integer_contracts.items():
-        if flag in values and not _positive_int(values[flag][0], maximum=maximum):
-            raise ValueError(f"collection checkpoint integer option is invalid: {filename}")
-    if "--start-query" in values:
-        try:
-            start_query = int(values["--start-query"][0])
-        except ValueError as exc:
-            raise ValueError(f"collection checkpoint cursor is invalid: {filename}") from exc
-        if (
-            str(start_query) != values["--start-query"][0]
-            or start_query < 0
-            or start_query > _MAX_COLLECTION_TARGETS
-        ):
-            raise ValueError(f"collection checkpoint cursor is invalid: {filename}")
-    if "--schema-generation" in values and not _GENERATION.fullmatch(
-        values["--schema-generation"][0]
-    ):
-        raise ValueError(f"collection checkpoint generation is invalid: {filename}")
-    for flag in repeatable:
-        if any(not _TABLE.fullmatch(table) for table in values.get(flag, [])):
-            raise ValueError(f"collection checkpoint table filter is invalid: {filename}")
-    if set(values.get("--target-table", ())) & set(values.get("--exclude-table", ())):
-        raise ValueError(f"collection checkpoint table filters conflict: {filename}")
-    if plan is not None:
-        expected_values = {
-            "--lookback": str(plan["lookback"]),
-            "--samples": str(plan["samples"]),
-            "--batch-size": str(plan["batch_size"]),
-            "--timeout": str(plan["timeout"]),
-            "--max-queries": str(plan["max_queries_per_page"]),
-        }
-        if any(values.get(flag) != [expected] for flag, expected in expected_values.items()):
-            raise ValueError(
-                f"collection checkpoint child diverges from its declared plan: {filename}"
-            )
-        if plan["exhaustive"]:
-            scope_matches = "--exhaustive" in booleans and "--max-targets" not in values
-        else:
-            scope_matches = (
-                "--exhaustive" not in booleans
-                and values.get("--max-targets") == [str(plan["max_targets"])]
-            )
-        if (
-            not scope_matches
-            or values.get("--target-table")
-            or values.get("--exclude-table")
-        ):
-            raise ValueError(
-                f"collection checkpoint child diverges from its declared plan: {filename}"
-            )
-        has_source_run = "--from-run" in values
-        has_cursor = "--start-query" in values
-        if has_source_run != has_cursor:
-            raise ValueError(
-                f"collection checkpoint continuation is incomplete: {filename}"
-            )
-    run_id = values.get("--from-run", [None])[0]
-    if run_id is not None and not _RUN_ID.fullmatch(run_id):
-        raise ValueError(f"collection checkpoint result ID is invalid: {filename}")
-    return run_id
-
-
-def validate_collection_checkpoint(
-    value: Any, *, filename: str, tenant_hash: str
-) -> set[str]:
-    """Validate a resumable crawl checkpoint and return retained source runs."""
-
-    resume_id = filename.removesuffix(".json")
-    plan = value.get("plan") if isinstance(value, dict) else None
-    if (
-        not isinstance(value, dict)
-        or not _COLLECTION_ID.fullmatch(resume_id)
-        or value.get("resume_id") != resume_id
-        or value.get("schema_version") != 1
-        or value.get("tenant_fingerprint") != tenant_hash
-        or value.get("state") not in {"running", "paused", "complete"}
-        or not isinstance(plan, dict)
-        or not isinstance(value.get("pending_commands"), list)
-        or not isinstance(value.get("rows"), list)
-        or not isinstance(value.get("seen_continuations", []), list)
-        or any(not isinstance(item, str) for item in value.get("seen_continuations", []))
-    ):
-        raise ValueError(f"collection checkpoint contract is invalid: {filename}")
-    selected_sources = plan.get("selected_sources")
-    if (
-        not isinstance(selected_sources, list)
-        or not selected_sources
-        or len(selected_sources) > MAX_COLLECTION_SOURCES
-        or len(selected_sources) != len(set(selected_sources))
-        or not isinstance(plan.get("using_default_sources"), bool)
-        or (
-            plan.get("using_default_sources") is True
-            and selected_sources != list(DEFAULT_COLLECTION_SOURCES)
-        )
-        or not isinstance(plan.get("lookback"), str)
-        or not _DURATION.fullmatch(plan["lookback"])
-        or not isinstance(plan.get("samples"), int)
-        or isinstance(plan.get("samples"), bool)
-        or not 1 <= plan["samples"] <= 100
-        or not isinstance(plan.get("batch_size"), int)
-        or isinstance(plan.get("batch_size"), bool)
-        or not 1 <= plan["batch_size"] <= 50
-        or not isinstance(plan.get("exhaustive"), bool)
-        or not isinstance(plan.get("timeout"), int)
-        or isinstance(plan.get("timeout"), bool)
-        or not 1 <= plan["timeout"] <= _MAX_COLLECTION_TIMEOUT
-        or not isinstance(plan.get("max_queries_per_page"), int)
-        or isinstance(plan.get("max_queries_per_page"), bool)
-        or not 1
-        <= plan["max_queries_per_page"]
-        <= _MAX_COLLECTION_QUERIES_PER_PAGE
-        or not isinstance(plan.get("semantic_contract_sha256"), str)
-        or not _SHA256.fullmatch(plan["semantic_contract_sha256"])
-        or (plan["exhaustive"] and plan.get("max_targets") is not None)
-        or (
-            not plan["exhaustive"]
-            and (
-                not isinstance(plan.get("max_targets"), int)
-                or isinstance(plan.get("max_targets"), bool)
-                or not 1 <= plan["max_targets"] <= _MAX_COLLECTION_TARGETS
-            )
-        )
-        or (
-            plan.get("schema_generation") is not None
-            and (
-                not isinstance(plan["schema_generation"], str)
-                or not _GENERATION.fullmatch(plan["schema_generation"])
-            )
-        )
-    ):
-        raise ValueError(f"collection checkpoint plan is invalid: {filename}")
-    try:
-        for source in selected_sources:
-            if not isinstance(source, str):
-                raise GraphValidationError("source is not text")
-            FieldLocator.parse(source)
-    except GraphValidationError as exc:
-        raise ValueError(f"collection checkpoint sources are invalid: {filename}") from exc
-    if value["state"] == "complete" and value["pending_commands"]:
-        raise ValueError(f"complete collection checkpoint has pending work: {filename}")
-    if value["state"] != "complete" and not value["pending_commands"]:
-        raise ValueError(f"incomplete collection checkpoint has no pending work: {filename}")
-
-    run_ids = set()
-    pending_commands = value["pending_commands"]
-    if len(pending_commands) > len(selected_sources) + 2:
-        raise ValueError(f"collection checkpoint has excess pending work: {filename}")
-    pending_sources = []
-    for index, arguments in enumerate(pending_commands):
-        if not isinstance(arguments, list) or not arguments or any(
-            not isinstance(argument, str) for argument in arguments
-        ):
-            raise ValueError(f"collection checkpoint commands are invalid: {filename}")
-        run_id = _validate_collection_child(arguments, filename=filename, plan=plan)
-        if run_id is not None:
-            run_ids.add(run_id)
-        if arguments == ["schema", "refresh"]:
-            if index != 0:
-                raise ValueError(f"collection checkpoint refresh is out of order: {filename}")
-        elif arguments == ["schema", "discoveries"]:
-            if index != len(pending_commands) - 1:
-                raise ValueError(
-                    f"collection checkpoint discoveries is out of order: {filename}"
-                )
-        else:
-            pending_sources.append(arguments[2])
-    if len(pending_sources) != len(set(pending_sources)) or not set(
-        pending_sources
-    ).issubset(selected_sources):
-        raise ValueError(f"collection checkpoint pending sources are invalid: {filename}")
-
-    generation = plan.get("schema_generation")
-    pending_refresh = ["schema", "refresh"] in pending_commands
-    if generation is None:
-        if value["state"] == "complete" or pending_commands[0] != ["schema", "refresh"]:
-            raise ValueError(f"collection checkpoint generation is missing: {filename}")
-        for arguments in pending_commands[1:]:
-            if arguments[:2] != ["schema", "observe"]:
-                continue
-            if any(
-                flag in arguments
-                for flag in ("--schema-generation", "--from-run", "--start-query")
-            ):
-                raise ValueError(
-                    f"pre-refresh collection checkpoint is pre-pinned: {filename}"
-                )
-    elif pending_refresh:
-        raise ValueError(f"collection checkpoint refresh conflicts with generation: {filename}")
-    else:
-        for arguments in pending_commands:
-            if arguments[:2] != ["schema", "observe"]:
-                continue
-            position = arguments.index("--schema-generation") + 1
-            if arguments[position] != generation:
-                raise ValueError(f"collection checkpoint generation is mixed: {filename}")
-
-    commands = []
-    for row in value["rows"]:
-        if not isinstance(row, dict):
-            raise ValueError(f"collection checkpoint rows are invalid: {filename}")
-        arguments = row.get("Arguments")
-        if isinstance(arguments, list):
-            commands.append(arguments)
-    for arguments in commands:
-        if not isinstance(arguments, list) or not arguments or any(
-            not isinstance(argument, str) for argument in arguments
-        ):
-            raise ValueError(f"collection checkpoint commands are invalid: {filename}")
-        run_id = _validate_collection_child(arguments, filename=filename, plan=plan)
-        if run_id is not None:
-            run_ids.add(run_id)
-    return run_ids
-
-
-def _checkpoint_referenced_runs(raw: bytes, *, filename: str, tenant_hash: str) -> set[str]:
-    """Decode one portable crawl checkpoint and return retained source runs."""
-
-    try:
-        value = json.loads(raw.decode("utf-8"))
-    except (UnicodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"collection checkpoint is invalid: {filename}") from exc
-    return validate_collection_checkpoint(value, filename=filename, tenant_hash=tenant_hash)
-
-
 def _validate_export_payloads(
     payloads: dict[str, tuple[bytes, str]], manifest: dict[str, Any], manifest_raw: bytes
 ) -> None:
@@ -746,36 +431,14 @@ def export_bundle(
                 source,
                 "value-free-schema",
             )
-    checkpoint_run_ids: set[str] = set()
-    checkpoint_root = schema_root / "collection-checkpoints"
-    if checkpoint_root.is_dir():
-        for source in sorted(checkpoint_root.glob("collect-*.json")):
-            if not source.is_file() or source.is_symlink():
-                raise ValueError(f"collection checkpoint has an unsafe path: {source.name}")
-            raw = source.read_bytes()
-            checkpoint_run_ids.update(
-                _checkpoint_referenced_runs(
-                    raw,
-                    filename=source.name,
-                    tenant_hash=fingerprint,
-                )
-            )
-            add_payload(
-                f"schema/{tenant_key}/collection-checkpoints/{source.name}",
-                raw,
-                "value-free-schema",
-            )
     overlay = load_tenant_overlay_from_root(schema_root)
     active_observation_ids = {item.observation_id for item in overlay.observations}
-    referenced_run_ids = checkpoint_run_ids | {
-            run_id
-            for observation in overlay.observations
-            for run_id in (
-                observation.source_artifact_run_id,
-                observation.target_artifact_run_id,
-            )
-            if run_id is not None
-        }
+    referenced_run_ids = {
+        run_id
+        for observation in overlay.observations
+        for run_id in observation.evidence_run_ids
+        if run_id is not None
+    }
     proposal_paths: dict[str, Path] = {}
     results_root = home / "results"
     if results_root.is_dir():
@@ -1153,19 +816,6 @@ def import_bundle(home: Path, tenant_id: str, archive: Path) -> dict[str, Any]:
             ).encode()
     if imported_runs != declared_runs:
         raise ValueError("bundle result pairs do not match its evidence references")
-    checkpoint_runs = set()
-    checkpoint_prefix = f"schema/{tenant_key}/collection-checkpoints/"
-    for name, value in rewritten.items():
-        if name.startswith(checkpoint_prefix):
-            checkpoint_runs.update(
-                _checkpoint_referenced_runs(
-                    value,
-                    filename=PurePosixPath(name).name,
-                    tenant_hash=tenant_hash,
-                )
-            )
-    if not checkpoint_runs.issubset(declared_runs):
-        raise ValueError("imported collection checkpoint evidence is incomplete")
     _validate_session_payloads(rewritten)
     destinations = {
         name: (home / Path(*PurePosixPath(name).parts)).resolve()
@@ -1222,7 +872,7 @@ def import_bundle(home: Path, tenant_id: str, archive: Path) -> dict[str, Any]:
         observation_runs = {
             run_id
             for item in overlay.observations
-            for run_id in (item.source_artifact_run_id, item.target_artifact_run_id)
+            for run_id in item.evidence_run_ids
             if run_id is not None
         }
         if not observation_runs.issubset(declared_runs):

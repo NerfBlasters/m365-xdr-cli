@@ -10,12 +10,13 @@ from typing import Any
 from xdr_cli import __version__
 
 SCHEMA_CAPABILITIES = (
+    {"id": "identifier-discovery-v1", "command": "schema collect --explore"},
+    {"id": "local-first-discovery-v1", "command": "schema collect --local-only"},
     {"id": "maintenance-status-v1", "command": "schema status"},
     {"id": "build-diagnostics-v1", "command": "schema diagnostics"},
     {"id": "overlay-compatibility-v1", "command": "schema repair-overlay"},
     {"id": "physical-cache-migration-v1", "command": "schema migrate-cache"},
     {"id": "bounded-collection-v1", "command": "schema collect"},
-    {"id": "resumable-table-crawl-v1", "command": "schema collect --resume"},
     {"id": "empirical-pivot-lifecycle-v1", "command": "schema discoveries"},
     {"id": "portable-bundle-inspect-v1", "command": "schema bundle inspect"},
     {"id": "portable-bundle-export-v1", "command": "schema bundle export"},

@@ -700,7 +700,7 @@ def _merge_records(
     return graph, observations
 
 
-def _validate_result_reference(run_id: str) -> None:
+def _validate_result_reference(run_id: str, *, metadata_paths=None) -> None:
     """Fail closed unless a newly referenced private result is still intact."""
 
     results_root = (get_config_home() / "results").resolve()
@@ -709,7 +709,8 @@ def _validate_result_reference(run_id: str) -> None:
             f"Cannot publish semantic evidence because result ID {run_id!r} is invalid.",
             help_command="xdr results list",
         )
-    matches = list(results_root.glob(f"*/{run_id}.meta.json"))
+    matches = (metadata_paths.get(run_id, ()) if metadata_paths is not None
+               else list(results_root.glob(f"*/{run_id}.meta.json")))
     try:
         if len(matches) != 1:
             raise ValueError("result metadata is missing or ambiguous")
@@ -742,6 +743,7 @@ def publish_tenant_overlay(
     observations: tuple[ObservationRecord, ...] = (),
     replace_observations: bool = False,
     expected_generation: str | None | object = _NO_EXPECTED_GENERATION,
+    discovery_retired_before: str | None = None,
 ) -> dict[str, Any]:
     """Merge value-free records and atomically publish one tenant generation."""
 
@@ -755,6 +757,7 @@ def publish_tenant_overlay(
                     observations=observations,
                     replace_observations=replace_observations,
                     expected_generation=expected_generation,
+                    discovery_retired_before=discovery_retired_before,
                 )
         except FileLockTimeout as exc:
             raise ConflictError(
@@ -772,6 +775,7 @@ def _publish_tenant_overlay_locked(
     observations: tuple[ObservationRecord, ...],
     replace_observations: bool,
     expected_generation: str | None | object,
+    discovery_retired_before: str | None = None,
 ) -> dict[str, Any]:
     """Publish one generation while global and tenant overlay locks are held."""
 
@@ -793,13 +797,26 @@ def _publish_tenant_overlay_locked(
             "was published. Review and rerun the command.",
             help_command="xdr schema prune-evidence --help",
         )
+    from xdr_cli.schema_graph.retention import (
+        index_result_metadata,
+        retired_observation,
+        timestamp,
+    )
+
+    cutoffs = [timestamp(value) for value in (
+        prior.metadata.get("discovery_retired_before"), discovery_retired_before
+    ) if value]
+    cutoff = max(cutoffs) if cutoffs else None
+    metadata_paths = index_result_metadata(get_config_home() / "results")
+    observations = tuple(item for item in observations if not retired_observation(
+        item, cutoff, get_config_home() / "results", metadata_paths=metadata_paths
+    ))
+    verified_runs = set()
     for observation in observations:
-        for run_id in (
-            observation.source_artifact_run_id,
-            observation.target_artifact_run_id,
-        ):
-            if isinstance(run_id, str):
-                _validate_result_reference(run_id)
+        for run_id in observation.evidence_run_ids:
+            if isinstance(run_id, str) and run_id not in verified_runs:
+                _validate_result_reference(run_id, metadata_paths=metadata_paths)
+                verified_runs.add(run_id)
     merged_graph, merged_observations = _merge_records(
         prior,
         graph,
@@ -807,6 +824,12 @@ def _publish_tenant_overlay_locked(
         replace_observations=replace_observations,
     )
     merged_graph.validate_references()
+    merged_observations = {
+        key: item for key, item in merged_observations.items()
+        if not retired_observation(
+            item, cutoff, get_config_home() / "results", metadata_paths=metadata_paths
+        )
+    }
     for record in merged_graph.records():
         serialized = record.to_dict()
         if isinstance(record, FieldRecord):
@@ -835,6 +858,8 @@ def _publish_tenant_overlay_locked(
         "relationship_count": len(merged_graph.relationships),
         "observation_count": len(merged_observations),
     }
+    if cutoff is not None:
+        metadata["discovery_retired_before"] = cutoff.isoformat()
     records = [
         *(record.to_dict() for record in merged_graph.records()),
         *(item.to_dict() for item in merged_observations.values()),

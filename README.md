@@ -496,6 +496,16 @@ later as a separate `--source analyst` record; it never replaces prior
 feedback. See
 [`docs/sessions.md`](docs/sessions.md) for the complete contract.
 
+Explicit `xdr session end` closes the session, refreshes a missing or stale schema
+cache, validates saved-result overlaps, and explores new identifier locations.
+The exploration budget defaults to `schema_explore_max_queries = 5` per session
+end. `schema_collect_on_session_end = false` disables all three stages.
+Automatic expiry/rotation never collects. A closure receipt with `next_action`
+prints before upkeep; a second record reports `maintenance`. Incomplete upkeep
+returns exit 14 while the session stays closed. The overall maintenance deadline
+defaults to 90 seconds; `session end --no-maintenance` skips upkeep once.
+See [sessions](docs/sessions.md).
+
 ### Stderr and Progress
 
 Progress messages and warnings go to **stderr**. Errors before durable output
@@ -539,6 +549,8 @@ jq -r '.id' "$path" | while read -r id; do
 done
 ```
 
+
+
 ## Semantic Schema Graph Workflow
 
 The physical schema cache records which tables and columns exist in the current
@@ -565,21 +577,21 @@ xdr schema pivot DeviceNetworkEvents.DeviceId
 xdr schema path DeviceNetworkEvents DeviceProcessEvents
 ```
 
-`schema collect` refreshes physical availability across the probe's curated
-80-table catalog (limited to the tables this tenant exposes). Its six default
-entries are reviewed source identifiers, not a six-table target allowlist:
-each source can test eligible string/dynamic locators across every cached table
-with `Timestamp` or `TimeGenerated`. That time column only bounds each table's
-independent lookback; identifier values—not timestamps—are matched across
-tables. Routine collection caps that fan-out at 40 prioritized targets per
-source; `--plan-only --exhaustive` previews the full eligible target catalog
-and `--exhaustive` runs it. Compatible fields on one table share a bounded
-table scan. Long runs checkpoint between query pages, continue automatically,
-and can be restarted with `xdr schema collect --resume collect-…`. The first
-post-refresh page and every continuation are pinned to one physical generation;
-resumed/imported checkpoints accept only the bounded read-only schema workflow.
-A failing target table is quarantined with an exact narrow retry while other
-tables continue.
+`schema collect` first discovers shared identifiers in saved hunt/library results,
+recovering field origins from their saved queries. It then validates promising
+field pairs with focused, time-bounded KQL, reusing recent validations. Use
+`--local-only` to publish overlaps without tenant queries and `--plan-only` to
+preview validation. Unsupported query shapes and missing field availability are
+reported explicitly. No local evidence means no automatic broad tenant scan.
+
+Use `schema collect --explore` to search for saved identifiers across cached,
+time-bounded tables and nested JSON paths. It uses all eligible saved fields,
+without a six-field starter matrix or target-column sweep. `--plan-only` previews
+the work. Completed searches are reused: rerun
+after exit 14 to continue the remaining query batches. Receipts report depth,
+result-limit, and unsupported-path gaps. Refresh the physical cache explicitly
+with `schema refresh`.
+
 
 Concrete evidence stays in private result artifacts, while only value-free
 aggregate observations enter the tenant overlay. One completed positive match
@@ -613,7 +625,7 @@ each node kind its own icon through BloodHound's `/api/v2/custom-nodes` API. The
 starter Cypher queries, layer/flag behavior, one-time migration from opaque
 pre-0.8.1 IDs, and the generic-graph limitations.
 
-Move accumulated state, crawl checkpoints, and their referenced evidence with
+Move accumulated state and its referenced evidence with
 a content-bound archive:
 
 ```bash
@@ -656,8 +668,9 @@ guarantees.
 | `xdr library list/show/run` | Discover and execute typed KQL entries |
 | `xdr schema status` | Inspect cache-only maintenance, compatibility, and evidence-growth state |
 | `xdr schema diagnostics` | Show build identity, registered capabilities, and automation outcomes |
-| `xdr schema collect` | Run bounded, checkpointed refresh and semantic observation collection |
-| `xdr schema collect --resume ID` | Continue an interrupted tenant-bound collection plan |
+| `xdr schema collect` | Mine saved results and validate focused field pairs |
+| `xdr schema collect --local-only` | Discover and publish local overlaps without tenant queries |
+| `xdr schema collect --explore` | Find saved identifiers across tables and nested fields |
 | `xdr schema repair-overlay` | Quarantine and repair or migrate legacy semantic overlay state |
 | `xdr schema migrate-cache` | Content-bind a validated pre-digest physical cache offline |
 | `xdr schema bundle inspect` | Integrity-check a portable schema bundle without authenticating its author or activating it |
@@ -742,6 +755,11 @@ default_limit = 25              # legacy compatibility setting; command defaults
 api_timeout = 120               # HTTP timeout in seconds (raise for slow library hunts)
 session_timeout_seconds = 1800  # automatic-session inactivity timeout
 schema_stale_seconds = 86400    # cached schema is visibly stale after this age
+schema_collect_on_session_end = true  # master switch for all session-end schema maintenance
+schema_refresh_on_session_end = true  # refresh only if physical cache is missing/stale
+schema_explore_on_session_end = true  # discover new locations after focused validation
+schema_explore_max_queries = 5        # exploration queries per explicit session end (1-1000)
+schema_maintenance_timeout_seconds = 90  # overall foreground upkeep deadline; maximum 3600
 schema_collection_stale_seconds = 604800  # nonblocking semantic-collection reminder
 ```
 

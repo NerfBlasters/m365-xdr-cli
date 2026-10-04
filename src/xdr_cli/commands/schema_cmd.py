@@ -10,11 +10,9 @@ import os
 import re
 import secrets
 import shlex
-import subprocess
 import sys
 import tarfile
 import tempfile
-import threading
 from collections.abc import Iterator
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -47,13 +45,10 @@ from xdr_cli.exceptions import (
 from xdr_cli.queries import load_query, query_source_hash
 from xdr_cli.results import emit_result, tenant_fingerprint, write_result
 from xdr_cli.schema_graph.bundle import (
-    DEFAULT_COLLECTION_SOURCES,
-    MAX_COLLECTION_SOURCES,
     _link_no_replace,
     export_bundle,
     import_bundle,
     inspect_bundle,
-    validate_collection_checkpoint,
 )
 from xdr_cli.schema_graph.cache import (
     load_schema_cache_pair,
@@ -69,8 +64,9 @@ from xdr_cli.schema_graph.effective import (
     FieldAvailability,
     compose_effective_graph,
 )
+from xdr_cli.schema_graph.evidence_cache import cached_evidence, with_evidence_snapshot
 from xdr_cli.schema_graph.loader import load_packaged_graph, load_packaged_profile
-from xdr_cli.schema_graph.maintenance import maintenance_status, mark_collection_complete
+from xdr_cli.schema_graph.maintenance import maintenance_status
 from xdr_cli.schema_graph.model import (
     Cardinality,
     Confidence,
@@ -138,8 +134,6 @@ bundle_app = typer.Typer(
 schema_app.add_typer(bundle_app)
 
 _CANDIDATE_EVIDENCE_DAYS = 90
-_COLLECTION_CHECKPOINT_VERSION = 1
-_COLLECTION_RESUME_ID = re.compile(r"collect-[0-9a-f]{24}")
 
 
 def _cache_paths(tenant_id: str) -> tuple[Path, Path]:
@@ -261,7 +255,7 @@ def schema_refresh(ctx: typer.Context) -> None:
     asyncio.run(_schema_refresh(ctx.obj))
 
 
-async def _schema_refresh(ctx: AppContext) -> None:
+async def _schema_refresh(ctx: AppContext, *, on_result=None) -> None:
     query = load_query("sys_schema_probe")
     client = XDRClient(
         get_token=AuthManager(ctx.config).get_token,
@@ -343,10 +337,10 @@ async def _schema_refresh(ctx: AppContext) -> None:
         data_tmp.unlink(missing_ok=True)
         meta_tmp.unlink(missing_ok=True)
         manifest_tmp.unlink(missing_ok=True)
-    emit_result(
+    (on_result or emit_result)(
         write_result(
             rows,
-            command=ctx.invoked_command or "schema refresh",
+            command="schema refresh",
             server_truncation_state="unknown",
             session_id=ctx.session_id,
             session_label=ctx.session_label,
@@ -498,6 +492,7 @@ def _semantic_graph() -> Graph:
         raise error from exc
 
 
+@with_evidence_snapshot
 def _compose_effective(
     schema_rows: list[dict],
     *,
@@ -534,6 +529,7 @@ def _compose_effective(
             observations=observations,
         )
         active_observations = []
+        local_source_digests: dict[str, str] = {}
         sampled_cohorts: dict[
             tuple[str, str, str], list[tuple[ObservationRecord, frozenset[str]]]
         ] = {}
@@ -547,6 +543,8 @@ def _compose_effective(
             )
             if evidence is None:
                 continue
+            if evidence.get("source_content_digest") is not None:
+                local_source_digests[observation.observation_id] = evidence["source_content_digest"]
             active_observations.append(observation)
             cohort = evidence.get("sampled_cohort")
             if not isinstance(cohort, frozenset):
@@ -565,12 +563,36 @@ def _compose_effective(
             sampled_cohorts.setdefault(key, []).append((observation, cohort))
         verified_observation_ids = set()
         for items in sampled_cohorts.values():
-            cohorts = {cohort for _observation, cohort in items}
-            union = {value for cohort in cohorts for value in cohort}
-            if len(cohorts) >= 2 and len(union) >= 6:
-                verified_observation_ids.update(
-                    observation.observation_id for observation, _cohort in items
-                )
+            # Find a qualifying pair, rather than greedily letting a new
+            # overlapping superset displace existing independent evidence.
+            eligible = sorted(
+                ((item, cohort) for item, cohort in items
+                 if len(cohort) >= 3 and item.matched_seeds >= 2),
+                key=lambda pair: pair[0].observation_id,
+            )
+            found = False
+            for index, (left, left_cohort) in enumerate(eligible):
+                for right, right_cohort in eligible[index + 1:]:
+                    if (
+                        not left_cohort.isdisjoint(right_cohort)
+                        or left.source_artifact_run_id == right.source_artifact_run_id
+                        or left.target_artifact_run_id == right.target_artifact_run_id
+                        or (left.matched_seeds + right.matched_seeds)
+                        / (left.distinct_seeds + right.distinct_seeds) < 0.8
+                    ):
+                        continue
+                    digests = {
+                        local_source_digests[item.observation_id]
+                        for item in (left, right)
+                        if item.observation_id in local_source_digests
+                    }
+                    if digests and len(digests) < 2:
+                        continue
+                    verified_observation_ids.update((left.observation_id, right.observation_id))
+                    found = True
+                    break
+                if found:
+                    break
         return compose_effective_graph(
             schema_rows,
             canonical=canonical,
@@ -1237,920 +1259,122 @@ def schema_bundle_import(
     _emit_bundle_result(app_ctx, row, "schema bundle import")
 
 
-def _child_receipts(stdout: str) -> tuple[dict | None, dict | None]:
-    """Return the last success and error envelopes emitted by a child command."""
-
-    success = None
-    error = None
-    for line in stdout.splitlines():
-        try:
-            value = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(value, dict):
-            continue
-        if value.get("status") == "success":
-            success = value
-        elif value.get("status") == "error":
-            error = value
-    return success, error
-
-
-def _sanitized_child_error(receipt: dict | None) -> dict | None:
-    """Retain actionable, value-free child failure details for collection reports."""
-
-    if not isinstance(receipt, dict) or not isinstance(receipt.get("error"), dict):
-        return None
-    error = receipt["error"]
-    sanitized = {
-        key: error[key]
-        for key in ("code", "retryable", "retry_after_seconds", "help_command")
-        if error.get(key) is not None
-    }
-    original = error.get("original")
-    if isinstance(original, dict):
-        bounded = {
-            key: original[key]
-            for key in ("type", "failed_batch", "completed_targets")
-            if original.get(key) is not None
-        }
-        if bounded:
-            sanitized["details"] = bounded
-    return sanitized or None
-
-
-def _render_collection_command(
-    *,
-    selected_sources: tuple[str, ...],
-    using_default_sources: bool,
-    lookback: str,
-    samples: int,
-    batch_size: int,
-    max_targets: int,
-    exhaustive: bool,
-    timeout: int,
-    max_queries_per_page: int,
-) -> str:
-    """Render a copyable command equivalent to a successful collection plan."""
-
-    arguments = [
-        "xdr",
-        "schema",
-        "collect",
-        "--lookback",
-        lookback,
-        "--samples",
-        str(samples),
-        "--batch-size",
-        str(batch_size),
-        "--timeout",
-        str(timeout),
-        "--max-queries-per-page",
-        str(max_queries_per_page),
-    ]
-    if exhaustive:
-        arguments.append("--exhaustive")
-    else:
-        arguments.extend(("--max-targets", str(max_targets)))
-    if not using_default_sources:
-        for source in selected_sources:
-            arguments.extend(("--source", source))
-    return " ".join(arguments)
-
-
-def _collection_checkpoint_path(tenant_id: str, resume_id: str) -> Path:
-    """Return a tenant-bound private checkpoint path for a collection run."""
-
-    if not _COLLECTION_RESUME_ID.fullmatch(resume_id):
-        raise UsageError(
-            "invalid schema collection resume ID",
-            help_command="xdr schema collect --help",
-        )
-    tenant_key = hashlib.sha256((tenant_id or "default").encode()).hexdigest()[:12]
-    root = get_config_home() / "schema" / tenant_key / "collection-checkpoints"
-    try:
-        root.mkdir(parents=True, mode=0o700, exist_ok=True)
-        if os.name == "posix":
-            root.chmod(0o700)
-    except OSError as exc:
-        raise ArtifactError(f"Cannot create schema collection checkpoint directory: {exc}") from exc
-    return root / f"{resume_id}.json"
-
-
-def _write_collection_checkpoint(path: Path, payload: dict[str, Any]) -> None:
-    """Atomically publish a private collection checkpoint after every child page."""
-
-    temporary = path.parent / f".{path.name}.{secrets.token_hex(4)}.tmp"
-    try:
-        with temporary.open("x", encoding="utf-8", newline="\n") as handle:
-            json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        if os.name == "posix":
-            temporary.chmod(0o600)
-        os.replace(temporary, path)
-    except OSError as exc:
-        with contextlib.suppress(OSError):
-            temporary.unlink()
-        raise ArtifactError(f"Cannot publish schema collection checkpoint: {exc}") from exc
-
-
-def _load_collection_checkpoint(path: Path, *, tenant_id: str) -> dict[str, Any]:
-    """Load a resumable checkpoint and enforce its tenant and shape contract."""
-
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        error = LocalNotFoundError("schema collection checkpoint", path.stem)
-        error.help_command = "xdr schema collect --help"
-        raise error from exc
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ArtifactError(f"Schema collection checkpoint is unreadable: {exc}") from exc
-    expected_tenant = tenant_fingerprint(tenant_id)
-    try:
-        validate_collection_checkpoint(
-            value,
-            filename=path.name,
-            tenant_hash=expected_tenant,
-        )
-    except ValueError as exc:
-        raise ArtifactError(
-            "Schema collection checkpoint failed its tenant or shape contract.",
-            help_command="xdr schema collect --plan-only",
-        ) from exc
-    return value
-
-
-def _child_continuation_arguments(row: dict[str, Any]) -> list[str] | None:
-    """Validate and unwrap one observe continuation emitted by a child receipt."""
-
-    command = row.get("NextCommand")
-    if not isinstance(command, str) or not command:
-        return None
-    try:
-        arguments = shlex.split(command)
-    except ValueError as exc:
-        raise ArtifactError("Schema observe emitted an invalid continuation command.") from exc
-    if arguments[:3] != ["xdr", "schema", "observe"]:
-        raise ArtifactError("Schema observe emitted an unsafe continuation command.")
-    return arguments[1:]
-
-
-def _run_collection_process(
-    argv: list[str],
-    *,
-    timeout: int,
-    env: dict[str, str],
-    cwd: Path,
-    output_limit: int,
-) -> subprocess.CompletedProcess[str]:
-    """Run one schema child while retaining at most ``output_limit + 1`` bytes.
-
-    Both pipes are drained concurrently so a noisy child cannot deadlock. As
-    soon as either stream crosses the control-output cap, the child is killed;
-    excess bytes are discarded rather than buffered in memory or on disk.
-    """
-    process = subprocess.Popen(
-        argv,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-        cwd=cwd,
-    )
-    buffers = {"stdout": bytearray(), "stderr": bytearray()}
-    limited = {"stdout": False, "stderr": False}
-    kill_lock = threading.Lock()
-
-    def drain(name: str, stream: Any) -> None:
-        try:
-            while True:
-                chunk = stream.read(64 * 1024)
-                if not chunk:
-                    return
-                buffer = buffers[name]
-                remaining = output_limit + 1 - len(buffer)
-                if remaining > 0:
-                    buffer.extend(chunk[:remaining])
-                if len(buffer) > output_limit or len(chunk) > remaining:
-                    limited[name] = True
-                    with kill_lock, contextlib.suppress(OSError):
-                        process.kill()
-        finally:
-            with contextlib.suppress(OSError):
-                stream.close()
-
-    threads = [
-        threading.Thread(target=drain, args=("stdout", process.stdout), daemon=True),
-        threading.Thread(target=drain, args=("stderr", process.stderr), daemon=True),
-    ]
-    for thread in threads:
-        thread.start()
-    try:
-        return_code = process.wait(timeout=timeout)
-    except subprocess.TimeoutExpired as exc:
-        with contextlib.suppress(OSError):
-            process.kill()
-        process.wait()
-        for thread in threads:
-            thread.join()
-        raise subprocess.TimeoutExpired(
-            argv,
-            timeout,
-            output=bytes(buffers["stdout"]),
-            stderr=bytes(buffers["stderr"]),
-        ) from exc
-    for thread in threads:
-        thread.join()
-    completed = subprocess.CompletedProcess(
-        argv,
-        return_code,
-        bytes(buffers["stdout"]).decode("utf-8", "replace"),
-        bytes(buffers["stderr"]).decode("utf-8", "replace"),
-    )
-    completed.stdout_limited = limited["stdout"]  # type: ignore[attr-defined]
-    completed.stderr_limited = limited["stderr"]  # type: ignore[attr-defined]
-    return completed
-
-
-def _run_collection_child(
-    arguments: list[str],
-    *,
-    app_ctx: AppContext,
-    ordinal: int,
-    total: int,
-) -> dict:
-    label = " ".join(arguments[:3])
-    if not app_ctx.effective_quiet:
-        print(f"[{ordinal:02d}/{total:02d}] RUN  {label}", file=sys.stderr, flush=True)
-    environment = dict(os.environ)
-    environment.pop("PYTHONHOME", None)
-    environment.pop("PYTHONPATH", None)
-    environment["XDR_SCHEMA_MAINTENANCE_CHILD"] = "1"
-    started = datetime.now(UTC)
-    query_timeout = app_ctx.config.api_timeout
-    max_queries = 1
-    if "--timeout" in arguments:
-        query_timeout = int(arguments[arguments.index("--timeout") + 1])
-    if "--max-queries" in arguments:
-        max_queries = int(arguments[arguments.index("--max-queries") + 1])
-    # Bound startup/auth/shutdown and local artifact work in addition to each
-    # child's per-request HTTP timeout. Four hours is the hard safety ceiling
-    # even for explicitly large pages; normal defaults resolve to 41 minutes.
-    process_timeout = max(60, min(4 * 60 * 60, query_timeout * max_queries + 60))
-    output_limit = 1024 * 1024
-
-    try:
-        completed = _run_collection_process(
-            [sys.executable, "-I", "-m", "xdr_cli", *arguments],
-            timeout=process_timeout,
-            env=environment,
-            cwd=Path(sys.executable).resolve().parent,
-            output_limit=output_limit,
-        )
-        stdout = completed.stdout or ""
-        stdout_limited = bool(getattr(completed, "stdout_limited", False)) or (
-            len(stdout.encode("utf-8")) > output_limit
-        )
-        stderr_text = completed.stderr or ""
-        stderr_limited = bool(getattr(completed, "stderr_limited", False)) or (
-            len(stderr_text.encode("utf-8")) > output_limit
-        )
-        exit_code = completed.returncode
-        if stdout_limited or stderr_limited:
-            exit_code = 12
-            success_receipt = None
-            child_error = {"code": "CHILD_OUTPUT_LIMIT", "retryable": False}
-        else:
-            success_receipt, error_receipt = _child_receipts(stdout)
-            child_error = _sanitized_child_error(error_receipt)
-    except subprocess.TimeoutExpired:
-        exit_code = 10
-        success_receipt = None
-        child_error = {"code": "CHILD_PROCESS_TIMEOUT", "retryable": True}
-    except OSError:
-        exit_code = 1
-        success_receipt = None
-        child_error = {"code": "CHILD_PROCESS_ERROR", "retryable": True}
-    duration_ms = int((datetime.now(UTC) - started).total_seconds() * 1000)
-    if not app_ctx.effective_quiet:
-        state = "OK" if exit_code == 0 else "FAIL"
-        detail = f"exit={exit_code}, {duration_ms / 1000:.1f}s"
-        if isinstance(success_receipt, dict) and success_receipt.get("run_id"):
-            detail += f", receipt={success_receipt['run_id']}"
-        print(
-            f"[{ordinal:02d}/{total:02d}] {state:<4} {label} — {detail}",
-            file=sys.stderr,
-            flush=True,
-        )
-    context = success_receipt.get("context") if isinstance(success_receipt, dict) else None
-    retry_command = "xdr " + " ".join(arguments)
-    return {
-        "Command": label,
-        "Arguments": arguments,
-        "ExitCode": exit_code,
-        "DurationMs": duration_ms,
-        "RunId": (success_receipt.get("run_id") if isinstance(success_receipt, dict) else None),
-        "ErrorCode": child_error.get("code") if child_error else None,
-        "Retryable": child_error.get("retryable") if child_error else None,
-        "HelpCommand": child_error.get("help_command") if child_error else None,
-        "RetryCommand": retry_command if exit_code != 0 else None,
-        "ErrorDetails": child_error.get("details") if child_error else None,
-        "Outcome": context.get("outcome") if isinstance(context, dict) else None,
-        "TargetsProbed": (context.get("targets_probed") if isinstance(context, dict) else None),
-        "TargetsCompleted": (
-            context.get("targets_completed") if isinstance(context, dict) else None
-        ),
-        "PageComplete": (context.get("page_complete") if isinstance(context, dict) else None),
-        "PlanFingerprint": (
-            context.get("plan_fingerprint") if isinstance(context, dict) else None
-        ),
-        "NextCommand": (context.get("next_command") if isinstance(context, dict) else None),
-        "QuarantinedTables": (
-            context.get("quarantined_tables") if isinstance(context, dict) else None
-        ),
-        "SchemaGeneration": (
-            context.get("schema_cache_generation") if isinstance(context, dict) else None
-        ),
-    }
-
-
-def _execute_collection_checkpoint(
-    *,
-    app_ctx: AppContext,
-    resume_id: str,
-    checkpoint_path: Path,
-    checkpoint: dict[str, Any],
+def collect_saved_results(
+    app_ctx: AppContext, *, plan_only=False, local_only=False,
+    lookback="30d", samples=5, max_queries=20, batch_size=20,
+    timeout=120, on_result=None,
 ) -> None:
-    """Run and checkpoint collection pages until completion or an operational stop."""
+    """Shared foreground collection for the CLI and explicit session end."""
+    from xdr_cli.schema_graph.local_collection import collect_local
 
-    if checkpoint.get("state") == "complete":
-        raise ConflictError(
-            "This schema collection checkpoint is already complete.",
-            help_command="xdr schema discoveries",
-        )
-    plan = checkpoint["plan"]
-    current_semantic_digest = hashlib.sha256(
-        "".join(
-            json.dumps(record.to_dict(), sort_keys=True, separators=(",", ":")) + "\n"
-            for record in _semantic_graph().records()
-        ).encode()
-    ).hexdigest()
-    if plan.get("semantic_contract_sha256") != current_semantic_digest:
-        raise ConflictError(
-            "The packaged semantic contract changed after this collection was planned; "
-            "the checkpoint was not resumed.",
-            help_command="xdr schema collect --plan-only",
-        )
-    pending = [list(command) for command in checkpoint["pending_commands"]]
-    rows = [dict(row) for row in checkpoint["rows"]]
-    seen_continuations = set(checkpoint.get("seen_continuations", []))
-    using_default_sources = bool(plan["using_default_sources"])
-    operational_failure: dict[str, Any] | None = None
-
-    while pending:
-        arguments = pending[0]
-        row = _run_collection_child(
-            arguments,
-            app_ctx=app_ctx,
-            ordinal=len(rows) + 1,
-            total=len(rows) + len(pending),
-        )
-        rows.append(row)
-        is_refresh = arguments == ["schema", "refresh"]
-        invalid_refresh_receipt = (
-            is_refresh
-            and row["ExitCode"] == 0
-            and not isinstance(row.get("SchemaGeneration"), str)
-        )
-        if invalid_refresh_receipt:
-            row.update(
-                {
-                    "ExitCode": 12,
-                    "ErrorCode": "SCHEMA_REFRESH_RECEIPT_INVALID",
-                    "Retryable": False,
-                    "HelpCommand": "xdr schema refresh",
-                    "RetryCommand": "xdr schema refresh",
-                    "Outcome": "refresh-receipt-invalid",
-                }
-            )
-        elif is_refresh and isinstance(row.get("SchemaGeneration"), str):
-            generation = row["SchemaGeneration"]
-            plan["schema_generation"] = generation
-            for command in pending[1:]:
-                if command[:2] == ["schema", "observe"] and "--schema-generation" not in command:
-                    command.extend(("--schema-generation", generation))
-        is_observe = arguments[:2] == ["schema", "observe"]
-        default_unavailable = (
-            using_default_sources
-            and is_observe
-            and row["ErrorCode"] == "SCHEMA_FIELD_UNAVAILABLE"
-        )
-        quarantined_partial = (
-            is_observe
-            and row["ErrorCode"] == "PARTIAL_SUCCESS"
-            and row["RunId"] is not None
-        )
-        if default_unavailable:
-            row["Outcome"] = "source-unavailable"
-            pending.pop(0)
-        elif row["ExitCode"] != 0 and not quarantined_partial:
-            operational_failure = row
-        else:
-            continuation = None
-            if is_observe and row["PageComplete"] is False:
-                continuation = _child_continuation_arguments(row)
-                if continuation is None:
-                    raise ArtifactError(
-                        "An incomplete schema observe page omitted its continuation command."
-                    )
-                rendered = shlex.join(continuation)
-                if rendered in seen_continuations or continuation == arguments:
-                    raise ConflictError(
-                        "Schema collection refused a repeated observe continuation.",
-                        help_command=f"xdr results show {row['RunId']}",
-                    )
-                seen_continuations.add(rendered)
-            if quarantined_partial:
-                row["Outcome"] = "completed-with-quarantined-targets"
-            if continuation is None:
-                pending.pop(0)
-            else:
-                pending[0] = continuation
-
-        checkpoint.update(
-            {
-                "updated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-                "pending_commands": pending,
-                "rows": rows,
-                "seen_continuations": sorted(seen_continuations),
-                "state": "paused" if operational_failure else "running",
-            }
-        )
-        _write_collection_checkpoint(checkpoint_path, checkpoint)
-        if operational_failure is not None:
-            break
-
-    skipped = [row for row in rows if row.get("Outcome") == "source-unavailable"]
-    empty_sources = [row for row in rows if row.get("Outcome") == "source-no-valid-identifiers"]
-    quarantined = [
-        row for row in rows if row.get("Outcome") == "completed-with-quarantined-targets"
-    ]
-    quarantined_tables = sorted(
-        {
-            str(table)
-            for row in quarantined
-            for table in (row.get("QuarantinedTables") or [])
-        }
-    )
-    marker_path = None
-    if not pending:
-        marker_path = mark_collection_complete(
-            app_ctx.config.tenant_id,
-            {
-                "sources": plan["selected_sources"],
-                "lookback": plan["lookback"],
-                "samples": plan["samples"],
-                "batch_size": plan["batch_size"],
-                "max_targets": plan["max_targets"],
-                "exhaustive": plan["exhaustive"],
-                "skipped_unavailable_sources": len(skipped),
-                "empty_sources": len(empty_sources),
-                "quarantined_tables": quarantined_tables,
-            },
-        )
-        checkpoint.update(
-            {
-                "state": "complete",
-                "completed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-                "maintenance_marker": str(marker_path),
-            }
-        )
-        _write_collection_checkpoint(checkpoint_path, checkpoint)
-
-    next_command = (
-        "xdr schema discoveries"
-        if not pending
-        else shlex.join(["xdr", "schema", "collect", "--resume", resume_id])
-    )
-    artifact = write_result(
-        rows,
-        command=app_ctx.invoked_command or "schema collect",
-        server_truncation_state="known-complete",
-        session_id=app_ctx.session_id,
-        session_label=app_ctx.session_label,
-        session_attachment=app_ctx.session_attachment,
-        extra_metadata={
-            "resume_id": resume_id,
-            "sources": plan["selected_sources"],
-            "maintenance_marker": str(marker_path) if marker_path else None,
-        },
-        receipt_context={
-            "resume_id": resume_id,
-            "sources": len(plan["selected_sources"]),
-            "commands": len(rows),
-            "pending_commands": len(pending),
-            "skipped_unavailable_sources": len(skipped),
-            "empty_sources": len(empty_sources),
-            "quarantined_pages": len(quarantined),
-            "quarantined_tables": quarantined_tables,
-            "collection_outcome": (
-                "complete-with-gaps" if quarantined_tables else "complete"
-            )
-            if not pending
-            else "incomplete",
-            "failed": 1 if operational_failure else 0,
-            "maintenance_complete": marker_path is not None,
-            "next_command": next_command,
-        },
-        tenant_id=app_ctx.config.tenant_id,
-    )
-    emit_result(artifact)
-    if operational_failure is not None:
-        raise PartialSuccessError(
-            "Schema collection paused after an operational failure; completed pages "
-            "and the exact continuation were checkpointed.",
-            help_command=next_command,
-            original={
-                "type": "PartialSchemaCollection",
-                "failed_command": operational_failure["Command"],
-                "code": operational_failure["ErrorCode"],
-                "resume_id": resume_id,
-            },
-        )
+    try:
+        validate_lookback(lookback)
+    except GraphValidationError as exc:
+        raise UsageError(str(exc)) from exc
+    _ensure_overlay_compatible(app_ctx.config.tenant_id)
+    try:
+        schema_rows, _metadata = _load_cache(app_ctx)
+    except LocalNotFoundError:
+        schema_rows = []
+    asyncio.run(collect_local(
+        app_ctx, plan_only=plan_only, local_only=local_only,
+        lookback=lookback, samples=samples, max_queries=max_queries,
+        batch_size=batch_size,
+        timeout=timeout, schema_rows=schema_rows, canonical=_semantic_graph(), on_result=on_result,
+    ))
 
 
 @schema_app.command("collect")
 def schema_collect(
     ctx: typer.Context,
+    local_only: bool = typer.Option(False, "--local-only"),
+    explore: bool = typer.Option(
+        False, "--explore", help="Find saved identifiers in unknown fields and nested paths."
+    ),
     sources: list[str] | None = typer.Option(
-        None,
-        "--source",
-        help=(
-            "Reviewed source locator; repeat up to 100 times to replace the defaults. "
-            "Discover valid locators with `xdr schema tables` then `xdr schema show TABLE`."
-        ),
+        None, "--source", help="Optionally restrict saved source locators; no starter matrix."
     ),
-    lookback: str = typer.Option(
-        "30d",
-        "--lookback",
-        help="Source/target time window, for example `7d` or `30d`.",
-    ),
+    lookback: str = typer.Option("30d", "--lookback"),
     samples: int = typer.Option(
         5,
         "--samples",
         min=1,
         max=100,
-        help="Rare, valid source identifiers selected per source (1-100; default 5).",
+        help="Samples per local-overlap validation; does not cap active discovery.",
     ),
-    batch_size: int = typer.Option(
-        20,
-        "--batch-size",
-        min=1,
-        max=50,
-        help="Target locators per Advanced Hunting query (1-50; default 20).",
-    ),
-    max_targets: int = typer.Option(
-        40,
-        "--max-targets",
-        min=1,
-        max=10_000,
-        help="Targets per source for a bounded routine collection (1-10000; default 40).",
-    ),
-    exhaustive: bool = typer.Option(
-        False,
-        "--exhaustive",
-        help="Probe every eligible locator for every source; review `--plan-only` first.",
-    ),
-    timeout: int = typer.Option(
-        120,
-        "--timeout",
-        min=1,
-        max=3_600,
-        help="Per-query HTTP timeout in seconds (1-3600; default 120).",
-    ),
+    batch_size: int = typer.Option(20, "--batch-size", min=1, max=50),
+    seed_batch_size: int = typer.Option(20, "--seed-batch-size", min=1, max=100),
+    max_json_depth: int = typer.Option(6, "--max-json-depth", min=0, max=12),
+    discovery_row_limit: int = typer.Option(2000, "--discovery-row-limit", min=1, max=10000),
     max_queries_per_page: int = typer.Option(
         20,
         "--max-queries-per-page",
         min=1,
-        max=1_000,
-        help=(
-            "Checkpoint after this many target-table queries (1-1000) and "
-            "continue automatically (default 20)."
-        ),
+        max=1000,
+        help="Total query budget for this invocation; rerun to continue.",
     ),
-    resume: str | None = typer.Option(
-        None,
-        "--resume",
-        help="Resume an interrupted collection from its tenant-bound checkpoint ID.",
-    ),
-    plan_only: bool = typer.Option(
-        False,
-        "--plan-only",
-        help="Compile every source plan from the existing cache; make no tenant calls.",
-    ),
+    timeout: int = typer.Option(120, "--timeout", min=1, max=3600),
+    plan_only: bool = typer.Option(False, "--plan-only"),
+    max_targets: int | None = typer.Option(None, "--max-targets", hidden=True),
 ) -> None:
-    """Refresh and collect the value-free tenant graph with one CLI command.
+    """Mine saved results, or actively discover new locations of their identifiers.
 
-    Discover valid source locators with `xdr schema tables` and `xdr schema
-    show DeviceNetworkEvents`.
-
-    Examples: `xdr schema collect --plan-only`; `xdr schema collect`; `xdr
-    schema collect --source DeviceNetworkEvents.DeviceId --lookback 7d`; `xdr
-    schema collect --plan-only --exhaustive`; `xdr schema collect --resume
-    collect-0123456789abcdef01234567`
-
-    A routine run refreshes the curated 80-table physical catalog, then uses
-    six reviewed source identifiers to probe up to 40 eligible targets per
-    source across every cached table. The six sources are not a target-table
-    allowlist. `Timestamp` or `TimeGenerated` bounds each table's lookback;
-    normalized identifier values, not timestamps, are matched. Long crawls
-    checkpoint between bounded query pages and continue automatically; the
-    receipt's `resume_id` restarts the exact pinned plan after interruption. Use
-    `--plan-only --exhaustive` to preview all eligible targets,
-    or repeated `--source Table.Column` to replace the source matrix. Matches
-    become observed investigation pivots, while repeated independent verified
-    evidence can validate the pivot. Neither state claims raw join safety or
-    seeds another fan-out automatically. Empty
-    default sources and tenant-unavailable defaults are recorded explicitly but
-    do not fail maintenance; custom-source and operational failures do.
+    xdr schema collect --plan-only previews local-overlap validation.
+    xdr schema collect --explore --plan-only previews identifier-led discovery.
+    xdr schema collect --explore --source DeviceNetworkEvents.DeviceId --lookback 7d
+    narrows discovery to values from that saved field. Use xdr schema tables and
+    xdr schema show DeviceNetworkEvents to inspect the cached physical schema.
+    No six-field matrix or catalog target sweep is used by new collections.
     """
-
-    app_ctx: AppContext = ctx.obj
-    if resume is not None:
-        resume_conflicts = (
-            sources is not None
-            or plan_only
-            or lookback != "30d"
-            or samples != 5
-            or batch_size != 20
-            or max_targets != 40
-            or exhaustive
-            or timeout != 120
-            or max_queries_per_page != 20
+    if max_targets is not None:
+        raise UsageError(
+            "--max-targets is obsolete; --explore discovers matching locations directly."
         )
-        if resume_conflicts:
-            raise UsageError(
-                "--resume cannot be combined with collection planning options; "
-                "the checkpoint already contains the exact plan",
-                help_command="xdr schema collect --help",
-            )
-        checkpoint_path = _collection_checkpoint_path(app_ctx.config.tenant_id, resume)
-        try:
-            with exclusive_lock(checkpoint_path):
-                checkpoint = _load_collection_checkpoint(
-                    checkpoint_path, tenant_id=app_ctx.config.tenant_id
-                )
-                _ensure_overlay_compatible(app_ctx.config.tenant_id)
-                _execute_collection_checkpoint(
-                    app_ctx=app_ctx,
-                    resume_id=resume,
-                    checkpoint_path=checkpoint_path,
-                    checkpoint=checkpoint,
-                )
-        except FileLockTimeout as exc:
-            raise ConflictError(
-                "Another process is already running this schema collection checkpoint.",
-                retryable=True,
-                help_command=f"xdr schema collect --resume {resume}",
-            ) from exc
-        return
+    if local_only and explore:
+        raise UsageError("--local-only cannot be combined with active discovery.")
     try:
         validate_lookback(lookback)
-    except GraphValidationError as exc:
-        raise UsageError(str(exc), help_command="xdr schema collect --help") from exc
-    if exhaustive and max_targets != 40:
-        raise UsageError(
-            "choose either --exhaustive or a custom --max-targets value",
-            help_command="xdr schema collect --help",
-        )
-    using_default_sources = sources is None
-    selected_sources = tuple(sources or DEFAULT_COLLECTION_SOURCES)
-    if len(selected_sources) > MAX_COLLECTION_SOURCES:
-        raise UsageError(
-            f"schema collection accepts at most {MAX_COLLECTION_SOURCES} sources",
-            help_command="xdr schema collect --help",
-        )
-    if len(selected_sources) != len(set(selected_sources)):
-        raise UsageError(
-            "schema collection sources must be unique",
-            help_command="xdr schema collect --help",
-        )
-    for source in selected_sources:
-        try:
+        for source in sources or ():
             FieldLocator.parse(source)
-        except GraphValidationError as exc:
-            raise UsageError(
-                f"invalid collection source {source!r}: {exc}",
-                help_command="xdr schema show TABLE",
-            ) from exc
+    except GraphValidationError as exc:
+        raise UsageError(str(exc)) from exc
+    if explore:
+        from xdr_cli.schema_graph.discovery import explore_saved_identifiers
 
-    _ensure_overlay_compatible(app_ctx.config.tenant_id)
-    if plan_only:
-        # Planning is cache-only. Fail once with the cache's exact recovery
-        # command instead of spawning one failing child for every source.
-        _load_cache(app_ctx)
-
-    execution_command = _render_collection_command(
-        selected_sources=selected_sources,
-        using_default_sources=using_default_sources,
+        app_ctx = ctx.obj
+        _ensure_overlay_compatible(app_ctx.config.tenant_id)
+        try:
+            schema_rows, _ = _load_cache(app_ctx)
+        except LocalNotFoundError:
+            schema_rows = []
+        asyncio.run(
+            explore_saved_identifiers(
+                app_ctx,
+                schema_rows=schema_rows,
+                canonical=_semantic_graph(),
+                plan_only=plan_only,
+                lookback=lookback,
+                max_queries=max_queries_per_page,
+                seed_batch_size=seed_batch_size,
+                max_depth=max_json_depth,
+                row_limit=discovery_row_limit,
+                timeout=timeout,
+                sources=tuple(sources or ()),
+            )
+        )
+        return
+    if sources:
+        raise UsageError("--source requires --explore.")
+    collect_saved_results(
+        ctx.obj,
+        plan_only=plan_only,
+        local_only=local_only,
         lookback=lookback,
         samples=samples,
+        max_queries=max_queries_per_page,
         batch_size=batch_size,
-        max_targets=max_targets,
-        exhaustive=exhaustive,
         timeout=timeout,
-        max_queries_per_page=max_queries_per_page,
     )
-
-    commands: list[list[str]] = []
-    if not plan_only:
-        commands.append(["schema", "refresh"])
-    target_arguments = ["--exhaustive"] if exhaustive else ["--max-targets", str(max_targets)]
-    for source in selected_sources:
-        commands.append(
-            [
-                "schema",
-                "observe",
-                source,
-                "--lookback",
-                lookback,
-                "--samples",
-                str(samples),
-                "--batch-size",
-                str(batch_size),
-                "--timeout",
-                str(timeout),
-                *(
-                    ["--max-queries", str(max_queries_per_page)]
-                    if not plan_only
-                    else []
-                ),
-                *target_arguments,
-                *(["--plan-only"] if plan_only else []),
-            ]
-        )
-    if not plan_only:
-        commands.append(["schema", "discoveries"])
-
-    if not plan_only:
-        resume_id = f"collect-{secrets.token_hex(12)}"
-        checkpoint_path = _collection_checkpoint_path(app_ctx.config.tenant_id, resume_id)
-        checkpoint = {
-            "schema_version": _COLLECTION_CHECKPOINT_VERSION,
-            "tenant_fingerprint": tenant_fingerprint(app_ctx.config.tenant_id),
-            "resume_id": resume_id,
-            "state": "running",
-            "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-            "updated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-            "plan": {
-                "selected_sources": list(selected_sources),
-                "using_default_sources": using_default_sources,
-                "lookback": lookback,
-                "samples": samples,
-                "batch_size": batch_size,
-                "max_targets": None if exhaustive else max_targets,
-                "exhaustive": exhaustive,
-                "timeout": timeout,
-                "max_queries_per_page": max_queries_per_page,
-                "semantic_contract_sha256": hashlib.sha256(
-                    "".join(
-                        json.dumps(
-                            record.to_dict(),
-                            sort_keys=True,
-                            separators=(",", ":"),
-                        )
-                        + "\n"
-                        for record in _semantic_graph().records()
-                    ).encode()
-                ).hexdigest(),
-            },
-            "pending_commands": commands,
-            "rows": [],
-            "seen_continuations": [],
-        }
-        _write_collection_checkpoint(checkpoint_path, checkpoint)
-        if not app_ctx.effective_quiet:
-            print(
-                f"Schema collection checkpoint {resume_id}; resume with `xdr schema "
-                f"collect --resume {resume_id}`.",
-                file=sys.stderr,
-                flush=True,
-            )
-        try:
-            with exclusive_lock(checkpoint_path):
-                _execute_collection_checkpoint(
-                    app_ctx=app_ctx,
-                    resume_id=resume_id,
-                    checkpoint_path=checkpoint_path,
-                    checkpoint=checkpoint,
-                )
-        except FileLockTimeout as exc:
-            raise ConflictError(
-                "Another process acquired the new schema collection checkpoint.",
-                retryable=True,
-                help_command=f"xdr schema collect --resume {resume_id}",
-            ) from exc
-        return
-
-    rows = []
-    for ordinal, arguments in enumerate(commands, start=1):
-        row = _run_collection_child(
-            arguments,
-            app_ctx=app_ctx,
-            ordinal=ordinal,
-            total=len(commands),
-        )
-        rows.append(row)
-        if arguments == ["schema", "refresh"] and row["ExitCode"] != 0:
-            break
-    skipped = [
-        row
-        for row in rows
-        if using_default_sources
-        and row["ExitCode"] != 0
-        and row["ErrorCode"] == "SCHEMA_FIELD_UNAVAILABLE"
-    ]
-    for row in skipped:
-        row["Outcome"] = "source-unavailable"
-    failed = [row for row in rows if row["ExitCode"] != 0 and row not in skipped]
-    empty_sources = [row for row in rows if row.get("Outcome") == "source-no-valid-identifiers"]
-    marker_path = None
-    if not plan_only and not failed:
-        marker_path = mark_collection_complete(
-            app_ctx.config.tenant_id,
-            {
-                "sources": list(selected_sources),
-                "lookback": lookback,
-                "samples": samples,
-                "batch_size": batch_size,
-                "max_targets": None if exhaustive else max_targets,
-                "exhaustive": exhaustive,
-                "skipped_unavailable_sources": len(skipped),
-                "empty_sources": len(empty_sources),
-            },
-        )
-    next_command = (
-        execution_command
-        if plan_only and not failed
-        else (
-            "xdr schema discoveries"
-            if not failed
-            else next(
-                (
-                    row.get("HelpCommand") or row.get("RetryCommand")
-                    for row in failed
-                    if row.get("HelpCommand") or row.get("RetryCommand")
-                ),
-                "xdr schema status",
-            )
-        )
-    )
-    artifact = write_result(
-        rows,
-        command=app_ctx.invoked_command or "schema collect",
-        server_truncation_state="known-complete",
-        session_id=app_ctx.session_id,
-        session_label=app_ctx.session_label,
-        session_attachment=app_ctx.session_attachment,
-        extra_metadata={
-            "plan_only": plan_only,
-            "sources": list(selected_sources),
-            "maintenance_marker": str(marker_path) if marker_path else None,
-        },
-        receipt_context={
-            "plan_only": plan_only,
-            "sources": len(selected_sources),
-            "commands": len(rows),
-            "skipped_unavailable_sources": len(skipped),
-            "empty_sources": len(empty_sources),
-            "failed": len(failed),
-            "maintenance_complete": marker_path is not None,
-            "next_command": next_command,
-        },
-        tenant_id=app_ctx.config.tenant_id,
-    )
-    emit_result(artifact)
-    if failed:
-        raise PartialSuccessError(
-            "Schema collection finished with failed steps; "
-            "successful child artifacts remain saved.",
-            help_command=next_command,
-            original={
-                "type": "PartialSchemaCollection",
-                "failed_commands": [row["Command"] for row in failed],
-                "failures": [
-                    {
-                        "command": row["Command"],
-                        "code": row["ErrorCode"],
-                        "retryable": row["Retryable"],
-                        "help_command": row["HelpCommand"] or row["RetryCommand"],
-                        "details": row["ErrorDetails"],
-                    }
-                    for row in failed
-                ],
-            },
-        )
 
 
 @schema_app.command("export-opengraph")
@@ -2475,6 +1699,15 @@ def _ordered_normalized_values(
 def _verified_schema_artifact(
     run_id: str | None, *, tenant_id: str | None = None
 ) -> tuple[dict, list[dict]] | None:
+    return cached_evidence(
+        "schema-artifact", (str(get_config_home()), run_id, tenant_id),
+        lambda: _read_verified_schema_artifact(run_id, tenant_id=tenant_id),
+    )
+
+
+def _read_verified_schema_artifact(
+    run_id: str | None, *, tenant_id: str | None = None
+) -> tuple[dict, list[dict]] | None:
     if run_id is None:
         return None
     root = (get_config_home() / "results").resolve()
@@ -2537,8 +1770,25 @@ def _observation_artifacts_match(
     source_normalizer: str,
     target_locator: FieldLocator,
     tenant_id: str,
+    graph: Graph | None = None,
 ) -> bool:
     """Verify evidence identity, stage provenance, target, and aggregate counts."""
+
+    if observation.extra.get("evidence_stage") == "identifier-search":
+        from xdr_cli.schema_graph.discovery import verify_search_observation
+        if graph is None:
+            from xdr_cli.schema_graph.effective import merge_graphs
+            graph = merge_graphs(_semantic_graph(), load_tenant_overlay(tenant_id).graph)
+        return verify_search_observation(graph, observation, tenant_id) is not None
+
+    if observation.extra.get("evidence_stage") in {"local-overlap", "local-validation"}:
+        from xdr_cli.schema_graph.effective import merge_graphs
+        from xdr_cli.schema_graph.local_collection import verify_local_observation
+
+        if graph is None:
+            overlay = load_tenant_overlay(tenant_id)
+            graph = merge_graphs(_semantic_graph(), overlay.graph)
+        return verify_local_observation(graph, observation, tenant_id) is not None
 
     source = _verified_schema_artifact(observation.source_artifact_run_id, tenant_id=tenant_id)
     target = _verified_schema_artifact(observation.target_artifact_run_id, tenant_id=tenant_id)
@@ -2642,9 +1892,19 @@ def _eligible_observation_evidence(
 ) -> dict[str, Any] | None:
     """Reverify one active observation and return its sampled validation cohort."""
 
+    if observation.extra.get("evidence_stage") == "identifier-search":
+        from xdr_cli.schema_graph.discovery import verify_search_observation
+        return verify_search_observation(graph, observation, tenant_id)
+
+    if observation.extra.get("evidence_stage") in {"local-overlap", "local-validation"}:
+        from xdr_cli.schema_graph.local_collection import verify_local_observation
+
+        return verify_local_observation(graph, observation, tenant_id)
+
     observed_at = _observation_timestamp(observation.observed_at)
     cutoff = datetime.now(UTC) - timedelta(days=_CANDIDATE_EVIDENCE_DAYS)
-    if observed_at is None or observed_at < cutoff or observation.lookback is None:
+    if (observed_at is None or observed_at < cutoff or observed_at > datetime.now(UTC)
+            or observation.lookback is None):
         return None
     try:
         source = graph.interpretations[observation.source_interpretation]
@@ -2667,6 +1927,7 @@ def _eligible_observation_evidence(
         source_normalizer=source_normalizer,
         target_locator=target_locator,
         tenant_id=tenant_id,
+        graph=graph,
     ):
         return None
     source_artifact = _verified_schema_artifact(
@@ -3835,6 +3096,7 @@ def schema_candidate_review(
     )
 
 
+@with_evidence_snapshot
 async def _schema_candidate_review(
     ctx: AppContext,
     *,
@@ -3877,7 +3139,7 @@ async def _schema_candidate_review(
         and item.source_artifact_run_id is not None
         and item.target_artifact_run_id is not None
         and (observed := _observation_timestamp(item.observed_at)) is not None
-        and observed >= cutoff
+        and (observed >= cutoff or item.extra.get("evidence_stage") == "local-overlap")
     ]
     matching.sort(key=lambda item: (item.observed_at or "", item.observation_id))
     observation = None
@@ -3893,6 +3155,7 @@ async def _schema_candidate_review(
             source_normalizer=candidate_source_normalizer,
             target_locator=candidate_target_locator,
             tenant_id=ctx.config.tenant_id,
+            graph=effective.graph,
         ):
             observation = candidate
             break
@@ -3919,34 +3182,54 @@ async def _schema_candidate_review(
     target = effective.graph.interpretations[observation.target_interpretation]
     source_locator = effective.graph.fields[source.field_id].locator
     target_locator = effective.graph.fields[target.field_id].locator
-    source_artifact = load_artifact_input(
-        source_locator.table, observation.source_artifact_run_id or ""
-    )
-    source_stage = source_artifact.metadata.get("probe_stage")
-    if (
-        source_stage not in {"source-sample", "source-explicit"}
-        or source_artifact.metadata.get("locator") != str(source_locator)
-        or source_artifact.metadata.get("source_interpretation") != source.id
-        or source_artifact.metadata.get("source_normalizer") != source.normalizer
-        or source_artifact.tenant_fingerprint != tenant_fingerprint(ctx.config.tenant_id)
-        or (
-            source_stage == "source-explicit"
-            and (
-                source_artifact.metadata.get("lookback") != observation.lookback
-                or source_artifact.metadata.get("seed_source") not in {"file", "stdin"}
+    local_evidence = observation.extra.get("evidence_stage") in {
+        "local-overlap", "local-validation"
+    }
+    if observation.extra.get("evidence_stage") == "identifier-search":
+        from xdr_cli.schema_graph.discovery import verify_search_observation
+        evidence = verify_search_observation(effective.graph, observation, ctx.config.tenant_id)
+        if evidence is None:
+            raise ArtifactError("Discovery source evidence is no longer valid.")
+        seeds = sorted(evidence["sampled_cohort"])
+        rejected_seed_count = 0
+    elif local_evidence:
+        from xdr_cli.schema_graph.local_discovery import LocalPair, pair_values
+
+        seeds = pair_values(
+            LocalPair(**observation.extra["local_pair"]),
+            get_config_home() / "results", ctx.config.tenant_id,
+        )[:observation.distinct_seeds]
+        rejected_seed_count = 0
+    else:
+        source_artifact = load_artifact_input(
+            source_locator.table, observation.source_artifact_run_id or ""
+        )
+        source_stage = source_artifact.metadata.get("probe_stage")
+        if (
+            source_stage not in {"source-sample", "source-explicit"}
+            or source_artifact.metadata.get("locator") != str(source_locator)
+            or source_artifact.metadata.get("source_interpretation") != source.id
+            or source_artifact.metadata.get("source_normalizer") != source.normalizer
+            or source_artifact.tenant_fingerprint != tenant_fingerprint(ctx.config.tenant_id)
+            or (
+                source_stage == "source-explicit"
+                and (
+                    source_artifact.metadata.get("lookback") != observation.lookback
+                    or source_artifact.metadata.get("seed_source") not in {"file", "stdin"}
+                )
             )
+        ):
+            raise ArtifactError(
+                "Candidate source evidence is not a same-tenant schema-observe input; "
+                "rerun the source with xdr schema observe.",
+                help_command="xdr schema observe --help",
+            )
+        seeds, rejected_seed_count = _ordered_normalized_values(
+            [row.get("Value") for row in source_artifact.rows
+             if row.get("Value") not in (None, "")],
+            target.normalizer,
+            limit=observation.distinct_seeds,
         )
-    ):
-        raise ArtifactError(
-            "Candidate source evidence is not a same-tenant schema-observe input; "
-            "rerun the source with xdr schema observe.",
-            help_command="xdr schema observe --help",
-        )
-    seeds, rejected_seed_count = _ordered_normalized_values(
-        [row.get("Value") for row in source_artifact.rows if row.get("Value") not in (None, "")],
-        target.normalizer,
-        limit=observation.distinct_seeds,
-    )
     if not seeds:
         raise ArtifactError(
             "Candidate source evidence contains no valid sampled values; recollect "
@@ -3983,6 +3266,7 @@ async def _schema_candidate_review(
             lookback=selected_lookback,
             limit=limit,
             available_columns=review_available_columns,
+            expanded_paths=True,
         )
     except (GraphValidationError, NormalizationError) as exc:
         raise UsageError(
@@ -4012,7 +3296,7 @@ async def _schema_candidate_review(
             "candidate_review": {
                 "relationship_id": relationship_id,
                 "observation_id": observation.observation_id,
-                "source_artifact_run_id": source_artifact.run_id,
+                "source_artifact_run_id": observation.source_artifact_run_id,
                 "source_locator": str(source_locator),
                 "target_locator": str(target_locator),
                 "lookback": selected_lookback,
@@ -4053,6 +3337,7 @@ async def _schema_candidate_review(
         )
 
 
+@with_evidence_snapshot
 def _candidate_report(
     app_ctx: AppContext, *, include_evidence_refs: bool
 ) -> tuple[list[dict], dict, TenantSemanticOverlay, EffectiveGraph]:
@@ -4098,6 +3383,7 @@ def _candidate_report(
             continue
         relationship = effective.graph.relationships.get(relationship_id)
         active = relationship is not None and relationship.status in {
+            RelationshipStatus.CANDIDATE,
             RelationshipStatus.OBSERVED,
             RelationshipStatus.VALIDATED,
         }
@@ -4152,6 +3438,7 @@ def _candidate_report(
                 source_normalizer=observed_source_normalizer,
                 target_locator=observed_target_locator,
                 tenant_id=app_ctx.config.tenant_id,
+                graph=effective.graph,
             ):
                 mismatched_evidence.append(item.observation_id)
                 continue
@@ -4171,6 +3458,12 @@ def _candidate_report(
                 validation_matched.append(item)
                 validation_cohorts.append(cohort)
         blocking_reasons = []
+        if any(
+            item.extra.get("evidence_stage")
+            in {"local-overlap", "local-validation", "identifier-search"}
+            for item in matched
+        ):
+            blocking_reasons.append("local-pivots-do-not-use-the-core-proposal-workflow")
         if len(validation_matched) < 2:
             blocking_reasons.append("needs-at-least-two-verified-sampled-positive-runs")
         window_keys = {
@@ -4192,6 +3485,12 @@ def _candidate_report(
         }
         if len(distinct_cohorts) < 2:
             blocking_reasons.append("needs-at-least-two-distinct-sampled-seed-cohorts")
+        if len(distinct_cohorts) >= 2 and not any(
+            left.isdisjoint(right)
+            for index, left in enumerate(validation_cohorts)
+            for right in validation_cohorts[index + 1:]
+        ):
+            blocking_reasons.append("sampled-seed-cohorts-overlap")
         if len(distinct_identifiers) < 6:
             blocking_reasons.append("needs-at-least-six-distinct-sampled-identifiers")
         if (
@@ -4273,7 +3572,9 @@ def _candidate_report(
             "AutomatedConcerns": concerns,
             "ReviewDecision": "programmatic",
             "LifecycleState": (
-                "validated-investigation-pivot"
+                "candidate-collect-more-evidence"
+                if active and relationship.status is RelationshipStatus.CANDIDATE
+                else "validated-investigation-pivot"
                 if active and relationship.status is RelationshipStatus.VALIDATED
                 else "observed-investigation-pivot"
                 if active and not blocking_reasons
@@ -4893,13 +4194,18 @@ def schema_prune_evidence(
     cutoff = datetime.now(UTC) - timedelta(days=older_than)
     removed = []
     retained = []
+    from xdr_cli.schema_graph.retention import index_result_metadata, retired_observation
+
+    metadata_paths = index_result_metadata(get_config_home() / "results")
     for observation in overlay.observations:
         observed = _observation_timestamp(observation.observed_at)
         should_remove = (observed is not None and observed < cutoff) or (
             observed is None and include_legacy
+        ) or retired_observation(
+            observation, cutoff, get_config_home() / "results", metadata_paths=metadata_paths
         )
         (removed if should_remove else retained).append(observation)
-    if removed and not yes:
+    if not yes:
         if not app_ctx.is_interactive:
             raise UsageError(
                 "Non-interactive schema evidence pruning requires --yes.",
@@ -4913,16 +4219,19 @@ def schema_prune_evidence(
                 ],
                 help_command="xdr schema prune-evidence --help",
             )
-        if not typer.confirm(f"Remove {len(removed)} tenant observation(s)?"):
+        if not typer.confirm(
+            f"Remove {len(removed)} tenant observation(s) and retire automatic "
+            f"discovery evidence older than {older_than} days?"
+        ):
             raise ConflictError("Schema evidence pruning was cancelled by the operator.")
     metadata = overlay.metadata
-    if removed:
-        metadata = publish_tenant_overlay(
-            app_ctx.config.tenant_id,
-            observations=tuple(retained),
-            replace_observations=True,
-            expected_generation=overlay.metadata.get("generation"),
-        )
+    metadata = publish_tenant_overlay(
+        app_ctx.config.tenant_id,
+        observations=tuple(retained),
+        replace_observations=True,
+        expected_generation=overlay.metadata.get("generation"),
+        discovery_retired_before=cutoff.isoformat(),
+    )
     emit_result(
         write_result(
             [

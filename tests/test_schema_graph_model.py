@@ -222,7 +222,8 @@ def test_bidirectional_relationship_endpoints_are_canonicalized():
     assert relationship.target == "interp:z"
 
 
-def test_empirical_pivot_advances_only_verified_sampled_evidence():
+@pytest.mark.parametrize("reverse_second", [False, True])
+def test_empirical_pivot_advances_only_verified_sampled_evidence(reverse_second):
     first = ObservationRecord(
         observation_id="probe:empirical-one",
         source_interpretation="interp:z",
@@ -256,8 +257,21 @@ def test_empirical_pivot_advances_only_verified_sampled_evidence():
         outcome="matched",
         extra={"evidence_verified": True, "source_evidence_kind": "sampled"},
     )
+    if reverse_second:
+        second = replace(
+            second,
+            source_interpretation=first.target_interpretation,
+            target_interpretation=first.source_interpretation,
+        )
     self_asserted = empirical_relationship_from_observations((first, second))
     assert self_asserted.status is RelationshipStatus.OBSERVED
+    assert self_asserted == empirical_relationship_from_observations((second, first))
+    for conflicting in (
+        replace(second, target_interpretation="interp:unrelated"),
+        replace(second, transform="upn-lower"),
+    ):
+        with pytest.raises(GraphValidationError, match="mixed semantics"):
+            empirical_relationship_from_observations((first, conflicting))
 
     validated = empirical_relationship_from_observations(
         (first, second),
@@ -267,6 +281,10 @@ def test_empirical_pivot_advances_only_verified_sampled_evidence():
     )
     assert validated.status is RelationshipStatus.VALIDATED
     assert validated.relationship is RelationshipKind.CORRELATION_ONLY
+    assert validated == empirical_relationship_from_observations(
+        (second, first),
+        verified_observation_ids=frozenset({first.observation_id, second.observation_id}),
+    )
 
     operator_supplied = empirical_relationship_from_observations(
         (

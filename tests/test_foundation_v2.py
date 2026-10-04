@@ -460,6 +460,12 @@ def test_incident_anchor_matches_then_rotates_automatic_session(
     monkeypatch,
     capsys,
 ):
+    def forbidden_collection(*args, **kwargs):
+        pytest.fail("Automatic retirement must never collect schema evidence")
+
+    monkeypatch.setattr(
+        "xdr_cli.commands.session_cmd._collect_after_explicit_end", forbidden_collection,
+    )
     _home(tmp_path, monkeypatch)
     first, mode = resolve_session_for_invocation(
         "incidents show",
@@ -487,6 +493,12 @@ def test_incident_anchor_matches_then_rotates_automatic_session(
 
 
 def test_idle_timeout_retires_marker_and_keeps_history(tmp_path, monkeypatch, capsys):
+    def forbidden_collection(*args, **kwargs):
+        pytest.fail("Automatic retirement must never collect schema evidence")
+
+    monkeypatch.setattr(
+        "xdr_cli.commands.session_cmd._collect_after_explicit_end", forbidden_collection,
+    )
     home = _home(tmp_path, monkeypatch)
     session = Session(
         id="jd-1",
@@ -558,7 +570,8 @@ def test_session_end_returns_agent_and_later_analyst_syntax(tmp_path, monkeypatc
     assert result.exit_code == 0
     ended = runner.invoke(app, ["session", "end"])
     assert ended.exit_code == 0
-    receipt = json.loads(ended.stdout)
+    receipt, maintenance = [json.loads(line) for line in ended.stdout.splitlines()]
+    assert maintenance["record_type"] == "session-maintenance"
     assert "--source agent" in receipt["next_action"]["agent_command_template"]
     assert "--source analyst" in receipt["next_action"]["analyst_command_template"]
     assert "completed-with-friction" in receipt["next_action"]["allowed_outcomes"]

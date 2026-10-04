@@ -102,63 +102,20 @@ def test_diagnostics_report_build_and_passive_automation_counts(tmp_path, monkey
     }
 
 
-def test_status_surfaces_newest_incomplete_collection_checkpoint(tmp_path, monkeypatch):
-    home = tmp_path / "xdr-home"
-    monkeypatch.setenv("XDR_CLI_HOME", str(home))
-    tenant = "tenant"
-    tenant_key = hashlib.sha256(tenant.encode()).hexdigest()[:12]
-    root = home / "schema" / tenant_key / "collection-checkpoints"
+
+
+def test_status_ignores_retired_collection_checkpoints(tmp_path, monkeypatch):
+
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path))
+    tenant_key = hashlib.sha256(b"tenant").hexdigest()[:12]
+    root = tmp_path / "schema" / tenant_key / "collection-checkpoints"
     root.mkdir(parents=True)
-    resume_id = "collect-0123456789abcdef01234567"
-    (root / f"{resume_id}.json").write_text(
-        json.dumps(
-            {
-                "resume_id": resume_id,
-                "state": "paused",
-                "updated_at": "2026-08-12T00:00:00Z",
-            }
-        )
-    )
-
+    checkpoint = root / "collect-0123456789abcdef01234567.json"
+    checkpoint.write_text(json.dumps({"state": "paused", "updated_at": "2099-01-01T00:00:00Z"}))
     status = maintenance_status(
-        tenant,
-        cache_stale_seconds=86400,
-        collection_stale_seconds=604800,
+        "tenant", cache_stale_seconds=86400, collection_stale_seconds=604800
     )
-
-    assert status["crawl_checkpoints"]["incomplete"] == 1
-    assert status["crawl_checkpoints"]["resume_id"] == resume_id
-    assert status["next_command"] == f"xdr schema collect --resume {resume_id}"
-
-
-def test_status_does_not_resume_checkpoint_pinned_to_missing_generation(
-    tmp_path, monkeypatch
-):
-    home = tmp_path / "xdr-home"
-    monkeypatch.setenv("XDR_CLI_HOME", str(home))
-    tenant = "tenant"
-    tenant_key = hashlib.sha256(tenant.encode()).hexdigest()[:12]
-    root = home / "schema" / tenant_key / "collection-checkpoints"
-    root.mkdir(parents=True)
-    resume_id = "collect-0123456789abcdef01234567"
-    (root / f"{resume_id}.json").write_text(
-        json.dumps(
-            {
-                "resume_id": resume_id,
-                "state": "paused",
-                "updated_at": "2026-08-12T00:00:00Z",
-                "plan": {"schema_generation": "missing-generation"},
-            }
-        )
-    )
-
-    status = maintenance_status(
-        tenant,
-        cache_stale_seconds=86400,
-        collection_stale_seconds=604800,
-    )
-
-    assert status["crawl_checkpoints"]["incomplete"] == 0
-    assert status["crawl_checkpoints"]["incompatible"] == 1
-    assert "semantic-collection-checkpoint-incompatible" in status["reasons"]
-    assert status["next_command"] == "xdr schema collect"
+    assert "crawl_checkpoints" not in status
+    assert status["next_command"] == "xdr schema refresh"
+    assert "semantic-collection-incomplete" not in status["reasons"]
+    assert checkpoint.is_file()

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import sys
 from typing import Literal
 
-import click
 import typer
 
 from xdr_cli.context import AppContext
@@ -14,7 +15,10 @@ from xdr_cli.exceptions import (
     AuthError,
     ConflictError,
     LocalNotFoundError,
+    PartialSuccessError,
     PermissionError,
+    XDRError,
+    format_error_json,
 )
 from xdr_cli.output import OutputFormatter
 from xdr_cli.sessions import (
@@ -110,6 +114,69 @@ def session_start(
         )
 
 
+def _collect_after_explicit_end(app_ctx: AppContext) -> dict:
+    """Maintenance cannot undo a durable session end or attach to another session."""
+    if (
+        not getattr(app_ctx.config, "_maintenance_config_error", None)
+        and not app_ctx.config.schema_collect_on_session_end
+    ):
+        return {"status": "skipped", "reason": "disabled"}
+    if not app_ctx.config.tenant_id:
+        return {"status": "skipped", "reason": "unconfigured-tenant"}
+    maintenance: dict = {"status": "success"}
+
+    def capture(artifact):
+        receipt = artifact.receipt.to_dict()
+        # This command emits no collection preview rows.
+        receipt["context"]["shown"] = 0
+        receipt["context"]["has_more"] = receipt["rows"] > 0
+        maintenance["result"] = receipt
+
+    clean_ctx = AppContext(
+        config=app_ctx.config, no_interactive=True,
+        quiet=app_ctx.quiet, debug=app_ctx.debug, invoked_command="schema collect",
+    )
+    if not app_ctx.effective_quiet:
+        typer.echo("Session ended. Collecting schema evidence…", err=True)
+    try:
+        from xdr_cli.schema_graph.session_maintenance import collect_session_schema
+
+        app_ctx.config.check_maintenance_config()
+        collect_session_schema(clean_ctx, on_result=capture)
+    except (KeyboardInterrupt, asyncio.CancelledError) as exc:
+        maintenance.update(
+            status="cancelled", exit_code=130, error_type=type(exc).__name__,
+            error_code="SESSION_SCHEMA_MAINTENANCE_CANCELLED",
+        )
+    except XDRError as exc:
+        maintenance.update(
+            status="partial" if exc.exit_code == 14 else "failed",
+            exit_code=int(exc.exit_code), error_type=type(exc).__name__,
+            retry_after_seconds=exc.retry_after_seconds,
+            error_code=exc.error_code, help_command=exc.help_command or (
+                "xdr auth status" if isinstance(exc, AuthError) else None
+            ),
+        )
+        if isinstance(exc.__cause__, XDRError):
+            cause = exc.__cause__
+            maintenance["cause"] = {
+                "exit_code": int(cause.exit_code), "error_type": type(cause).__name__,
+                "error_code": cause.error_code, "help_command": cause.help_command or (
+                    "xdr auth status" if isinstance(cause, AuthError) else None
+                ),
+                "suggested_fix": cause.suggested_fix,
+            }
+    except Exception as exc:
+        maintenance.update(status="failed", exit_code=1, error_type=type(exc).__name__)
+    if maintenance["status"] != "success":
+        maintenance["next_command"] = maintenance.get("help_command") or "xdr schema collect"
+        typer.echo(
+            "Session remains ended; schema collection " + maintenance["status"]
+            + ". See maintenance in the receipt for recovery details.", err=True,
+        )
+    return maintenance
+
+
 @session_app.command("end")
 def session_end(
     ctx: typer.Context,
@@ -118,10 +185,8 @@ def session_end(
         "--force",
         help="Override actor restriction. Required when XDR_ACTOR != 'operator'.",
     ),
-    prompt_feedback: bool = typer.Option(
-        False,
-        "--prompt-feedback",
-        help="After ending safely, interactively append analyst feedback.",
+    no_maintenance: bool = typer.Option(
+        False, "--no-maintenance", help="Skip schema upkeep for this session end only.",
     ),
 ) -> None:
     """End the current session.
@@ -167,6 +232,8 @@ def session_end(
     clear_current_session(s.id)
     receipt = {
         "status": "success",
+        "record_type": "session-end",
+        "ended": True,
         "session_id": s.id,
         "final_seq": final_seq,
         "end_reason": "explicit",
@@ -191,41 +258,36 @@ def session_end(
         },
     }
     typer.echo(json.dumps(receipt, separators=(",", ":")))
-
-    if prompt_feedback and ctx.obj.is_interactive:
-        selection = typer.prompt(
-            "Outcome",
-            type=click.Choice(
-                [
-                    "completed-smoothly",
-                    "completed-with-friction",
-                    "incomplete-blocked",
-                    "skip",
-                ],
-                case_sensitive=True,
-            ),
-            default="skip",
-            show_choices=True,
+    sys.stdout.flush()
+    maintenance = (
+        {"status": "skipped", "reason": "requested"}
+        if no_maintenance else _collect_after_explicit_end(ctx.obj)
+    )
+    incomplete = maintenance["status"] not in ("success", "skipped")
+    cancelled = maintenance["status"] == "cancelled"
+    terminal = {
+        "status": "partial" if incomplete else "success",
+        "record_type": "session-maintenance",
+        "session_id": s.id,
+        "maintenance": maintenance,
+    }
+    if incomplete:
+        failure = PartialSuccessError(
+            "Session ended durably; schema maintenance did not complete.",
+            help_command=maintenance["next_command"],
+            retry_after_seconds=maintenance.get("retry_after_seconds"),
+            original={key: value for key, value in maintenance.items() if key != "result"},
         )
-        if selection != "skip":
-            category = typer.prompt(
-                "Category",
-                type=click.Choice(
-                    ["none", *sorted(FEEDBACK_CATEGORIES)],
-                    case_sensitive=True,
-                ),
-                default="none",
-                show_choices=True,
-            )
-            comment = typer.prompt("Comment (optional)", default="")
-            append_session_feedback(
-                s.id,
-                source="analyst",
-                outcome=selection,
-                categories=[] if category == "none" else [category],
-                comment=comment or None,
-                input_mode="interactive-cli",
-            )
+        if cancelled:
+            failure.exit_code = 130
+            failure.error_code = "SESSION_SCHEMA_MAINTENANCE_CANCELLED"
+        terminal["error"] = json.loads(format_error_json(failure))["error"]
+    typer.echo(json.dumps(terminal, separators=(",", ":")))
+    sys.stdout.flush()
+    if incomplete:
+        # The terminal record already contains the structured error. A Click
+        # Exit would make the root boundary append a third legacy error row.
+        raise SystemExit(130 if cancelled else 14)
 
 
 @session_app.command("feedback")
