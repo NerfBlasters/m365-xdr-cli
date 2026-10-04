@@ -103,11 +103,13 @@ def test_library_discovery_is_native_and_artifact_first(tmp_path, monkeypatch):
         {
             "resource": "Microsoft Graph",
             "permission": "ThreatHunting.Read.All",
+            "application_permission": "ThreatHunting.Read.All",
             "path": "primary",
         },
         {
             "resource": "WindowsDefenderATP",
-            "permission": "AdvancedQuery.Read.All",
+            "permission": "AdvancedQuery.Read",
+            "application_permission": "AdvancedQuery.Read.All",
             "path": "fallback",
         },
     ]
@@ -798,3 +800,51 @@ async def test_transport_and_timeout_are_distinct(monkeypatch):
         await client._request("GET", transport, "/")
     except Exception as error:
         assert isinstance(error, TimeoutError)
+
+
+@pytest.mark.parametrize(
+    ("method", "url", "expected"),
+    [
+        (
+            "POST",
+            "https://api.security.microsoft.com/api/advancedqueries/run",
+            "WindowsDefenderATP / AdvancedQuery.Read (delegated) "
+            "or AdvancedQuery.Read.All (application)",
+        ),
+        (
+            "GET",
+            "https://graph.microsoft.com/v1.0/security/alerts_v2",
+            "Microsoft Graph / SecurityAlert.Read.All",
+        ),
+        (
+            "GET",
+            "https://graph.microsoft.com/v1.0/domains",
+            "Microsoft Graph / Domain.Read.All",
+        ),
+        (
+            "GET",
+            "https://api.security.microsoft.com/api/machines/abc",
+            "WindowsDefenderATP / Machine.Read (delegated) "
+            "or Machine.Read.All (application)",
+        ),
+        (
+            "GET",
+            "https://api.security.microsoft.com/api/machineactions/abc",
+            "WindowsDefenderATP / Machine.Read (delegated) "
+            "or Machine.Read.All (application)",
+        ),
+        (
+            "POST",
+            "https://api.security.microsoft.com/api/machines/abc/isolate",
+            "WindowsDefenderATP / Machine.Isolate",
+        ),
+    ],
+)
+def test_forbidden_hint_names_delegated_and_application_permissions(
+    method, url, expected
+):
+    client = XDRClient(get_token=lambda scopes: "token")
+    response = httpx.Response(403, json={}, request=httpx.Request(method, url))
+    with pytest.raises(ForbiddenError) as raised:
+        client._check_response(response)
+    assert raised.value.message == f"Insufficient permissions. Required scope: {expected}."

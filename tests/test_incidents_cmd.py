@@ -334,3 +334,54 @@ def test_incidents_update_lists_valid_statuses_on_bad_value(home):
     combined = (result.output or "") + (result.stderr or "")
     assert "invalid --status" in combined.lower()
     assert "resolved" in combined
+
+
+@pytest.mark.parametrize(
+    ("config_text", "argv", "expected"),
+    [
+        ("", [], 25),
+        ("default_limit = 7\n", [], 7),
+        ("default_limit = 7\n", ["--limit", "3"], 3),
+    ],
+)
+@patch("xdr_cli.commands.incidents_cmd.AuthManager")
+@patch("xdr_cli.commands.incidents_cmd.XDRClient")
+def test_incidents_list_limit_defaults_to_config(
+    mock_client_cls, mock_auth_cls, home, config_text, argv, expected
+):
+    (home / "config.toml").write_text(config_text)
+    seen: list[int] = []
+    mock_client = AsyncMock()
+
+    async def fake_paginate(*args, **kwargs):
+        seen.append(kwargs["limit"])
+        yield {"id": "1", "severity": "high", "status": "active"}
+
+    mock_client.paginate = fake_paginate
+    mock_client.close = AsyncMock()
+    mock_client_cls.return_value = mock_client
+    mock_auth_cls.return_value.get_token.return_value = "tok"
+
+    result = runner.invoke(app, ["incidents", "list", *argv])
+    assert result.exit_code == 0, result.output
+    assert seen == [expected]
+
+
+def test_incidents_list_rejects_invalid_default_limit(home):
+    (home / "config.toml").write_text('default_limit = "lots"\n')
+    result = runner.invoke(app, ["incidents", "list"])
+    assert result.exit_code == 4
+    assert "default_limit" in result.output
+
+
+def test_incidents_show_rejects_unknown_expand_before_api(home):
+    """Graph incidents only expand `alerts`; evidence ships inside each alert."""
+    with patch("xdr_cli.commands.incidents_cmd.XDRClient") as client_cls:
+        result = runner.invoke(
+            app, ["incidents", "show", "42", "--expand", "alerts", "--expand", "evidence"]
+        )
+    assert result.exit_code == 6, result.output
+    error = json.loads(result.stdout)["error"]
+    assert error["code"] == "CLI_INVALID_ENUM"
+    assert error["allowed"] == ["alerts"]
+    client_cls.assert_not_called()

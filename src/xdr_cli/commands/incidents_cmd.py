@@ -55,6 +55,7 @@ incidents_app = typer.Typer(
 )
 
 _VALID_SEVERITY = frozenset({"high", "medium", "low", "informational"})
+_VALID_EXPAND = frozenset({"alerts"})
 _VALID_INCIDENT_STATUS = frozenset({"active", "resolved", "redirected", "inProgress"})
 
 @incidents_app.command("list")
@@ -81,8 +82,9 @@ def incidents_list(
         None, "--since",
         help="Show incidents since (e.g., 7d, 24h, 30m).",
     ),
-    limit: int = typer.Option(
-        25, "--limit", "-l", help="Max results to return.",
+    limit: int | None = typer.Option(
+        None, "--limit", "-l",
+        help="Max results to return [default: default_limit in config.toml, 25].",
     ),
 ) -> None:
     """List incidents in the tenant (use --status to filter, e.g. --status active).
@@ -110,7 +112,7 @@ def incidents_list(
             status=status,
             assigned_to=assigned_to,
             since=since,
-            limit=limit,
+            limit=app_ctx.config.list_limit(limit),
         )
     )
 
@@ -188,11 +190,19 @@ def incidents_show(
     incident_id: str = typer.Argument(help="Incident ID."),
     expand: list[str] | None = typer.Option(
         None, "--expand", "-e",
-        help="Expand: alerts, evidence. Repeatable.",
+        help="Expand: alerts (each alert includes its evidence).",
     ),
 ) -> None:
     """Show incident details."""
     app_ctx: AppContext = ctx.obj
+    # Graph's security incident has a single navigation property; anything
+    # else is an HTTP 400, so reject it before spending a request.
+    expand = validate_filter_choices(
+        split_csv(expand),
+        _VALID_EXPAND,
+        option="--expand",
+        help_command="xdr incidents show --help",
+    )
     asyncio.run(_show(app_ctx, incident_id, expand=expand))
     # Auto-set the session's anchor_incident so subsequent recorded invocations
     # inherit it as their default. No-op if no active session.

@@ -1170,8 +1170,10 @@ def actor_needs_annotation(session: Session, actor: str) -> int | None:
     ``None`` if every invocation by ``actor`` already has a clearing annotation.
 
     "Unannotated" means: no annotation record in the session JSONL has
-    ``refers_to == seq``. The annotation's own ``actor`` is irrelevant — any
-    actor can clear another actor's gate by passing ``--refers-to``.
+    ``refers_to == seq``. Attempts the learning-mode gate refused
+    (``learning_gate_refused``) did no work and are never pending. The
+    annotation's own ``actor`` is irrelevant — any actor can clear another
+    actor's gate by passing ``--refers-to``.
 
     Single-pass O(N) scan over the JSONL. Acceptable on the gate hot path for
     small-to-medium sessions; revisit if learning-mode marathons surface as
@@ -1201,6 +1203,7 @@ def actor_needs_annotation(session: Session, actor: str) -> int | None:
                         rec.get("actor") == actor
                         and isinstance(seq, int)
                         and cmd not in _ANNOTATION_GATE_SKIP_COMMANDS
+                        and not rec.get("learning_gate_refused")
                     ):
                         actor_seqs.append(seq)
                 elif kind == "annotation":

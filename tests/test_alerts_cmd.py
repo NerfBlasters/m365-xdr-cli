@@ -142,3 +142,29 @@ def test_alert_show_reuses_session_for_two_alerts_in_same_incident(
     assert json.loads(first.stdout.splitlines()[0])["session_id"] == json.loads(
         second.stdout.splitlines()[0]
     )["session_id"]
+
+
+@patch("xdr_cli.commands.alerts_cmd.AuthManager")
+@patch("xdr_cli.commands.alerts_cmd.XDRClient")
+def test_alerts_list_limit_defaults_to_config(
+    mock_client_cls, mock_auth_cls, tmp_path, monkeypatch
+):
+    home = tmp_path / ".xdr-cli"
+    home.mkdir()
+    (home / "config.toml").write_text("default_limit = 9\n")
+    monkeypatch.setenv("XDR_CLI_HOME", str(home))
+    seen: list[int] = []
+    mock_client = AsyncMock()
+
+    async def fake_paginate(*args, **kwargs):
+        seen.append(kwargs["limit"])
+        yield {"id": "al-1", "title": "Test Alert", "severity": "high"}
+
+    mock_client.paginate = fake_paginate
+    mock_client.close = AsyncMock()
+    mock_client_cls.return_value = mock_client
+    mock_auth_cls.return_value.get_token.return_value = "tok"
+
+    result = runner.invoke(app, ["alerts", "list"])
+    assert result.exit_code == 0, result.output
+    assert seen == [9]

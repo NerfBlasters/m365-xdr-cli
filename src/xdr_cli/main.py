@@ -64,31 +64,27 @@ app.command("investigate")(investigate)
 app.command("annotate")(annotate)
 
 
-# Commands that modify state — logged to audit log
-_WRITE_COMMANDS = {
-    "isolate", "unisolate", "scan", "collect-package",
-    "restrict", "update", "login", "logout", "investigate",
+# Resolved command chains that modify state (plus `investigate`, for
+# traceability) — logged to the audit log when Click dispatches them. Matching
+# the resolved chain, not raw argv, means every syntax Click accepts (`--`,
+# clustered short flags, `--opt=value`) is covered and an argument that
+# happens to equal a command name is not.
+_WRITE_COMMANDS = frozenset({
+    "device isolate", "device unisolate", "device scan",
+    "device collect-package", "device restrict",
+    "incidents update",
+    "auth login", "auth logout",
+    "auth portal-login", "auth portal-cookie", "auth portal-logout",
+    "investigate",
     "lists init",
-    "portal-login", "portal-cookie", "portal-logout",
     "schema repair-overlay", "schema migrate-cache", "schema bundle import",
-}
+})
 
 
-def _matches_write_command(cmd: str, argv: list[str]) -> bool:
-    """Check whether ``cmd`` (possibly multi-token) appears as a contiguous
-    subsequence of ``argv``.
-
-    Multi-token entries like ``"lists init"`` need a contiguous-subsequence
-    match — plain ``cmd in argv`` only matches single argv tokens, so a
-    space-containing string would never match.
-    """
-    parts = cmd.split()
-    if len(parts) == 1:
-        return cmd in argv
-    return any(
-        argv[i:i + len(parts)] == parts
-        for i in range(len(argv) - len(parts) + 1)
-    )
+def _audit_dispatched_command(chain: str | None, argv: list[str]) -> None:
+    """Record a dispatched state-changing command, with secrets redacted."""
+    if chain in _WRITE_COMMANDS:
+        logging.getLogger("xdr.audit").info("CMD: %s", " ".join(_redact_argv(argv)))
 
 
 # Flags whose value is a secret and must never reach the session Recorder
@@ -138,12 +134,17 @@ def _is_help_invocation(argv: list[str]) -> bool:
     return any(t in ("--help", "-h") for t in argv)
 
 
-def _check_learning_mode_gate(invoked: str | None, argv: list[str]) -> None:
+def _check_learning_mode_gate(
+    invoked: str | None, argv: list[str], recorder: Recorder | None = None
+) -> None:
     """Block non-bypass commands when the actor has unannotated invocations
     in a learning-mode session.
 
     Per-actor isolation: actor A's unannotated invocation does not block
     actor B. The bypass set is matched against the TOP-LEVEL group only.
+
+    The refused attempt is still recorded, marked ``learning_gate_refused`` so
+    it never becomes the invocation the gate or ``annotate`` waits on.
     """
     if _is_help_invocation(argv):
         return
@@ -162,6 +163,8 @@ def _check_learning_mode_gate(invoked: str | None, argv: list[str]) -> None:
     if pending is None:
         return
 
+    if recorder is not None:
+        recorder.annotate("learning_gate_refused", True)
     raise ConflictError(
         f"Learning mode requires annotation of invocation {pending} for actor {actor!r}.",
         suggestions=[
@@ -385,6 +388,7 @@ def _capture_chain_from_leaf() -> None:
         names = names[1:]
     chain = " ".join(names) or None
     app_ctx.invoked_command = chain
+    _audit_dispatched_command(chain, list(sys.argv[1:]))
     if app_ctx.recorder is not None:
         app_ctx.recorder.invoked_command = chain
         # Annotate --rationale unconditionally on every recorded invocation.
@@ -461,7 +465,7 @@ def _capture_chain_from_leaf() -> None:
             file=sys.stderr,
         )
     _emit_schema_maintenance_advisory(app_ctx, chain)
-    _check_learning_mode_gate(chain, argv)
+    _check_learning_mode_gate(chain, argv, app_ctx.recorder)
 
 
 def _install_leaf_hook(typer_app: typer.Typer, *, _seen: set[int] | None = None) -> None:
@@ -581,11 +585,9 @@ def run() -> None:
     # Ensure config dir exists before audit log setup
     ensure_config_dir()
 
-    # Audit log write/action commands
-    audit = _setup_audit_log()
-    argv_str = " ".join(sys.argv[1:])
-    if any(_matches_write_command(cmd, sys.argv) for cmd in _WRITE_COMMANDS):
-        audit.info("CMD: %s", argv_str)
+    # Bind the audit log; the leaf hook writes to it once Click has resolved
+    # which command is being dispatched.
+    _setup_audit_log()
 
     # Install the leaf-callback hook that captures the resolved subcommand
     # chain on AppContext.invoked_command. Idempotent across run() calls.

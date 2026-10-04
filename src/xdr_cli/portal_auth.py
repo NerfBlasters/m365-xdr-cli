@@ -26,7 +26,8 @@ from xdr_cli.secret_files import atomic_write_secret
 # FOCI public client — Azure CLI. Chosen over Teams because Azure CLI has
 # http://localhost redirect URIs registered, which MSAL needs for interactive
 # (browser) auth. Both work for device-code flow. Sign-in logs will attribute
-# timeline activity to "Microsoft Azure CLI" — by design, see README.
+# timeline activity to "Microsoft Azure CLI" — by design, see
+# docs/device_timeline.md.
 PORTAL_CLIENT_ID = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"
 
 # Microsoft 365 Security Center resource. This is the audience the apiproxy
