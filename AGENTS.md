@@ -64,6 +64,11 @@ Otherwise proceed with the CLI reference below.
     raw-JSONL compatibility, refuses existing paths, and requires `--force`
     for intentional replacement.
     See `docs/device_timeline.md` for portal-auth and attribution caveats.
+14. Cookie mode (`--backend portal-cookie`) accepts only numeric incident IDs,
+    a 40-hex `MachineId` for device reads and `--device`, GUID action IDs, and
+    `--expand alerts` as the sole incident expansion; unsupported operations
+    return `BACKEND_CAPABILITY_UNAVAILABLE` (exit 3) and never fall back to
+    MSAL.
 
 ### Backend selection
 
@@ -71,8 +76,14 @@ The default `auto` preference uses official auth when configured app credentials
 or matching MSAL token material exist; with only a tenant-bound cookie store,
 commands select cookie mode automatically. `--backend official|portal-cookie`
 overrides config, and an explicit `api_backend` setting pins the choice.
-`auth status` reports the selected backend and preference. Selection is local,
-not a session-validity check. Do not retry a failed write under another backend.
+`auth status` reports the selected backend and preference, but its shape differs
+by backend: on official, `backend`, `backend_preference`, `configured`, and
+`authenticated` are nested under `main` (with a sibling `portal` object); in
+cookie mode `backend`, `backend_preference`, `capabilities`,
+`validation_caveats`, and `full_parity` are top-level, there are no
+`configured`/`authenticated` keys, and `portal.session_validity` is
+`"not_checked"`. Selection is local, not a session-validity check. Do not retry
+a failed write under another backend.
 
 ### JSON-string column expansion
 
@@ -112,7 +123,7 @@ Successful artifact-first reads—`xdr domains list`, `xdr hunt run`, library `l
 default `xdr device timeline`—emit at most three compact JSON lines:
 
 ```json
-{"status":"success","run_id":"...","data_path":"/.../run.jsonl","meta_path":"/.../run.meta.json","rows":247,"server_truncation_state":"unknown","session_id":"jd-47","session_attachment":"single-active","context":{"shown":2,"total":247,"has_more":true,"results_command":"xdr results rows RUN_ID --offset 0 --limit 100","next_command":"xdr results rows RUN_ID --offset 0 --limit 100"}}
+{"status":"success","schema_version":1,"run_id":"...","data_path":"/.../run.jsonl","meta_path":"/.../run.meta.json","rows":247,"server_truncation_state":"unknown","execution_time_ms":1537,"session_id":"jd-47","session_label":null,"session_attachment":"single-active","incident_id":null,"alert_id":null,"context":{"shown":2,"total":247,"has_more":true,"results_command":"xdr results rows RUN_ID --offset 0 --limit 100","next_command":"xdr results rows RUN_ID --offset 0 --limit 100"}}
 {"Timestamp":"...","DeviceName":"host1"}
 {"Timestamp":"...","DeviceName":"host2"}
 ```
@@ -170,6 +181,7 @@ commands.
 | 12 | Artifact | Local result serialization or I/O failure |
 | 13 | Conflict | Existing state or failed precondition |
 | 14 | Partial success | Durable result exists but suboperations failed |
+| 130 | Cancelled | Interrupted with Ctrl-C/SIGINT (POSIX convention) |
 
 ## 5. Rate-limit behavior
 
@@ -179,14 +191,25 @@ The Defender advanced-hunting API separately enforces a 10-minute-per-hour CPU q
 
 ## 6. Audit log
 
-All audit-logged commands are recorded to `~/.xdr-cli/audit.log`: `incidents update` and the device actions change state, while `auth login`/`logout` and `investigate` are logged for traceability without mutating device or incident state (`investigate` is read-only — it only reads and recommends). When an agent executes `incidents update` (the one permitted write command, with explicit human authorization), it should mention in its summary that the action was recorded.
+`~/.xdr-cli/audit.log` records every dispatched state-changing command with
+redacted argv: the device response actions (`isolate`, `unisolate`, `restrict`,
+`unrestrict`, `scan`, `collect-package`), `incidents update`, `auth
+login`/`logout`/`portal-login`/`portal-cookie`/`portal-logout`, `lists init`,
+`schema repair-overlay`/`migrate-cache`/`bundle import`, and `investigate`
+(read-only, logged for traceability). The line is written when Click dispatches
+the command, before it runs, so `--dry-run` and declined confirmations appear
+too; `--help` and argument errors do not, and outcomes are not recorded. When an
+agent executes `incidents update` (the one permitted write command, with
+explicit human authorization), it should mention in its summary that the
+attempt was recorded.
 
 ## 7. Tenant domains
 
 Use `xdr domains list` to retrieve source-labelled domain records as private JSONL.
-With portal-cookie auth, the default combines Entra tenant domains and AD domains
-observed by Defender for Identity. Rows contain `source` (`entra` or
-`active-directory`), `name`, and native provider fields. Same-named domains from
+`--source all` is the default; with portal-cookie auth it combines Entra tenant
+domains and AD domains observed by Defender for Identity. Rows contain `source`
+(`entra` or `active-directory`), `name`, and native provider fields. Same-named
+domains from
 different sources remain separate. Entra rows retain `isVerified`, `isDefault`
 and `authenticationType`; AD rows retain `dnsName`, `sid`, `distinguishedName`,
 `functionality` and `isDeleted`. Do not infer tenant verification from an AD row.
@@ -197,9 +220,11 @@ xdr domains list --source entra
 xdr --backend portal-cookie domains list --source active-directory
 ```
 
-The official backend supports Entra only: default combined listing returns its
-durable results plus exit 14 for unavailable AD coverage; `--source entra` makes
-that scope explicit and succeeds normally. AD reads have a 100-record cap until
+The official backend supports Entra only: the default combined listing returns
+its durable Entra results plus exit 14 for unavailable AD coverage; `--source
+entra` makes that scope explicit and succeeds normally; `--source
+active-directory` fails before any request with `BACKEND_CAPABILITY_UNAVAILABLE`
+(exit 3), not exit 14. AD reads have a 100-record cap until
 a continuation contract is verified. Inspect receipt `context.sources` for
 source failures, native `has_more`, and count discrepancies; incomplete reads
 preserve useful records and return exit 14. MDI visibility is not exhaustive
@@ -236,7 +261,8 @@ cached string/dynamic locators (100 by default; every locator only with
 `--exhaustive`), batches targets, stores only value-free observations in the
 tenant overlay, and returns exit 14 after useful partial completion. It
 preserves rare-first source ordering and excludes tables without a cached
-`Timestamp` rather than labeling an unbounded query with `--lookback`.
+`Timestamp` or `TimeGenerated` column rather than labeling an unbounded query
+with `--lookback`.
 Explicit `--from-file`/`--from-stdin` seeds are retained only in a zero-preview
 private result bundle and are flagged as operator-supplied evidence requiring
 origin review; concrete values never enter the tenant overlay.
@@ -257,8 +283,10 @@ availability separately with `schema refresh`.
 Local discovery recovers direct field origins from saved KQL, including projections,
 aliases, nested properties and direct summary grouping keys. Unsupported query
 shapes and low-information values are reported as coverage gaps. Repeated runs
-verify artifact integrity but avoid reparsing/reindexing unchanged data. Local
-historical overlaps are observed pivots, never blanket join assertions. Validation
+verify artifact integrity but avoid reparsing/reindexing unchanged data. A local
+historical overlap becomes an `observed` pivot only with at least three distinct
+eligible shared identifiers; weaker overlaps and private-address-only matches
+stay `candidate`, and none is a blanket join assertion. Validation
 reuses fresh results for one day; exit 14 after a query-budget pause means rerun
 collection to continue. Collection does not install a background scheduler.
 A periodic maintenance advisory may appear on stderr; it never changes stdout
@@ -266,8 +294,8 @@ JSON, and explicit `--quiet` suppresses it.
 
 Status reports byte integrity separately from packaged semantic-contract
 compatibility. Follow its exact recovery command: `xdr schema repair-overlay
---yes` quarantines and migrates compatible legacy overlay state, while `xdr
-schema migrate-cache --yes` content-binds a structurally valid pre-digest
+--yes` quarantines and migrates compatible older-format overlay state, while
+`xdr schema migrate-cache --yes` content-binds a structurally valid pre-digest
 physical cache without contacting the tenant. Use `xdr schema diagnostics` to
 identify the running build and registered capabilities. Portable state moves
 through `xdr schema bundle inspect/export/import`; inspect is always read-only,
@@ -287,19 +315,20 @@ bindings, and fails closed on any mismatch. It never modifies the core graph. Ne
 command approves a relationship or establishes join safety. Correlation
 receipts point
 to `xdr results rows RUN_ID --type relationship-path-match`, which supports
-bounded filtering and offsets for large private graphs. Normal
-`xdr results prune` preserves graph- and live-proposal-referenced evidence;
-retire old overlay references with `xdr schema prune-evidence --older-than DAYS
---yes`, and delete merged or abandoned proposal drafts before pruning their
-evidence.
+bounded filtering and offsets for large private graphs. `xdr results prune
+--older-than DAYS --yes` deletes eligible old results and retires the automatic
+discovery evidence (local-overlap, local-validation, identifier-search) that
+referenced them; explicit `schema observe` observations and live
+`candidate-proposal` drafts remain protected. Delete merged or abandoned
+proposal drafts before pruning their evidence.
 
 ## 9. Sessions
 
 Sessions track local investigation telemetry. Explicit session end also runs
 the configured tenant schema maintenance; startup and ordinary session attachment
 do not gate investigation work on maintenance.
-`hunt run`, `library run`, `schema observe`, `schema candidate-review`,
-`investigate`, and alert/incident `show`
+`hunt run`, `hunt library-run`, `library run`, `schema observe`,
+`schema candidate-review`, `investigate`, `incidents show`, and `alerts show`
 auto-create a session when none exists; other commands may attach to exactly
 one existing session but do not create one. Inactivity expires a session after
 30 minutes by default. Incident/alert anchors win over generic attachment.
@@ -332,7 +361,6 @@ For session env vars (`XDR_SESSION`), parallel sub-agents (`XDR_ACTOR`), learnin
 - `docs/investigation.md` — investigation methodology, KQL authoring, presenting findings
 - `docs/sessions.md` — session env vars, parallel sub-agents, learning mode mechanics
 - `playbooks/` — per-alert-type investigation playbooks
-- `docs/schema_pivots.md` — KQL table/column reference (~80 tables)
-- `docs/schema_graph.md` — semantic pivots, paths, probes, and offline correlation
-- `docs/schema_probe.md` — about the `sys_schema_probe` library query
+- `docs/schema_pivots.md` — KQL table/column reference (~80 tables); its "Regenerating this file" section covers the `sys_schema_probe` library query
+- `docs/schema_graph.md` — see this for the schema workflow (semantic pivots, paths, probes)
 - `src/xdr_cli/queries/` — library query source

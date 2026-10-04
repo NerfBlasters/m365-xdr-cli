@@ -20,9 +20,9 @@ request is made.
 
 | Command | Description |
 |---|---|
-| `xdr auth portal-login` | Retired; directs callers to portal-cookie |
+| `xdr auth portal-login` | Returns a usage error directing callers to `portal-cookie` |
 | `xdr auth portal-cookie` | Authenticate to the unofficial Defender portal API via browser cookies |
-| `xdr auth portal-logout` | Clear cached portal credentials (MSAL cache + cookie store) |
+| `xdr auth portal-logout` | Clear portal cookies and the portal token cache; official tokens are preserved |
 | `xdr device timeline DEVICE` | Download device timeline (unofficial API) |
 
 ## Quick start
@@ -40,18 +40,25 @@ uses that signed-in user's portal permissions. Audit attribution must be
 verified in your tenant; a local auth-status label is not evidence of the
 actual sign-in or activity-log attribution.
 
-`xdr auth portal-login` is retired. Its Microsoft preauthorization flow was
-not validated and no longer initiates sign-in.
+`xdr auth portal-login` does not sign in; it returns a usage error pointing
+at `portal-cookie`. The `--refresh-token` path redeems the token as the
+"Microsoft Azure CLI" client, so sign-in logs attribute that activity to
+Azure CLI.
 
 ## Portal credentials
 
 With `--backend portal-cookie`, timeline requires stored cookies;
-`--refresh-token` is rejected and no portal OAuth cache is selected. The default
-official backend retains the legacy timeline credential precedence: explicit
-refresh token, stored cookies, then an existing portal OAuth cache. These legacy
-token paths do not establish cookie-backend compatibility.
+`--refresh-token` (and `MDE_REFRESH_TOKEN`) is rejected, and the portal token
+cache is never consulted. The default official backend selects a credential
+in this order: an explicit refresh token, stored cookies, then an account in
+`~/.xdr-cli/portal_token_cache.json` (a token cache left by a sign-in flow
+this release does not offer; `auth portal-logout` deletes it). Neither token
+path is available under the cookie backend.
 
 ### 1. `xdr auth portal-cookie COOKIE_SOURCE` (recommended, validated)
+
+The canonical capture walkthrough and backend limits live in
+[portal_cookie.md](portal_cookie.md); this section is the short form.
 
 Reuses your existing logged-in security.microsoft.com browser session. It
 takes the **whole** browser Cookie header from a file (or `-` for stdin) and
@@ -98,21 +105,24 @@ Options:
   containing no `sccauth` cookie is rejected and left untouched (nothing is
   stored).
 
-### 2. `xdr auth portal-login` (retired)
+### 2. `xdr auth portal-login`
 
-Returns a migration error directing callers to `portal-cookie`, without
+Returns a usage error directing callers to `portal-cookie`, without
 contacting Microsoft or changing the configured tenant.
 
 ### 3. `--refresh-token` (env `MDE_REFRESH_TOKEN`)
 
-For CI/non-interactive use: redeems a pre-obtained FOCI refresh token instead
-of stored portal auth. It wins over any stored cookie or MSAL state.
+For CI/non-interactive use on the official backend: redeems a pre-obtained
+FOCI refresh token instead of stored portal auth. It wins over any stored
+cookie or MSAL state. Under `--backend portal-cookie` it is rejected as a
+configuration error.
 
 ### Clearing portal credentials
 
-`xdr auth portal-logout` removes both `~/.xdr-cli/portal_token_cache.json` and
-`~/.xdr-cli/portal_cookies.json`. It does not touch the main
-`~/.xdr-cli/token_cache.json` used by `xdr auth login`/`xdr auth logout`.
+`xdr auth portal-logout` removes both `~/.xdr-cli/portal_cookies.json` and
+the portal token cache `~/.xdr-cli/portal_token_cache.json`. It does not
+touch the main `~/.xdr-cli/token_cache.json` used by `xdr auth login`/`xdr
+auth logout`.
 Missing files are a no-op.
 
 ## Secret handling
@@ -145,7 +155,7 @@ itself is still best avoided. The environment variable never enters argv.
 | `--gzip`, `-z` | Gzip the output file (`.jsonl.gz`). Requires `--output`. |
 | `--force` | Replace an existing `--output` path; replaces a symlink entry, never its target. Requires `--output`. |
 | `--page-size N` | Events per request (min 1; default 1000; max 1000). |
-| `--refresh-token` | CI/non-interactive FOCI refresh token (env `MDE_REFRESH_TOKEN`). |
+| `--refresh-token` | CI/non-interactive FOCI refresh token (env `MDE_REFRESH_TOKEN`). Official backend only; rejected under `--backend portal-cookie`. |
 
 ### Time window
 
@@ -166,15 +176,15 @@ server-side.
 
 ### Resolution and output
 
-The official backend resolves devices through the MDE `machines` API;
-stored-cookie timeline runs also verify a supplied MachineId there.
-
-With `xdr --backend portal-cookie device timeline DEVICE`, the client instead
-verifies authenticated portal tenant context and the exact MachineId using
-portal requests. App registration and MSAL credentials are not required. Supply
-a 40-hex MachineId or an exact, unambiguous hostname. Hostname lookup searches
-the portal inventory over 180 days and rejects ambiguous matches. Timeline
-events continue through the existing portal streaming adapter.
+Device resolution runs through the selected backend's inventory. The official
+backend resolves a hostname through the MDE `machines` API and, when stored
+cookies supply the credential, also verifies a supplied MachineId there. With
+`xdr --backend portal-cookie device timeline DEVICE`, tenant verification,
+MachineId verification, and hostname lookup all use portal requests (an exact,
+unique match in the portal inventory's 180-day view); no app registration or
+MSAL credentials are required. On either backend an ambiguous hostname is
+rejected with the candidate MachineIds. Timeline events stream through the
+same portal adapter.
 
 With no `--output`, the complete stream is atomically registered under
 `~/.xdr-cli/results/` and stdout is a receipt plus at most two preview rows.
@@ -192,9 +202,12 @@ This is a read-only command: it does not modify device state.
 ## Identifiers & Advanced Hunting cross-reference
 
 The `device` argument is either a **`DeviceName`** (hostname) or a 40-hex
-**`DeviceId`** (MachineId). A hostname is resolved to its MachineId via the
-official MDE `machines` API. A 40-hex value is normally used directly; stored
-cookie auth verifies it through the configured official tenant first.
+**`DeviceId`** (MachineId). A hostname is resolved to its MachineId by an
+exact, unambiguous match in the selected backend's inventory: the MDE
+`machines` API on the official backend, the portal inventory (180-day view)
+under `--backend portal-cookie`. A 40-hex value is normally used directly;
+when stored cookies supply the credential, the selected backend confirms it
+first, and a mismatch is a conflict error.
 
 **The portal timeline's `MachineId` is the same identifier as Advanced
 Hunting's `DeviceId`** (verified against live tenant data), and the hostname
@@ -234,16 +247,19 @@ DeviceProcessEvents
 - **Rate limits apply.** Large windows against busy devices can hit portal-side
   throttling; use `--hours` where practical. Page size is tunable via
   `--page-size` (default 1000, max 1000) if you need to retune request cadence.
-- **Coordinate with your SOC before relying on this in production.** The
-  combination of "Microsoft Azure CLI" client + a non-browser (Python)
-  user agent is a pattern some detection content specifically flags as
-  suspicious. Loop in whoever tunes your Entra/Defender detections before
-  running this against a real tenant, especially at scale.
+- **Coordinate with your SOC before relying on the refresh-token path in
+  production.** `--refresh-token`/`MDE_REFRESH_TOKEN` redeems the token as
+  the "Microsoft Azure CLI" client, and that client plus a non-browser
+  (Python) user agent is a pattern some detection content specifically flags
+  as suspicious. Loop in whoever tunes your Entra/Defender detections before
+  running it against a real tenant, especially at scale.
 - **Check your organization's policy on first-party-app impersonation.**
-  Authenticating as the Azure CLI's own client ID to reach an API it wasn't
-  built for is exactly what "impersonating a first-party Microsoft app", a
-  practice some organizations explicitly forbid, means. If in doubt, use
-  `portal-cookie` instead, or don't use this feature.
+  This applies only to the `--refresh-token`/`MDE_REFRESH_TOKEN` path; there
+  is no interactive portal OAuth sign-in, and `portal-cookie` reuses your own
+  browser session. Authenticating as the Azure CLI's own client ID to reach an
+  API it wasn't built for is exactly what "impersonating a first-party
+  Microsoft app", a practice some organizations explicitly forbid, means. If
+  in doubt, use `portal-cookie` instead, or don't use the refresh-token path.
 
 ## Related
 

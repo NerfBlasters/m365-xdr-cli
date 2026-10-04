@@ -10,6 +10,33 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.13.1] - 2026-10-04
+
+Second documentation pass for a reader arriving fresh at the public repository.
+
+### Changed
+
+- README leads with the two sign-in paths and presents the portal cookie as
+  the quick start (no app registration or admin consent); the Entra app
+  registration follows as the supported path. The cookie backend's
+  undocumented-interface and credential caveats now precede its setup steps.
+- README states that the schema graph and sessions are optional, what an
+  explicit `session end` costs, and how to keep it offline.
+- `docs/portal_cookie.md` rewritten newcomer-first: capture and import steps,
+  what works in cookie mode and its input limits, backend selection, known
+  gaps, and error codes.
+- Corrected against source: `unrestrict` requires `--comment`; exit 2 in
+  cookie mode is fixed by re-importing a cookie, not `auth login`; the
+  `auth status` shape differs by backend; `results prune` retires automatic
+  graph evidence; `observe` accepts `TimeGenerated`; the auto-session command
+  set; the audit-log scope; missing run IDs report `RESULT_NOT_FOUND`;
+  unknown `--tier` is a usage error; declined confirmations exit 13.
+- Documented every `xdr schema` flag that had no mention, `--backend`,
+  `api_backend`, `portal_token_cache.json`, `action_associations/`, and the
+  cookie-backend error codes in the troubleshooting reference.
+- `docs/schema_probe.md` folded into `docs/schema_pivots.md`; the browser
+  cookie renewal proposal moved to `docs/proposals/`.
+
 ## [0.13.0] - 2026-10-04
 
 Experimental portal-cookie authentication, a shared API backend interface, and

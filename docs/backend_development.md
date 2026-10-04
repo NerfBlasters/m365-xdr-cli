@@ -40,6 +40,6 @@ bounds and row handling in the collection implementation. Do not decode and
 re-encode opaque cursor query strings.
 
 Timeline streaming retains its existing `PortalClient` and `PortalAuthStrategy`
-interface for both stored cookies and legacy portal OAuth. Device resolution
-before streaming uses `Backend` with enrichment disabled. Browser renewal is a
-separate proposal and is not part of this interface change.
+interface for stored cookies and an existing `portal_token_cache.json`. Device
+resolution before streaming uses `Backend` with enrichment disabled. Browser
+renewal is a separate proposal and is not part of this interface change.

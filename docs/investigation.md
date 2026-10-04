@@ -40,16 +40,18 @@ For multi-step investigations, render a markdown checklist to give the analyst v
 
 Follow a **triage-ladder** pattern. Each step informs the next; don't skip ahead.
 
-0. **Let the CLI attach telemetry.** `hunt run`, `library run`, `investigate`,
-   and alert/incident `show` automatically create an optional 30-minute
-   session when none exists. Other commands may attach to one existing session
-   but do not create one. Session ambiguity never blocks evidence collection.
+0. **Let the CLI attach telemetry.** `hunt run`, `hunt library-run`,
+   `library run`, `schema observe`, `schema candidate-review`, `investigate`,
+   `incidents show`, and `alerts show` automatically create an optional
+   30-minute session when none exists. Other commands may attach to one
+   existing session but do not create one. Session ambiguity never blocks
+   evidence collection.
    Use manual `session start` only for deliberate labels, learning mode, or
    concurrent work. If you end a session, follow its `next_action` with a
    truthful agent assessment.
 1. **Establish the alert/incident.** Start from whatever the analyst gives you — an incident ID, an alert, a device name, a user, or a hash. Pivot to the incident or alert to anchor the timeline.
    - **Check for a playbook.** Once you know the alert title, read `playbooks/index.md` and match against the alert title column. If a playbook is listed, read it now — it provides alert-specific steps, tables, pivots, and false-positive guidance that tailor the remaining steps below.
-> **Shortcut:** `xdr investigate <incident_id>` wraps steps 2–5 into one command — it extracts entities from alerts, runs relevant library queries, and saves a normalized triage-ladder JSONL artifact. Parse the receipt's `data_path`; stdout contains only the receipt and up to two previews. Containment recommendations in the artifact only appear when severity is high AND classification is not false-positive/informational. Use this when you want automated triage; use the manual steps below when you need finer control.
+> **Shortcut:** `xdr investigate <incident_id>` wraps steps 2–5 into one command — it extracts entities from alerts, runs relevant library queries, and saves a normalized triage-ladder JSONL artifact. Parse the receipt's `data_path`; stdout contains only the receipt and up to two previews. Without `--auto-enrich`, `investigate` prompts "Run which queries?" on a TTY (a number, `a` for all, `n` for none) and runs every suggested enrichment query when not interactive. Containment recommendations in the artifact only appear when severity is high AND classification is not false-positive/informational. Use this when you want automated triage; use the manual steps below when you need finer control.
 
 2. **Extract evidence from alerts.** Use `--expand alerts` to pull file hashes, device IDs, user accounts, IPs, verdicts, and timestamps. This often answers key questions without additional hunting.
 3. **Build the timeline.** Query for activity in a tight window around the alert's `firstActivityDateTime`. Include the right tables for the event type (e.g., `DeviceEvents` for AV detections, `EmailEvents` for mail, `DeviceLogonEvents` for logons).
@@ -81,8 +83,8 @@ Every custom query should:
 4. **Control output width — but don't discard blindly.** Use `| project` when
    you know which columns matter. For exploratory queries, inspect the two
    preview rows or run `xdr results shape <run-id>`, then use `rg` or `jq -s`
-   over the saved JSONL without rerunning. The CLI no longer has projection
-   flags.
+   over the saved JSONL without rerunning. There are no projection flags;
+   filter the artifact with `jq`.
 
 ### KQL pitfalls
 

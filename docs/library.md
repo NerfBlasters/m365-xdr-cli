@@ -4,8 +4,9 @@ The library is a catalog of packaged Advanced Hunting (KQL) queries that
 ship inside the CLI. Each entry is one `.kql` file under
 `src/xdr_cli/queries/` with a short `-- key: value` front-matter header
 that declares its name, description, tier, parameters, and the reference
-lists it consumes. The CLI currently ships 69 such files, and you can add
-your own (see [Custom queries](#custom-queries)).
+lists it consumes. The CLI ships 69 files: 66 hunting queries plus 1 utility
+(`sys_schema_probe`) and 2 deprecated aliases. You can add your own (see
+[Custom queries](#custom-queries)).
 
 ## Commands
 
@@ -18,14 +19,15 @@ your own (see [Custom queries](#custom-queries)).
 | Render the resolved KQL without running it | `xdr hunt library-show NAME -p key=value` |
 | Run an entry | `xdr library run NAME -p key=value [-p key=value ...]` |
 | Raise the per-call API timeout | `xdr library run NAME --timeout 240` |
-| Keep JSON-string columns unexpanded | `xdr library run NAME --raw` |
+| Keep JSON-string columns unexpanded | `xdr library run NAME --raw` (ad-hoc KQL: `xdr hunt run --raw`) |
 | Print the KQL a run actually sent | `xdr results query <run-id>` |
 
 Notes:
 
 - `--search` is a case-insensitive substring match against the entry name
-  and description. `--tier` must be one of the tiers present in the catalog
-  (an unknown value is rejected with an `invalid` receipt).
+  and description. `--tier` must be one of the tiers present in the catalog;
+  an unknown value is a usage error (exit 6, `CLI_USAGE_ERROR`) whose
+  `allowed` field lists the valid tiers.
 - `-p/--param` is repeatable. Pass one `key=value` per flag; values are not
   comma-separated. A parameter name the query does not declare is rejected
   rather than silently dropped, so a typo such as `accont_upn=` cannot turn
@@ -40,8 +42,9 @@ Notes:
   `LIBRARY_UNKNOWN_PARAM` (undeclared name, or an item without `=`),
   `LIBRARY_MISSING_PARAM` (a required parameter was omitted), or
   `LIBRARY_INVALID_PARAM` (the value fails its type or format check, including
-  dates, durations, and integers). Each carries a `help_command` pointing at
-  `xdr library show NAME`. Problems in a query file's own KQL, such as a
+  dates, durations, and integers). `LIBRARY_UNKNOWN_ENTRY` carries a
+  `help_command` of `xdr library list --search NAME`; the other three point
+  at `xdr library show NAME`. Problems in a query file's own KQL, such as a
   placeholder placed inside a comment or a verbatim literal, are authoring
   errors rather than parameter errors and are reported as `QUERY_ERROR`. Empty scope
   defaults only mean "match all" when the query implements that condition;
@@ -133,8 +136,8 @@ the query declares them.
 | `qry_file_access_detail` | pivot | Specific files downloaded or synced by an account — identifies targeted access to sensitive content | `account_oid`*, `start`*, `end`*, `mode` =detail |
 | `qry_file_hash_scope` | pivot | Find all devices with a specific file hash | `sha256`*, `hours` =720, `mode` =detail |
 | `qry_inbox_rule_activity` | r1 | Exchange rule changes (inbox + transport + mailbox forwarding) with extracted predicates, forwarding-destination classification, and BEC-specific scoring | `hours` =168, `account_upn`, `mode` =summary |
-| `qry_inbox_rule_audit` | **deprecated** (alias of `qry_inbox_rule_activity`) | Deprecated; use qry_inbox_rule_activity. | — |
-| `qry_inbox_rule_triggers` | **deprecated** (alias of `qry_inbox_rule_activity`) | Deprecated; use qry_inbox_rule_activity. | — |
+| `qry_inbox_rule_audit` | **deprecated** (alias of `qry_inbox_rule_activity`) | Deprecated; use qry_inbox_rule_activity. | `hours` =168, `account_upn`, `mode` =summary (the target's) |
+| `qry_inbox_rule_triggers` | **deprecated** (alias of `qry_inbox_rule_activity`) | Deprecated; use qry_inbox_rule_activity. | `hours` =168, `account_upn`, `mode` =summary (the target's) |
 | `qry_mailbox_delegation` | n | Exchange mailbox delegation grants — FullAccess / SendAs / SendOnBehalf, with internal/external delegate classification | `hours` =168, `account_upn`, `mode` =summary |
 | `qry_oauth_app_info` | pivot | OAuth app registration details — app name, service principal ID, and owner tenant (first-party vs third-party) | `app_id`*, `mode` =detail |
 | `qry_oauth_consent` | pivot | Who consented to an OAuth app and from where — identifies suspicious or coerced consent events | `app_id`*, `start`*, `end`*, `mode` =detail |
