@@ -152,12 +152,12 @@ registration can be shared by everyone on the team.
 
 The signed-in user also needs the Defender roles that match what they run
 (Security Reader for triage; *Active remediation actions* for device
-actions). The app registration cannot grant more than the user has. For
-`xdr domains list`, Microsoft Graph also requires the signed-in user to hold
-a directory role that can read domains, such as Global Reader or Domain Name
-Administrator ([List domains](https://learn.microsoft.com/en-us/graph/api/domain-list));
-without one the call fails with `PERMISSION_MISSING_SCOPE` even when
-`Domain.Read.All` is consented.
+actions). The app registration cannot grant more than the user has.
+
+If you add a permission after signing in, run `xdr auth logout && xdr auth
+login` afterwards. Until then `xdr` keeps using the cached access token
+issued before the change, and the new permission fails with
+`PERMISSION_MISSING_SCOPE` until that token expires (up to about 90 minutes).
 
 ## Quick start
 

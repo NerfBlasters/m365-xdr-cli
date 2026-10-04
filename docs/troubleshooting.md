@@ -220,18 +220,19 @@ If the flow stalls or the code is rejected:
 The token lacks a required scope, or the permission exists on the app
 registration but has not been consented. Re-check the API permissions
 table in the README and click **Grant admin consent for [tenant]**.
-Permissions take effect only after consent, and existing cached tokens do
-not pick up new scopes until you `xdr auth logout && xdr auth login`.
+Permissions take effect only after consent, and the cached access token
+does not pick up a newly consented scope: silent sign-in keeps returning the
+token issued before the change until it expires (up to about 90 minutes).
+Run `xdr auth logout && xdr auth login` to start using the new permission
+immediately. This is the usual cause when the error persists right after
+you have added and consented the permission.
 
 The error's `message` names the required permission when the CLI knows the
 endpoint (for example `ThreatHunting.Read.All` or `Machine.Isolate`). Where
 the delegated and application names differ, both are given, e.g.
 `Machine.Read (delegated) or Machine.Read.All (application)`. A 403 can also
-come from a missing role for the signed-in user; that is reported the same
-way. Check `original.type`: Graph's `Authorization_RequestDenied` with a token
-that already carries the scope usually means a role is missing. For example,
-`xdr domains list` needs a directory role that can read domains (Global Reader
-or Domain Name Administrator) in addition to `Domain.Read.All`.
+come from a missing Defender role for the signed-in user; that is reported
+the same way.
 
 `PERMISSION_DENIED` (also exit 7) is local: `xdr session end` refuses to end
 a session for a non-`operator` `XDR_ACTOR` unless `--force` is given.
