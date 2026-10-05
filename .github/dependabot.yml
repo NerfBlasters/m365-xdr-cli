@@ -1,5 +1,15 @@
 version: 2
 updates:
+  - package-ecosystem: npm
+    directory: /website
+    cooldown:
+      default-days: 7
+    schedule:
+      interval: weekly
+    groups:
+      website:
+        patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     cooldown:

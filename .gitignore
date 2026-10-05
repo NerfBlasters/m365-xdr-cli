@@ -32,3 +32,11 @@ xdr-device-timeline-test-*.json
 
 # Private design and planning documents are excluded from this repository.
 /docs/superpowers/
+
+# Website build inputs and outputs (canonical docs stay in their existing paths).
+/website/node_modules/
+/website/.astro/
+/website/dist/
+/website/src/content/docs/
+/website/public/media/
+/website/test-results/

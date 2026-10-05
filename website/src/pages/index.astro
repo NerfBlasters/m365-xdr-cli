@@ -1,0 +1,203 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+const install = 'pipx install "git+https://github.com/NerfBlasters/m365-xdr-cli.git"';
+const debutSession = 'https://web.cvent.com/event/085f4a29-b31d-4ed2-8359-eff167fab504/websitePage:7d595276-28d3-48c2-861c-bce0903d325b?session=0d88d202-485d-4d90-a1fb-5d86edc7df99&shareLink=true';
+const destinations = [
+  ['01', 'Installation and setup', 'Install xdr-cli and connect it to your Defender tenant.', '/docs/getting-started/'],
+  ['02', 'Query library', 'Find a hunting query and check which parameters it needs.', '/docs/library/'],
+  ['03', 'Investigation playbooks', 'Look up an alert title for investigation steps and common false positives.', '/docs/playbooks/'],
+  ['04', 'AI assistants', 'Set up an agent to use xdr-cli and read its results.', '/docs/agents/'],
+];
+---
+<StarlightPage frontmatter={{ title: 'Defender XDR for your coding agent', description: 'xdr-cli is built for AI agents to investigate Microsoft Defender XDR incidents, with advanced hunting, investigation playbooks, and compact results.', template: 'splash' }}>
+  <div class="landing" data-pagefind-body>
+    <nav class="section-nav" aria-label="Explore xdr-cli"><a href="/docs/getting-started/">Get started</a><a href="/docs/">Documentation</a><a href="/docs/playbooks/">Playbooks</a><a href="https://github.com/NerfBlasters/m365-xdr-cli">View source <span aria-hidden="true">↗</span></a></nav>
+    <aside class="debut-banner" aria-label="WWHF debut">
+      <span class="debut-badge" aria-hidden="true">WWHF<br />2026</span>
+      <div class="debut-copy"><p class="debut-title">Debuting at Wild West Hackin’ Fest</p><p class="debut-details"><time datetime="2026-10-09T13:35:00-06:00">October 9, 2026 · 1:35 PM MT</time> · Tool Shed Talks</p></div>
+      <a class="text-link" href={debutSession}>View the debut session <span aria-hidden="true">↗</span></a>
+    </aside>
+    <section class="hero" aria-labelledby="_top">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="status-dot" aria-hidden="true"></span> BUILT FOR AI AGENTS / OPEN SOURCE</div>
+        <h1 id="_top">Defender XDR<br /><span>for your coding agent.</span></h1>
+        <p class="hero-description">xdr-cli is built for an AI agent to drive. Give your coding agent access to Defender incidents and advanced hunting, with investigation playbooks and output designed for its context window.</p>
+        <p class="hero-value">Put the coding-agent subscription you already have to work on incident triage.</p>
+        <div class="hero-actions"><a class="button primary" href="/docs/getting-started/">Start investigating <span aria-hidden="true">↗</span></a><a class="text-link" href="/docs/agents/">Set up your agent <span aria-hidden="true">↗</span></a></div>
+        <div class="install"><div class="install-heading"><span>INSTALL WITH PIPX</span><span>Python 3.11+</span></div><div class="install-command"><span class="shell-prompt" aria-hidden="true">$</span><code>{install}</code><button class="copy-button" data-copy={install} aria-label="Copy installation command">Copy</button></div><span class="copy-status" role="status" aria-live="polite"></span></div>
+      </div>
+      <div class="terminal" aria-label="Example investigation workflow">
+        <div class="terminal-chrome"><span class="terminal-lights" aria-hidden="true"><i></i><i></i><i></i></span><span>analyst@workstation: ~</span><span class="terminal-label">xdr</span></div>
+        <div class="terminal-body">
+          <div class="terminal-step"><span class="terminal-comment"># List recent high-severity incidents</span><code><b>$</b> xdr incidents list <em>--since</em> 7d \<br />&nbsp; <em>--severity</em> high</code></div>
+          <div class="terminal-step"><span class="terminal-comment"># Read the alerts and their evidence</span><code><b>$</b> xdr incidents show 42 <em>--expand</em> alerts</code></div>
+          <div class="terminal-step"><span class="terminal-comment"># Run the guided investigation</span><code><b>$</b> xdr investigate 42</code></div>
+          <div class="evidence-flow" aria-label="Investigation stages"><span><i aria-hidden="true">✓</i> Incident context</span><span><i aria-hidden="true">✓</i> Entities &amp; evidence</span><span><i aria-hidden="true">→</i> Relevant hunts</span><span><i aria-hidden="true">→</i> Suggested next steps</span></div>
+          <div class="terminal-bottom"><span class="cursor" aria-hidden="true"></span><span>Review the evidence before taking action.</span></div>
+        </div>
+        <div class="terminal-caption">Illustrative workflow · replace 42 with your incident ID</div>
+      </div>
+    </section>
+    <div class="principles" aria-label="Project essentials"><span><i aria-hidden="true">↳</i> Defender permissions apply</span><span><i aria-hidden="true">{ }</i> Local JSONL evidence</span><span><i aria-hidden="true">&gt;_</i> Works with AI assistants</span><a href="https://github.com/NerfBlasters/m365-xdr-cli/blob/main/LICENSE">MIT licensed <span aria-hidden="true">↗</span></a></div>
+
+    <section class="agent-section section" aria-labelledby="agent-title">
+      <div class="agent-prompt"><span class="eyebrow">EXAMPLE PROMPT</span><p>Read AGENTS.md, then investigate incident 42. Summarize the evidence and flag anything that needs my review.</p><span class="prompt-note">Use an incident ID from your tenant.</span></div>
+      <div><span class="eyebrow">AGENT-DRIVEN INVESTIGATIONS</span><h2 id="agent-title">Your coding agent can investigate incidents</h2><p>Point your agent at AGENTS.md and ask it to investigate an incident. The instructions cover how to gather evidence, choose hunts, and report what it found. You review its conclusions and decide on response actions.</p><p>xdr-cli saves large results locally and returns a compact receipt. An agent can inspect the evidence a few rows at a time, using the same <code>xdr</code> commands you can run yourself.</p><a class="text-link" href="/docs/agents/">Set up your assistant <span aria-hidden="true">↗</span></a></div>
+    </section>
+
+    <section class="why section" aria-labelledby="why-title">
+      <div class="section-heading"><span class="eyebrow">INCIDENTS &amp; HUNTING</span><h2 id="why-title">The commands you'll use most</h2><p>Start with the incident's alerts and evidence. Run a library query or your own KQL when you need more detail.</p></div>
+      <div class="feature-list">
+        <article><span class="feature-number">01 / TRIAGE</span><h3>Read the incident and its alerts</h3><p>View alert evidence, including affected accounts and devices. The guided investigation extracts those entities and suggests queries to investigate them further.</p><a href="/docs/investigation/">Read the investigation guide <span aria-hidden="true">↗</span></a></article>
+        <article><span class="feature-number">02 / HUNT</span><h3>Run a saved hunt or write KQL</h3><p>The query library covers common investigations and accepts parameters for the accounts, devices, or time range you're working with. You can also run KQL directly.</p><a href="/docs/library/">Browse the query library <span aria-hidden="true">↗</span></a></article>
+        <article><span class="feature-number">03 / RESULTS</span><h3>Use the results in your own tools</h3><p>Large results are saved as local JSONL files. A receipt tells you where to find them, so you can inspect the data with jq, grep, Python, or <code>xdr results</code>.</p><a href="/docs/results/">Read about result files <span aria-hidden="true">↗</span></a></article>
+      </div>
+    </section>
+
+    <section id="in-action" class="section demo-section" aria-labelledby="demo-title">
+      <div class="demo-heading"><div><span class="eyebrow">TERMINAL DEMO</span><h2 id="demo-title">Watch an investigation</h2></div><a class="text-link" href="/docs/getting-started/">Try the walkthrough <span aria-hidden="true">↗</span></a></div>
+      <div class="demo-frame"><div class="demo-placeholder" id="demo-placeholder"><div class="play-symbol" aria-hidden="true">▶</div><code>xdr investigate &lt;incident-id&gt;</code><p>Watch a guided investigation from the terminal.</p><button id="play-demo" class="button primary">Play investigation demo</button></div><img id="demo-image" width="1103" height="784" data-src="/media/investigate.gif" alt="Sanitized terminal recording of a guided xdr-cli investigation. A text walkthrough is linked below." hidden /><button id="stop-demo" class="button demo-stop" hidden>Stop demo</button></div>
+      <div class="demo-caption"><span>Demo tenant; tenant and object identifiers replaced for publication.</span><a href="/docs/getting-started/#quick-start-portal-cookie">Read the text walkthrough <span aria-hidden="true">↗</span></a></div>
+    </section>
+
+    <section class="section sign-in" aria-labelledby="signin-title"><div class="section-heading"><span class="eyebrow">AUTHENTICATION</span><h2 id="signin-title">Choose how to sign in</h2><p>Use a portal session to try xdr-cli quickly, or set up an Entra app to use Microsoft's supported APIs.</p></div><div class="auth-options">
+      <article><div class="auth-heading"><h3>Portal cookie</h3><span class="tag">QUICK START</span></div><p>Import your existing Defender portal session to get started without an app registration. Your existing Defender permissions apply.</p><p class="caveat"><span aria-hidden="true">ⓘ</span> Uses an undocumented interface, unsupported by Microsoft. Sessions expire and need manual renewal.</p><a href="/docs/authentication/portal-cookie/">Set up portal sign-in <span aria-hidden="true">↗</span></a></article>
+      <article><div class="auth-heading"><h3>Entra app registration</h3><span class="tag">SUPPORTED APIs</span></div><p>Connect through Microsoft Graph and Defender APIs with your own app registration. Setup requires permissions and admin consent.</p><a href="/docs/authentication/entra/">Set up an Entra app <span aria-hidden="true">↗</span></a></article>
+    </div></section>
+
+    <section class="section resources" aria-labelledby="resources-title"><div class="demo-heading"><div><span class="eyebrow">GUIDES &amp; REFERENCE</span><h2 id="resources-title">RTFM</h2><p class="manual-subtitle">Read the fu....n.. manual</p></div><a class="text-link" href="/docs/">All documentation <span aria-hidden="true">↗</span></a></div><div class="resource-grid">{destinations.map(([number, title, description, href]) => <a class="resource" href={href}><span class="resource-top"><span>{number}</span><span aria-hidden="true">↗</span></span><h3>{title}</h3><p>{description}</p></a>)}</div></section>
+  </div>
+</StarlightPage>
+
+<script>
+  const copy = document.querySelector<HTMLButtonElement>('[data-copy]');
+  copy?.addEventListener('click', async () => {
+    const status = document.querySelector<HTMLElement>('.copy-status');
+    try {
+      await navigator.clipboard.writeText(copy.dataset.copy ?? '');
+      if (status) status.textContent = 'Installation command copied.';
+      copy.textContent = 'Copied!';
+      window.setTimeout(() => { copy.textContent = 'Copy'; }, 2000);
+    } catch {
+      if (status) status.textContent = 'Copy unavailable. Select and copy the command above.';
+    }
+  });
+  const play = document.querySelector<HTMLButtonElement>('#play-demo');
+  const stop = document.querySelector<HTMLButtonElement>('#stop-demo');
+  const image = document.querySelector<HTMLImageElement>('#demo-image');
+  const placeholder = document.querySelector<HTMLElement>('#demo-placeholder');
+  play?.addEventListener('click', () => {
+    if (!image || !placeholder || !stop) return;
+    image.src = image.dataset.src ?? '';
+    image.hidden = false;
+    placeholder.hidden = true;
+    stop.hidden = false;
+    stop.focus();
+  });
+  stop?.addEventListener('click', () => {
+    if (!image || !placeholder) return;
+    image.hidden = true;
+    image.removeAttribute('src');
+    placeholder.hidden = false;
+    stop.hidden = true;
+    play?.focus();
+  });
+</script>
+
+<style is:global>
+  [data-has-hero] .main-pane { width: 100%; }
+  body:has(.landing) .content-panel { border: none; padding-top: 0; }
+  body:has(.landing) .sl-container { max-width: 1200px; }
+  body:has(.landing) .content-panel:first-child { display: none; }
+  .landing { font-size: 1rem; }
+  .landing [hidden] { display: none !important; }
+  .landing a { color: inherit; }
+  .landing h1, .landing h2, .landing h3, .landing p { margin: 0; }
+  .landing h1, .landing h2, .landing h3 { color: var(--sl-color-white); }
+  .landing h1 { font-size: clamp(2.2rem, 3.5vw, 3.05rem); line-height: 1.16; letter-spacing: -.055em; font-weight: 600; text-wrap: initial; }
+  .landing h1 span { color: var(--sl-color-text-accent); }
+  .landing h2 { font-size: clamp(1.85rem, 3vw, 2.7rem); line-height: 1.17; letter-spacing: -.04em; font-weight: 550; }
+  .landing h3 { font-size: 1.25rem; line-height: 1.3; letter-spacing: -.025em; font-weight: 600; }
+  .landing p { color: var(--sl-color-gray-2); line-height: 1.8; }
+  .landing a { text-decoration: none; }
+  .landing a:hover { color: var(--sl-color-text-accent); }
+  .landing code { background: none; padding: 0; border: none; border-radius: 0; }
+  .section-nav { display: flex; gap: 2rem; justify-content: end; font-size: .82rem; padding: 1.25rem 0; border-bottom: 1px solid var(--sl-color-hairline-light); }
+  .debut-banner { display: flex; align-items: center; gap: 1.25rem; margin-top: 1.5rem; padding: 1.2rem 1.5rem; border: 1px solid var(--sl-color-text-accent); border-radius: 6px; background: var(--sl-color-gray-6); }
+  .debut-badge { flex: none; font: 600 .8rem/1.5 var(--sl-font-mono); letter-spacing: .08em; color: var(--sl-color-text-accent); padding-right: 1.25rem; border-right: 1px solid var(--sl-color-hairline-light); }
+  .debut-copy { flex: 1; }
+  .landing .debut-title { color: var(--sl-color-white); font-size: 1rem; font-weight: 600; line-height: 1.4; }
+  .landing .debut-details { font-size: .73rem; margin-top: .3rem; }
+  .debut-banner .text-link { color: var(--sl-color-text-accent); flex: none; }
+  .hero { display: grid; grid-template-columns: 1.14fr 1fr; align-items: center; gap: 3.5rem; padding: 3.5rem 0 4.5rem; }
+  .eyebrow { display: block; font: 500 .66rem/1.6 var(--sl-font-mono); letter-spacing: .12em; color: var(--sl-color-text-accent); margin-bottom: 1.5rem; }
+  .status-dot { display: inline-block; width: 6px; height: 6px; background: var(--sl-color-text-accent); border-radius: 50%; margin-right: .5rem; }
+  .hero-description { font-size: 1rem; max-width: 32rem; margin-top: 1.6rem !important; }
+  .landing .hero-value { font-size: .85rem; margin-top: .9rem; max-width: 32rem; }
+  .landing .manual-subtitle { font-size: .72rem; margin-top: .4rem; }
+  .hero-actions { display: flex; align-items: center; gap: 1.6rem; flex-wrap: wrap; margin-top: 2rem; }
+  .landing .button { display: inline-flex; align-items: center; justify-content: center; gap: 1.5rem; font: 600 .82rem var(--sl-font); padding: .95rem 1.25rem; border-radius: 5px; cursor: pointer; border: 1px solid var(--sl-color-hairline-light); }
+  .landing .primary { background: var(--sl-color-text-accent); color: var(--sl-color-black); border-color: transparent; }
+  .landing .primary:hover { filter: brightness(1.08); color: var(--sl-color-black); }
+  .text-link { font-size: .83rem; font-weight: 550; }
+  .text-link span { margin-left: .5rem; }
+  .install { margin-top: 2.5rem; position: relative; }
+  .install-heading { display: flex; justify-content: space-between; font: .62rem var(--sl-font-mono); letter-spacing: .04em; color: var(--sl-color-gray-2); margin-bottom: .65rem; }
+  .install-command { display: flex; align-items: center; gap: .65rem; background: var(--sl-color-gray-6); border: 1px solid var(--sl-color-hairline-light); padding: .85rem; border-radius: 5px; }
+  .install-command code { font: .7rem/1.75 var(--sl-font-mono); overflow-wrap: anywhere; color: var(--sl-color-white); }
+  .shell-prompt { color: var(--sl-color-text-accent); font-family: var(--sl-font-mono); }
+  .copy-button { font: .65rem var(--sl-font-mono); color: var(--sl-color-gray-2); background: none; border: 1px solid var(--sl-color-hairline-light); padding: .5rem; border-radius: 4px; cursor: pointer; margin-left: auto; }
+  .copy-status { font-size: .7rem; position: absolute; top: 100%; color: var(--sl-color-text-accent); }
+  .terminal { border: 1px solid #3b4a43; border-radius: 8px; color: #d9e5dd; background: #111b1b; box-shadow: 0 20px 60px #0002; min-width: 0; overflow: hidden; transform: rotate(-1deg); }
+  .terminal-chrome { border-bottom: 1px solid #2d3c36; display: flex; justify-content: space-between; align-items: center; padding: .9rem 1rem; font: .6rem var(--sl-font-mono); color: #9ea9a3; background: #1b2724; }
+  .terminal-lights { display: flex; gap: 5px; }
+  .terminal-lights i { width: 7px; height: 7px; border-radius: 50%; background: #718679; }
+  .terminal-lights i:first-child { background: #ae8173; }.terminal-lights i:nth-child(2) { background: #c0b17f; }
+  .terminal-label { color: #9ab9a7; }
+  .terminal-body { padding: 1.65rem; font-family: var(--sl-font-mono); }
+  .terminal-step { margin-bottom: 1.65rem; }
+  .terminal-comment { display: block; color: #8fa39a; font-size: .64rem; margin-bottom: .4rem; }
+  .terminal-step code { font: .73rem/1.9 var(--sl-font-mono); color: #e0e8df; overflow-wrap: anywhere; }
+  .terminal-step b { color: #8cddba; font-weight: 400; }.terminal-step em { color: #c3bd8d; font-style: normal; }
+  .evidence-flow { display: grid; gap: .5rem; border-left: 1px solid #40594b; padding-left: 1rem; margin: -.4rem 0 1.8rem .2rem; font-size: .64rem; }
+  .evidence-flow i { font-style: normal; color: #8cddba; margin-right: .6rem; }
+  .terminal-bottom { color: #a0b3a8; display: flex; align-items: center; gap: .65rem; font-size: .6rem; }.cursor { width: 6px; height: 12px; background: #8cddba; }
+  .terminal-caption { border-top: 1px solid #2d3c36; font-size: .55rem; padding: .7rem 1rem; color: #a0b3a8; }
+  .principles { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; padding: 1.4rem 0; border-block: 1px solid var(--sl-color-hairline-light); font: .68rem var(--sl-font-mono); color: var(--sl-color-gray-2); }
+  .principles i { font-style: normal; color: var(--sl-color-text-accent); margin-right: .4rem; }
+  .section { padding-top: 6rem; }
+  .why, .sign-in { display: grid; grid-template-columns: .85fr 1.15fr; gap: 5rem; }
+  .section-heading p { font-size: .9rem; margin-top: 1.3rem; }
+  .feature-list article { padding-bottom: 1.8rem; margin-bottom: 1.8rem; border-bottom: 1px solid var(--sl-color-hairline-light); }
+  .feature-list article:last-child { margin-bottom: 0; }
+  .feature-number { display: block; font: .6rem var(--sl-font-mono); color: var(--sl-color-gray-2); letter-spacing: .08em; margin-bottom: .85rem; }
+  .feature-list p, .auth-options p { margin-top: .9rem; font-size: .88rem; }
+  .feature-list a, .auth-options a { display: inline-block; margin-top: 1rem; font-size: .8rem; color: var(--sl-color-text-accent); }
+  .demo-heading { display: flex; justify-content: space-between; gap: 1.5rem; align-items: end; margin-bottom: 2rem; }
+  .demo-heading .eyebrow { margin-bottom: .8rem; }
+  .demo-frame { position: relative; background: #111b1b; border: 1px solid var(--sl-color-hairline-light); border-radius: 8px; overflow: hidden; }
+  .demo-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2rem; min-height: 330px; padding: 2rem 1rem; text-align: center; background: radial-gradient(ellipse at 50% 100%, #284235 0%, transparent 65%); }
+  .play-symbol { font-size: 1.1rem; color: #96e9bf; width: 50px; height: 50px; display: grid; place-items: center; border: 1px solid #577561; border-radius: 50%; }
+  .demo-placeholder code { font: .95rem var(--sl-font-mono); color: #e0e8df; }.demo-placeholder p { font-size: .8rem; color: #b6c1bb; }
+  #demo-image { width: 100%; height: auto; display: block; }
+  .landing .demo-stop { position: absolute; right: 1rem; bottom: 1rem; color: #f0f2eb; background: #101a1b; }
+  .demo-caption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .7rem; color: var(--sl-color-gray-2); font-size: .66rem; margin-top: .8rem; }
+  .auth-options { border-top: 1px solid var(--sl-color-hairline-light); }
+  .auth-options article { padding: 1.8rem 0; border-bottom: 1px solid var(--sl-color-hairline-light); }
+  .auth-heading { display: flex; justify-content: space-between; align-items: center; gap: .8rem; flex-wrap: wrap; }
+  .tag { font: .53rem var(--sl-font-mono); letter-spacing: .06em; border: 1px solid var(--sl-color-hairline-light); padding: .35rem .5rem; border-radius: 3px; color: var(--sl-color-text-accent); }
+  .auth-options .caveat { font-size: .74rem; padding-left: .8rem; border-left: 2px solid #bc9b60; }
+  .agent-section { display: grid; grid-template-columns: .85fr 1.15fr; align-items: center; gap: 5rem; }
+  .agent-prompt { padding: 2rem; background: var(--sl-color-gray-6); border: 1px solid var(--sl-color-hairline-light); border-radius: 8px; }
+  .agent-prompt p { font: .9rem/1.8 var(--sl-font-mono); color: var(--sl-color-white); }
+  .prompt-note { display: block; font-size: .7rem; color: var(--sl-color-gray-2); }
+  .agent-section p { margin: 1.1rem 0; font-size: .9rem; }.agent-section .eyebrow { margin-bottom: 1rem; }
+  .resource-grid { display: grid; grid-template-columns: repeat(4, 1fr); border-block: 1px solid var(--sl-color-hairline-light); }
+  .resource { display: block; padding: 1.5rem; border-right: 1px solid var(--sl-color-hairline-light); }.resource:first-child { padding-left: 0; }.resource:last-child { border-right: 0; }
+  .resource-top { display: flex; justify-content: space-between; font: .68rem var(--sl-font-mono); color: var(--sl-color-text-accent); margin-bottom: 2rem; }
+  .resource h3 { font-size: 1rem; }.resource p { font-size: .78rem; margin-top: .7rem; }
+  @media (max-width: 1050px) { .hero { gap: 2rem; }.terminal-body { padding: 1.2rem; }.terminal-step code { font-size: .66rem; }.why, .sign-in, .agent-section { gap: 2.5rem; } }
+  @media (max-width: 760px) { .debut-banner { flex-wrap: wrap; gap: 1rem; padding: 1rem; }.debut-copy { flex-basis: calc(100% - 5rem); }.debut-banner .text-link { width: 100%; }.landing .debut-title { font-size: .9rem; }.landing .debut-details { font-size: .68rem; } }
+  @media (max-width: 760px) { .section-nav { gap: 1.2rem; justify-content: start; flex-wrap: wrap; font-size: .72rem; }.hero { grid-template-columns: 1fr; padding: 3rem 0; gap: 2.5rem; }.hero h1 { font-size: clamp(2.1rem, 7vw, 3.4rem); }.terminal { transform: none; }.terminal-body { padding: 1.5rem; }.terminal-step code { font-size: .75rem; }.section { padding-top: 3.5rem; }.why, .sign-in, .agent-section { grid-template-columns: 1fr; gap: 2rem; }.demo-heading { align-items: start; flex-direction: column; }.resource-grid { grid-template-columns: repeat(2, 1fr); }.resource { border-bottom: 1px solid var(--sl-color-hairline-light); }.resource:nth-child(2) { border-right: 0; }.resource:first-child { padding-left: 1.5rem; }.agent-prompt { padding: 1.5rem; }.principles { display: grid; grid-template-columns: 1fr 1fr; font-size: .6rem; }.demo-placeholder { min-height: 300px; } }
+  @media (max-width: 400px) { .hero-actions { gap: 1rem; }.terminal-body { padding: 1rem; }.terminal-step code { font-size: .65rem; }.resource-grid { grid-template-columns: 1fr; }.resource { border-right: 0; padding: 1.5rem 0; }.resource:first-child { padding-left: 0; }.resource-top { margin-bottom: 1rem; } }
+</style>

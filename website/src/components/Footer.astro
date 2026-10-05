@@ -1,0 +1,19 @@
+---
+import Default from '@astrojs/starlight/components/Footer.astro';
+---
+{Astro.url.pathname !== '/' && <Default />}
+<footer class="project-footer">
+  <div><a class="footer-brand" href="/">&gt;_ xdr-cli</a><p>An independent, open-source project.<br />Not affiliated with or endorsed by Microsoft.</p></div>
+  <nav aria-label="Footer"><a href="/docs/changelog/">Changelog</a><a href="/docs/contributing/">Contribute</a><a href="/docs/security/">Security</a><a href="https://github.com/NerfBlasters/m365-xdr-cli/blob/main/LICENSE">MIT license</a><a href="https://github.com/NerfBlasters/m365-xdr-cli">GitHub ↗</a></nav>
+  <p class="footer-aside">But hey, it's MIT licensed guys, you're 1 PR away from Security Copilot not being a joke.</p>
+</footer>
+<style>
+  .project-footer { border-top: 1px solid var(--sl-color-hairline-light); margin-top: 4rem; padding: 2.5rem 0 1rem; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1.25rem 2rem; font-size: .82rem; }
+  .footer-brand { font: 700 1.15rem var(--sl-font-mono); text-decoration: none; color: var(--sl-color-white); }
+  p { margin-top: .8rem; color: var(--sl-color-gray-2); line-height: 1.6; }
+  .footer-aside { grid-column: 1 / -1; margin: 0; font-size: .75rem; }
+  nav { display: flex; flex-wrap: wrap; gap: 1rem 1.5rem; align-content: start; }
+  nav a { text-decoration: none; color: var(--sl-color-gray-2); }
+  a:hover { color: var(--sl-color-text-accent); }
+  @media (max-width: 600px) { .project-footer { grid-template-columns: minmax(0, 1fr); } }
+</style>

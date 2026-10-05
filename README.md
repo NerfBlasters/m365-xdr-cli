@@ -6,6 +6,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
+[Website](https://xdr-cli.com) · [Get started](https://xdr-cli.com/docs/getting-started/) · [Search the docs](https://xdr-cli.com/docs/)
+
 `xdr` lets a SOC analyst — or an AI agent working on their behalf — triage
 incidents, run advanced hunting, and take response actions in Microsoft
 Defender XDR from a terminal. Every large read is saved as a private JSONL
