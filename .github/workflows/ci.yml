@@ -100,7 +100,7 @@ jobs:
             .github/scripts/guarddog_scan.py reports/dependencies.txt reports
       - name: Upload GuardDog findings to code scanning
         if: ${{ !cancelled() && !github.event.repository.private && hashFiles('reports/guarddog.sarif') != '' }}
-        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
         with:
           sarif_file: reports/guarddog.sarif
           category: guarddog
@@ -303,7 +303,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: website/.node-version
           package-manager-cache: false
@@ -323,7 +323,7 @@ jobs:
           retention-days: 7
       - name: Prepare Pages artifact
         if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: website/dist
 
@@ -346,7 +346,7 @@ jobs:
     steps:
       - name: Deploy reviewed main build
         id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
 
   gate:
     name: CI gate
