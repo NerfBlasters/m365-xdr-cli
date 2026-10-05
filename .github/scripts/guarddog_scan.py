@@ -13,6 +13,9 @@ import re
 import sys
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
+
+from guarddog_rdap import RDAPLookup
 
 
 def canonical(name: str) -> str:
@@ -109,16 +112,23 @@ def main(requirements: Path, reports: Path) -> int:
     # installing scanner dependencies into the application environment.
     from importlib.metadata import version
 
+    import whois
     from guarddog.cli import _get_all_rules
     from guarddog.ecosystems import ECOSYSTEM
     from guarddog.reporters.sarif import SarifReporter
     from guarddog.scanners.pypi_project_scanner import PypiRequirementsScanner
+    from whois.exceptions import PywhoisError
 
     if version("guarddog") != "3.2.0":
         raise ValueError("Review the adapter and exception policy before updating GuardDog")
     expected = expected_packages(requirements.read_text())
     reports.mkdir(parents=True, exist_ok=True)
-    dependencies, rows = PypiRequirementsScanner().scan_local(str(requirements))
+    rdap = RDAPLookup(whois.extract_domain, whois.whois, PywhoisError)
+    try:
+        with patch.object(whois, "whois", rdap):
+            dependencies, rows = PypiRequirementsScanner().scan_local(str(requirements))
+    finally:
+        (reports / "rdap-lookups.json").write_text(json.dumps(rdap.evidence, indent=2))
     (reports / "guarddog.json").write_text(json.dumps(rows, indent=2))
     sarif, errors = SarifReporter.render_verify(
         dependencies, sorted(_get_all_rules(ECOSYSTEM.PYPI)), rows, ECOSYSTEM.PYPI

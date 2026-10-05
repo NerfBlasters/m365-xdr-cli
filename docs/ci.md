@@ -35,6 +35,19 @@ errors, empty output, and unknown risk labels. Native `suspicious` and
 `high_risk` results block; `low` and `no_risks_detected` results do not. Raw
 JSON and SARIF retain the observations, including nonblocking results.
 
+The two maintainer-email domain rules obtain registration data through HTTPS
+RDAP endpoints selected from IANA's bootstrap directory. A narrow `.io`
+routing supplement uses the registry's verified HTTPS service because `.io`
+is absent from IANA's directory; it never overrides an IANA-listed service.
+The pinned WHOIS client's domain normalization is retained. Where neither
+IANA nor the reviewed supplement supplies an HTTPS RDAP endpoint, the adapter
+uses WHOIS with socket-error suppression disabled.
+Malformed responses, transport failures, and exhausted bounded retries remain
+scanner errors. A registered domain without a published creation date retains
+GuardDog's existing unknown-date semantics. `rdap-lookups.json` records lookup
+URLs, HTTP status, response hashes, and fallback/error evidence alongside the
+native reports; it does not waive findings or change exception fingerprints.
+
 This is a heuristic gate, not proof a dependency is safe. A package-version scan
 does not attest every platform wheel against the bytes installed by uv. uv's
 lock hashes protect artifact integrity during installation; review upstream
