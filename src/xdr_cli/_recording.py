@@ -159,7 +159,7 @@ async def run_kql_with_recording(
     Modes
     -----
     * ``child_recorder=False`` (default — used by ``hunt run`` /
-      ``hunt library-run``): annotates ``ctx.recorder`` (the parent recorder
+      ``library run``): annotates ``ctx.recorder`` (the parent recorder
       created in ``main.py``'s callback). The outer ``run()`` try/finally
       flushes it with the final exit_code and duration.
     * ``child_recorder=True`` (used by ``investigate`` for each internal
@@ -175,7 +175,7 @@ async def run_kql_with_recording(
         Resolved KQL string (already substituted for library queries).
     invoked_command:
         ``command`` field on the resulting record (e.g. ``"hunt run"``,
-        ``"hunt library-run"``, ``"investigate.hunt"``). Inner records keep
+        ``"library run"``, ``"investigate.hunt"``). Inner records keep
         the ``investigate.`` prefix so ``xdr history --command investigate``
         matches both outer and inner.
     library_query:

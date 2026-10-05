@@ -365,10 +365,20 @@ def test_load_query_rejects_unknown_param():
         )
 
 
-def test_load_query_resolves_deprecated_alias(capsys):
-    """qry_inbox_rule_audit is a -- tier: deprecated shim -> qry_inbox_rule_activity."""
+def test_load_query_resolves_deprecated_alias(tmp_path, monkeypatch, capsys):
+    """A user-dir `-- tier: deprecated` shim forwards to qry_inbox_rule_activity."""
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / ".xdr-cli"))
+    user_queries = tmp_path / ".xdr-cli" / "queries"
+    user_queries.mkdir(parents=True)
+    (user_queries / "qry_inbox_rule_legacy.kql").write_text(
+        "-- name: qry_inbox_rule_legacy\n"
+        "-- description: Deprecated; use qry_inbox_rule_activity.\n"
+        "-- params:\n"
+        "-- tier: deprecated\n"
+        "-- alias_of: qry_inbox_rule_activity\n"
+    )
     from xdr_cli.queries import load_query
-    kql = load_query("qry_inbox_rule_audit", account_upn="", hours="24", mode="summary")
+    kql = load_query("qry_inbox_rule_legacy", account_upn="", hours="24", mode="summary")
     # Alias resolution forwards to qry_inbox_rule_activity whose body references
     # CloudAppEvents and EntraIdSignInEvents.
     assert "CloudAppEvents" in kql or "EntraIdSignInEvents" in kql

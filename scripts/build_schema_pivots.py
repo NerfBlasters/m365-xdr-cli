@@ -2,7 +2,7 @@
 """Generate docs/schema_pivots.md from a sys_schema_probe CSV.
 
 Input: a CSV with columns (TableName, ColumnName, ColumnType, ColumnOrdinal) —
-produced by `xdr hunt library-run sys_schema_probe` and converted to CSV, or by
+produced by `xdr library run sys_schema_probe` and converted to CSV, or by
 the equivalent Advanced Hunting export.
 
 Output: markdown doc with cross-table field intersections, one bullet line per
@@ -12,21 +12,35 @@ canonical pivot recipes.
 Usage:
     python scripts/build_schema_pivots.py <schema.csv> [output.md]
 
-If output.md is omitted, prints to stdout.
+If output.md is omitted, prints to stdout. If output.md exists and carries the
+BEGIN/END GENERATED PHYSICAL REFERENCE markers, only the text between them is
+replaced; the hand-maintained header, the generated semantic block, and the
+"Regenerating this file" section are preserved.
 """
 
 from __future__ import annotations
 
 import csv
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
+
+BEGIN_MARK = "<!-- BEGIN GENERATED PHYSICAL REFERENCE -->"
+END_MARK = "<!-- END GENERATED PHYSICAL REFERENCE -->"
 
 
 def load_truth(csv_path: Path) -> dict[str, set[str]]:
     truth: dict[str, set[str]] = defaultdict(set)
     with csv_path.open() as f:
-        for row in csv.DictReader(f):
+        reader = csv.DictReader(f)
+        missing = {"TableName", "ColumnName"} - set(reader.fieldnames or [])
+        if missing:
+            raise SystemExit(
+                f"error: {csv_path} lacks the header column(s) {sorted(missing)}; "
+                "the first line must be TableName,ColumnName,ColumnType,ColumnOrdinal"
+            )
+        for row in reader:
             truth[row["ColumnName"]].add(row["TableName"])
     return truth
 
@@ -58,7 +72,7 @@ def build(truth: dict[str, set[str]]) -> str:
     p("grep for a field name to find every table it reaches.")
     p("")
     p("> Regenerate in any tenant:")
-    p("> `xdr -q hunt library-run sys_schema_probe --limit 10000 > schema.json`")
+    p("> `xdr library run sys_schema_probe` (the receipt's `data_path` holds the rows)")
     p(">")
     p("> The probe covers **80 curated Defender XDR, Sentinel, and Entra workspace")
     p("> tables**; which are returned varies by license, role, connected workspace,")
@@ -67,6 +81,8 @@ def build(truth: dict[str, set[str]]) -> str:
     p("> the probe explicitly. Re-run after any licensing or connector change.")
     p("")
     p("> Rebuilding this doc: `python scripts/build_schema_pivots.py <schema.csv> docs/schema_pivots.md`.")
+    p("")
+    p(BEGIN_MARK)
     p("")
     p("---")
     p("")
@@ -98,7 +114,7 @@ def build(truth: dict[str, set[str]]) -> str:
     p("- `DetectionMethods` is documented for `EmailEvents`, but the table itself")
     p("  may be empty in tenants without Defender for Office licenses.")
     p("")
-    p("Before referencing an unfamiliar column, run `xdr hunt library-run")
+    p("Before referencing an unfamiliar column, run `xdr library run")
     p("sys_schema_probe` or test with `getschema`:")
     p("")
     p("```kql")
@@ -483,7 +499,7 @@ def build(truth: dict[str, set[str]]) -> str:
     p(line("ExtensionVersion"))
     p(line("ExtensionRisk"))
     p("")
-    p("## Device baseline compliance (new)")
+    p("## Device baseline compliance")
     p("")
     p(line("ProfileId"))
     p(line("IsCompliant", "shared with TVM secure-config + Entra sign-ins."))
@@ -731,8 +747,40 @@ def build(truth: dict[str, set[str]]) -> str:
     p("| join kind=inner DeviceTvmSoftwareVulnerabilities on CveId")
     p("| project DeviceName, SoftwareName, SoftwareVersion, CveId, CvssScore, IsExploitAvailable")
     p("```")
+    p("")
+    p(END_MARK)
 
     return "\n".join(O) + "\n"
+
+
+def _marker_span(doc: str) -> tuple[int, int]:
+    """Offsets of the text strictly between the marker *lines*.
+
+    Markers count only when they occupy a whole line, so prose that quotes
+    them (as the regeneration guide does) is ignored.
+    """
+    begins = list(re.finditer(rf"^{re.escape(BEGIN_MARK)}$", doc, re.M))
+    ends = list(re.finditer(rf"^{re.escape(END_MARK)}$", doc, re.M))
+    if len(begins) != 1 or len(ends) != 1:
+        raise ValueError("document must contain exactly one BEGIN and one END marker line")
+    if ends[0].start() < begins[0].end():
+        raise ValueError("END marker precedes BEGIN marker")
+    return begins[0].end(), ends[0].start()
+
+
+def splice(existing: str, rendered: str) -> str:
+    """Replace only the generated physical reference inside an existing doc."""
+    e_start, e_end = _marker_span(existing)
+    r_start, r_end = _marker_span(rendered)
+    return existing[:e_start] + rendered[r_start:r_end] + existing[e_end:]
+
+
+def has_markers(doc: str) -> bool:
+    try:
+        _marker_span(doc)
+    except ValueError:
+        return False
+    return True
 
 
 def main(argv: list[str]) -> int:
@@ -746,7 +794,11 @@ def main(argv: list[str]) -> int:
     truth = load_truth(csv_path)
     doc = build(truth)
     if len(argv) >= 3:
-        Path(argv[2]).write_text(doc)
+        out = Path(argv[2])
+        existing = out.read_text(encoding="utf-8") if out.exists() else ""
+        if has_markers(existing):
+            doc = splice(existing, doc)
+        out.write_text(doc, encoding="utf-8")
     else:
         sys.stdout.write(doc)
     return 0

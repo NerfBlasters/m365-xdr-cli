@@ -678,15 +678,15 @@ def load_query(name: str, **params: str) -> str:
     if name not in by_name:
         raise QueryError(
             f"Query '{name}' not found. "
-            "Run 'xdr hunt library' to see available queries."
+            "Run 'xdr library list' to see available queries."
         )
     q = by_name[name]
 
     # Deprecated-alias resolution: a `-- tier: deprecated` shim transparently
     # forwards to its alias_of target with a one-release stderr deprecation
     # warning. The shim's own body is ignored — the target's body is loaded
-    # and substituted. This keeps `xdr hunt library-run qry_inbox_rule_audit`
-    # working for one release after the merge into qry_inbox_rule_activity.
+    # and substituted, so a renamed query keeps working under its old name
+    # for one release.
     if q.tier == "deprecated" and q.alias_of:
         target = by_name.get(q.alias_of)
         if target is None:

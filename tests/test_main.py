@@ -201,7 +201,7 @@ def test_chain_capture_smoke(home, monkeypatch, capsys):
     expected_chains = [
         (["xdr", "alerts", "list"], "alerts list"),
         (["xdr", "session", "list"], "session list"),
-        (["xdr", "hunt", "library"], "hunt library"),
+        (["xdr", "library", "list"], "library list"),
     ]
 
     with patch("xdr_cli.commands.alerts_cmd.list_alerts", _empty_async_gen):
@@ -464,8 +464,8 @@ def test_hunt_run_auto_creates_without_session(gate_home):
     assert list((gate_home / "sessions").glob("*.jsonl"))
 
 
-def test_hunt_library_run_auto_creates_without_session(gate_home):
-    result = runner.invoke(app, ["hunt", "library-run", "ttp_dns_beaconing"])
+def test_library_run_auto_creates_without_session(gate_home):
+    result = runner.invoke(app, ["library", "run", "ttp_dns_beaconing"])
     assert result.exit_code != 0
     combined = (result.output or "") + (result.stderr or "")
     assert "no active session" not in combined.lower()
@@ -493,9 +493,9 @@ def test_alerts_list_runs_without_session(gate_home):
     assert not list((gate_home / "sessions").glob("*.jsonl"))
 
 
-def test_hunt_library_listing_runs_without_session(gate_home):
-    """`xdr hunt library` (listing only) — ungated."""
-    result = runner.invoke(app, ["hunt", "library"])
+def test_library_list_runs_without_session(gate_home):
+    """`xdr library list` (listing only) — ungated."""
+    result = runner.invoke(app, ["library", "list"])
     # Listing the empty default library exits 0 (no entries to print).
     assert result.exit_code == 0, result.output
 

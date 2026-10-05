@@ -1,5 +1,5 @@
 """Tests for `xdr auth` sub-app: login, logout, status, and the unofficial
-Defender-portal counterparts (portal-login, portal-cookie, portal-logout).
+Defender-portal counterparts (portal-cookie, portal-logout).
 
 The portal-cookie tests are security-critical: they assert the pasted
 `sccauth`/`xsrf-token` values are stored 0600 and NEVER appear anywhere in
@@ -21,8 +21,6 @@ from xdr_cli.main import app
 
 runner = CliRunner()
 
-FOCI_CLIENT_ID = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"
-MSAL_AUDIT_APP_NAME = "Microsoft Azure CLI"
 COOKIE_AUDIT_APP_NAME = "Microsoft Defender portal (browser session)"
 TENANT_ID = "test-tenant"
 TENANT_FINGERPRINT = hashlib.sha256(TENANT_ID.encode()).hexdigest()
@@ -134,17 +132,24 @@ def test_logout_missing_cache_reports_cleared_false(auth_dir):
 
 
 # ---------------------------------------------------------------------------
-# portal-login
+# portal-login (removed)
 # ---------------------------------------------------------------------------
 
 
-@patch("xdr_cli.commands.auth_cmd.PortalAuth")
 @pytest.mark.parametrize("args", [[], ["--tenant-id", "override-tenant"]])
-def test_portal_login_retired_without_contacting_microsoft(mock_portal_auth_cls, auth_dir, args):
+def test_portal_login_is_an_unknown_command(auth_dir, args):
+    """The retired portal OAuth sign-in is gone entirely, not stubbed: it
+    fails like any other unknown sub-command and must not be listed."""
     result = runner.invoke(app, ["auth", "portal-login", *args])
-    assert result.exit_code == 6, result.output
-    assert "portal-cookie" in result.output
-    mock_portal_auth_cls.assert_not_called()
+    assert result.exit_code != 0, result.output
+    error = _parse_json_stdout(result)["error"]
+    assert error["code"] == "CLI_UNKNOWN_COMMAND"
+    assert error["invalid"] == {"kind": "command", "value": "portal-login"}
+
+    help_result = runner.invoke(app, ["auth", "--help"])
+    assert help_result.exit_code == 0, help_result.output
+    assert "portal-login" not in help_result.output
+    assert "portal-cookie" in help_result.output
 
 
 # ---------------------------------------------------------------------------
@@ -545,19 +550,21 @@ def test_portal_cookie_prompts_xsrf_when_header_has_no_xsrf_cookie(
 # ---------------------------------------------------------------------------
 
 
-def test_portal_logout_clears_both_portal_files_leaves_main_cache(auth_dir):
-    (auth_dir / "portal_token_cache.json").write_text('{"cached": true}')
+def test_portal_logout_clears_cookie_store_leaves_main_cache(auth_dir):
     (auth_dir / "portal_cookies.json").write_text(
         json.dumps(_bound_cookie_store())
     )
     main_cache = auth_dir / "token_cache.json"
     main_cache.write_text('{"main": true}')
+    # A portal OAuth cache left by an earlier release is cleaned up too.
+    stale_portal_cache = auth_dir / "portal_token_cache.json"
+    stale_portal_cache.write_text('{"stale": true}')
 
     result = runner.invoke(app, ["auth", "portal-logout"])
 
     assert result.exit_code == 0, result.output
-    assert not (auth_dir / "portal_token_cache.json").exists()
     assert not (auth_dir / "portal_cookies.json").exists()
+    assert not stale_portal_cache.exists()
     assert main_cache.exists()
     assert main_cache.read_text() == '{"main": true}'
 
@@ -572,24 +579,24 @@ def test_portal_logout_clears_both_portal_files_leaves_main_cache(auth_dir):
     assert parsed["status"] == "success"
     assert "metadata" in parsed
     assert parsed["data"]["authenticated"] is False
-    assert parsed["data"]["token_cache_cleared"] is True
     assert parsed["data"]["cookie_cleared"] is True
+    assert parsed["data"]["cookie_file"] == str(auth_dir / "portal_cookies.json")
+    assert "token_cache_cleared" not in parsed["data"]
+    assert "token_cache_file" not in parsed["data"]
 
 
 def test_portal_logout_missing_files_is_a_noop(auth_dir):
-    assert not (auth_dir / "portal_token_cache.json").exists()
     assert not (auth_dir / "portal_cookies.json").exists()
 
     result = runner.invoke(app, ["auth", "portal-logout"])
 
     assert result.exit_code == 0, result.output
-    assert not (auth_dir / "portal_token_cache.json").exists()
     assert not (auth_dir / "portal_cookies.json").exists()
 
     parsed = _parse_json_stdout(result)
     assert parsed["status"] == "success"
-    assert parsed["data"]["token_cache_cleared"] is False
     assert parsed["data"]["cookie_cleared"] is False
+    assert "token_cache_cleared" not in parsed["data"]
 
 
 # ---------------------------------------------------------------------------
@@ -597,17 +604,7 @@ def test_portal_logout_missing_files_is_a_noop(auth_dir):
 # ---------------------------------------------------------------------------
 
 
-@patch("xdr_cli.commands.auth_cmd.PortalAuth")
-def test_status_unauthenticated_has_main_and_portal_keys(mock_portal_auth_cls, auth_dir):
-    mock_portal_auth_cls.return_value.get_auth_status.return_value = {
-        "authenticated": False,
-        "configured": False,
-        "account": None,
-        "tenant": None,
-        "client_id": FOCI_CLIENT_ID,
-        "audit_app_name": MSAL_AUDIT_APP_NAME,
-    }
-
+def test_status_unauthenticated_has_main_and_portal_keys(auth_dir):
     result = runner.invoke(app, ["auth", "status"])
 
     assert result.exit_code == 0, result.output
@@ -620,21 +617,11 @@ def test_status_unauthenticated_has_main_and_portal_keys(mock_portal_auth_cls, a
     assert portal["method"] is None
     assert portal["audit_app_name"] is None
     assert portal["account"] is None
-    assert portal["msal_cached"] is False
+    assert "msal_cached" not in portal
     assert portal["cookie_stored"] is False
 
 
-@patch("xdr_cli.commands.auth_cmd.PortalAuth")
-def test_status_cookie_present_reports_cookie_method(mock_portal_auth_cls, auth_dir):
-    # No cached MSAL account — proves cookie precedence isn't just "both true".
-    mock_portal_auth_cls.return_value.get_auth_status.return_value = {
-        "authenticated": False,
-        "configured": True,
-        "account": None,
-        "tenant": "test-tenant",
-        "client_id": FOCI_CLIENT_ID,
-        "audit_app_name": MSAL_AUDIT_APP_NAME,
-    }
+def test_status_cookie_present_reports_cookie_method(auth_dir):
     (auth_dir / "portal_cookies.json").write_text(
         json.dumps(_bound_cookie_store())
     )
@@ -648,73 +635,13 @@ def test_status_cookie_present_reports_cookie_method(mock_portal_auth_cls, auth_
     assert portal["audit_app_name"] == COOKIE_AUDIT_APP_NAME
     assert portal["account"] is None
     assert portal["cookie_stored"] is True
-    assert portal["msal_cached"] is False
-
-
-@patch("xdr_cli.commands.auth_cmd.PortalAuth")
-def test_status_msal_cached_reports_msal_method_when_no_cookie(
-    mock_portal_auth_cls, auth_dir
-):
-    mock_portal_auth_cls.return_value.get_auth_status.return_value = {
-        "authenticated": True,
-        "configured": True,
-        "account": "user@test.com",
-        "tenant": "test-tenant",
-        "client_id": FOCI_CLIENT_ID,
-        "audit_app_name": MSAL_AUDIT_APP_NAME,
-    }
-
-    result = runner.invoke(app, ["auth", "status"])
-
-    assert result.exit_code == 0, result.output
-    portal = json.loads(result.stdout)["data"]["portal"]
-    assert portal["authenticated"] is True
-    assert portal["method"] == "msal"
-    assert portal["audit_app_name"] == MSAL_AUDIT_APP_NAME
-    assert portal["account"] == "user@test.com"
-    assert portal["cookie_stored"] is False
-    assert portal["msal_cached"] is True
-
-
-@patch("xdr_cli.commands.auth_cmd.PortalAuth")
-def test_status_cookie_takes_precedence_over_cached_msal(mock_portal_auth_cls, auth_dir):
-    """Per the design doc's auth-strategy precedence: a deliberately
-    configured cookie store wins over a cached MSAL account."""
-    mock_portal_auth_cls.return_value.get_auth_status.return_value = {
-        "authenticated": True,
-        "configured": True,
-        "account": "user@test.com",
-        "tenant": "test-tenant",
-        "client_id": FOCI_CLIENT_ID,
-        "audit_app_name": MSAL_AUDIT_APP_NAME,
-    }
-    (auth_dir / "portal_cookies.json").write_text(
-        json.dumps(_bound_cookie_store())
-    )
-
-    result = runner.invoke(app, ["auth", "status"])
-
-    assert result.exit_code == 0, result.output
-    portal = json.loads(result.stdout)["data"]["portal"]
-    assert portal["method"] == "cookie"
-    assert portal["msal_cached"] is True  # both true underneath...
-    assert portal["cookie_stored"] is True
-    assert portal["audit_app_name"] == COOKIE_AUDIT_APP_NAME  # ...but cookie wins
+    assert "msal_cached" not in portal
 
 
 def test_status_tolerates_corrupt_cookie_file(auth_dir):
     (auth_dir / "portal_cookies.json").write_text("{not valid json")
 
-    with patch("xdr_cli.commands.auth_cmd.PortalAuth") as mock_portal_auth_cls:
-        mock_portal_auth_cls.return_value.get_auth_status.return_value = {
-            "authenticated": False,
-            "configured": False,
-            "account": None,
-            "tenant": None,
-            "client_id": FOCI_CLIENT_ID,
-            "audit_app_name": MSAL_AUDIT_APP_NAME,
-        }
-        result = runner.invoke(app, ["auth", "status"])
+    result = runner.invoke(app, ["auth", "status"])
 
     assert result.exit_code == 0, result.output
     portal = json.loads(result.stdout)["data"]["portal"]
@@ -745,10 +672,7 @@ def test_cookie_only_setup_import_and_status_without_app_registration(auth_dir, 
     (auth_dir / "config.toml").write_text(
         f'tenant_id = "{TENANT_ID}"\napi_backend = "portal-cookie"\n'
     )
-    with (
-        patch("xdr_cli.commands.auth_cmd.AuthManager", side_effect=AssertionError("MSAL")),
-        patch("xdr_cli.commands.auth_cmd.PortalAuth", side_effect=AssertionError("portal OAuth")),
-    ):
+    with patch("xdr_cli.commands.auth_cmd.AuthManager", side_effect=AssertionError("MSAL")):
         imported = runner.invoke(
             app, ["auth", "portal-cookie", _curl_file(tmp_path), "--no-verify"]
         )

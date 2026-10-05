@@ -53,7 +53,8 @@ roles, namespaces, provenance, temporal guidance, and tenant availability.
 
 > Refresh in any tenant with `xdr schema refresh`, then convert the receipt's
 > complete `data_path` JSONL to CSV before running the renderer. See
-> `docs/schema_probe.md` for exact POSIX commands and the portal-export path.
+> [Regenerating this file](#regenerating-this-file) at the end for the exact
+> POSIX commands and the portal-export path.
 >
 > The probe covers **80 curated Defender XDR, Sentinel, and Entra workspace
 > tables**; which schemas resolve can vary by license, permission, region,
@@ -64,9 +65,11 @@ roles, namespaces, provenance, temporal guidance, and tenant availability.
 > relevant tenant or schema change.
 
 > Rebuilding this doc: the build script consumes **CSV**, so convert the
-> probe's artifact JSONL to `schema.csv` first (see `docs/schema_probe.md`),
-> then
+> probe's artifact JSONL to `schema.csv` first (see
+> [Regenerating this file](#regenerating-this-file)), then
 > `python scripts/build_schema_pivots.py schema.csv docs/schema_pivots.md`.
+
+<!-- BEGIN GENERATED PHYSICAL REFERENCE -->
 
 ---
 
@@ -508,7 +511,7 @@ Cross-link to users/accounts via `SenderObjectId` (shared with email chain).
 - `ExtensionVersion` → DeviceTvmBrowserExtensions, DeviceTvmBrowserExtensionsKB
 - `ExtensionRisk` → DeviceTvmBrowserExtensions, DeviceTvmBrowserExtensionsKB
 
-## Device baseline compliance (new)
+## Device baseline compliance
 
 - `ProfileId` → DeviceBaselineComplianceAssessment, DeviceBaselineComplianceProfiles
 - `IsCompliant` → AADSignInEventsBeta, DeviceBaselineComplianceAssessment, DeviceTvmSecureConfigurationAssessment, EntraIdSignInEvents — shared with TVM secure-config + Entra sign-ins.
@@ -873,3 +876,143 @@ DeviceTvmSoftwareVulnerabilitiesKB
 | join kind=inner DeviceTvmSoftwareVulnerabilities on CveId
 | project DeviceName, SoftwareName, SoftwareVersion, CveId, CvssScore, IsExploitAvailable
 ```
+
+<!-- END GENERATED PHYSICAL REFERENCE -->
+
+---
+
+## Regenerating this file
+
+Three pieces work together:
+
+- **`sys_schema_probe`** - a library KQL query that enumerates a curated
+  80-table Advanced Hunting catalog via `union isfuzzy=true ... | getschema`,
+  covering Defender XDR plus Sentinel and Entra workspace tables. Custom logs
+  and future workspace tables must be added to it explicitly; KQL has no
+  metadata-only way to enumerate every connected-workspace table.
+- **`scripts/build_schema_pivots.py`** - a deterministic renderer that turns
+  the probe's CSV output into the hand-maintained sections of this file.
+- **`xdr schema validate-core --document docs/schema_pivots.md`** - checks
+  (or, with `--update-document`, rewrites) the generated semantic block
+  between the `BEGIN/END GENERATED SEMANTIC GRAPH` markers near the top.
+
+The probe reports which curated schemas the current hunting identity can
+resolve. It does not prove that a table has recent rows or identify the
+licensed SKU.
+
+### 1. Run the probe and convert to CSV
+
+`xdr schema refresh` consumes one Advanced Hunting call. Its receipt names a
+complete data JSONL (one row per `(table, column)`, no local display limit)
+and a metadata sidecar; completeness stays `unknown` because the upstream API
+does not certify it. Convert the JSONL to CSV:
+
+```bash
+# Consume the receipt and previews, then select the first line.
+receipt=$(xdr schema refresh | jq -cs '.[0]')
+path=$(printf '%s' "$receipt" | jq -r '.data_path')
+{ echo 'TableName,ColumnName,ColumnType,ColumnOrdinal'
+  jq -r '[.TableName,.ColumnName,.ColumnType,.ColumnOrdinal] | @csv' "$path"
+} > schema.csv   # the renderer reads these column headers
+```
+
+Browse the refreshed cache with `xdr schema tables --search signin` and
+`xdr schema show AADSignInEventsBeta --search application` (table-name and
+column-name filters respectively; both are cache-only).
+
+Without the CLI, run the probe in the Defender portal: open Advanced
+Hunting, paste the body of `src/xdr_cli/queries/sys_schema_probe.kql`, and
+delete the leading `-- name:` / `-- description:` / `-- params:` frontmatter
+lines first (they are not KQL comments). `xdr hunt library-show
+sys_schema_probe` prints the executable KQL with the frontmatter already
+stripped. Expect up to ~2500 rows and seconds to tens of seconds of runtime;
+then **Export -> Export results to CSV**. The portal and CLI run the same
+KQL, so rows are comparable when tenant scope, permissions, and
+connected-workspace context match.
+
+### 2. Rebuild the physical reference
+
+```bash
+python3 scripts/build_schema_pivots.py schema.csv docs/schema_pivots.md
+python3 scripts/build_schema_pivots.py schema.csv | less   # stdout only
+```
+
+When the output file exists, the renderer replaces only the text between
+`<!-- BEGIN GENERATED PHYSICAL REFERENCE -->` and
+`<!-- END GENERATED PHYSICAL REFERENCE -->`; the header above the markers,
+the generated semantic block, and this section are left as they are. Without
+an existing file it writes a complete document.
+
+Same CSV in, same output out, so it is safe to regenerate in CI
+(`git diff --exit-code docs/schema_pivots.md` after the render). Every bullet
+has the form `` - `FieldName` -> Table1, Table2 -- note ``, so
+`grep IdentityLogonEvents docs/schema_pivots.md` lists every field that
+reaches that table.
+
+### 3. Refresh the generated semantic block
+
+```bash
+uv run xdr schema validate-core --document docs/schema_pivots.md
+uv run xdr schema validate-core --document docs/schema_pivots.md \
+  --update-document
+```
+
+The first form reports `DocumentState: current` or `stale`; the second
+rewrites the block atomically. `tests/test_schema_graph_docs.py` fails when
+the block drifts from the packaged graph.
+
+### 4. Optional sanity check
+
+```bash
+python3 - <<'PY'
+import csv, re
+from collections import defaultdict
+from pathlib import Path
+
+truth = defaultdict(set)
+with open("schema.csv") as f:
+    for row in csv.DictReader(f):
+        truth[row["ColumnName"]].add(row["TableName"])
+
+pat = re.compile(
+    r"- `([A-Za-z0-9_]+)`\s*(?:\(.*?\))?\s*→\s*([^—\n]+?)(?:\s+—|$)",
+    re.MULTILINE,
+)
+doc = Path("docs/schema_pivots.md").read_text()
+found = defaultdict(set)
+for m in pat.finditer(doc):
+    for t in m.group(2).split(","):
+        t = t.strip()
+        if t and t != "**(not present in probe)**":
+            found[m.group(1)].add(t)
+
+shared = {c for c, ts in truth.items() if len(ts) >= 2}
+miss = sorted(shared - set(found))
+wrong = [c for c in found if found[c] != truth.get(c, set())]
+print(f"fields in doc={len(found)} shared in probe={len(shared)} "
+      f"missing={len(miss)} mismatches={len(wrong)}")
+PY
+```
+
+Expect `missing=0 mismatches=0`. Otherwise add a `p(line("NewField"))` call
+in the right section of `scripts/build_schema_pivots.py`.
+
+### Troubleshooting
+
+- **Fewer tables than expected.** `isfuzzy=true` silently skips tables the
+  tenant does not expose, so absent tables are invisible. Compare against the
+  list in `src/xdr_cli/queries/sys_schema_probe.kql`.
+- **Cache is stale.** `schema show` and `schema tables` report cache age and
+  staleness in the receipt but never refresh implicitly. Run
+  `xdr schema refresh` deliberately after a licensing or connector change.
+  Refresh publishes a locked generation through one atomic manifest swap.
+- **A new preview table is missing.** It becomes queryable when Microsoft
+  enables the schema for your tenant and region and the identity has access;
+  rerun the probe then.
+- **Renderer prints `(not present in probe)`.** The script names a field your
+  CSV lacks: removed by Microsoft, license-gated, or tenant-specific. Ignore
+  it or drop the `p(line("Field"))` call.
+- **Diffing tenants.** `diff <(awk -F, 'NR>1{print $1}' a.csv | sort -u)
+  <(awk -F, 'NR>1{print $1}' b.csv | sort -u)` surfaces schema parity gaps;
+  treat them as a prompt to check licensing, permissions, region, and
+  connectors, not as proof of SKU.

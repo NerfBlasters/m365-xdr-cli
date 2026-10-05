@@ -1,10 +1,43 @@
 # Semantic schema graph
 
-The physical schema cache answers “which tables and columns exist in this
-tenant?” The semantic graph answers “which fields may carry the same entity
-identifier, and what investigation workflow is safe?” They are separate on
-purpose. Equal values can justify another investigation pivot without proving
-that a raw KQL join is selective, cardinality-safe, or semantically equivalent.
+`xdr schema` learns which Advanced Hunting fields carry the same identifier,
+so you know where else a value can be searched. Example: an alert gives you a
+`DeviceId` from `DeviceNetworkEvents`. Which other tables accept that value as
+a search key, and is a raw KQL join on it safe?
+
+```bash
+xdr schema pivot DeviceNetworkEvents.DeviceId
+```
+
+Every row names a target field, its evidence level, and whether a join is
+safe. This whole feature is optional: incident triage, hunting, and response
+commands work without it. Use it when you want pivot suggestions grounded in
+your own tenant, or a BloodHound picture of the schema.
+
+Terms used throughout:
+
+- **Physical cache** - the local copy of the tenant's table and column list,
+  written by `xdr schema refresh` (one Advanced Hunting call). Every other
+  schema command reads it; most never contact the tenant.
+- **Packaged graph** - the reviewed, value-free semantic graph shipped in the
+  package: which fields are the same identifier, how to transform them, and
+  which joins are safe.
+- **Overlay** - a private, per-tenant file that adds what this tenant taught
+  the graph: new fields, interpretations, and aggregate observations. It
+  never stores identifier values or result rows.
+- **Candidate** - an unverified hypothesis that two fields share an
+  identifier. Hidden from `pivot`/`path` unless you pass
+  `--include-candidates`.
+- **Observed** - a completed tenant query showed sampled identifiers from one
+  field recurring in another. Usable as a search route; not a join contract.
+- **Validated** - repeated, independent observations passed a fixed machine
+  policy. Still correlation-only; a join-safe edge requires a reviewed core
+  change.
+
+The physical cache answers "which tables and columns exist here?" The graph
+answers "which fields may carry the same identifier, and what workflow is
+safe?" Equal values justify another pivot without proving that a raw KQL join
+is selective, cardinality-safe, or semantically equivalent.
 
 Start with the cache-only status command and run its exact
 `context.next_command`:
@@ -18,6 +51,41 @@ xdr schema discoveries
 xdr schema pivot DeviceNetworkEvents.DeviceId
 xdr schema path DeviceNetworkEvents DeviceProcessEvents
 ```
+
+## What happens when you end a session
+
+Explicit `xdr session end` closes the session first, then runs three
+foreground upkeep stages for the configured tenant:
+
+1. **Refresh** the physical cache if it is missing or stale (one query).
+2. **Validation** - `schema collect` with fixed values: 30-day lookback,
+   5 samples per overlap, and a 20-query budget. These are not configurable.
+3. **Exploration** - `schema collect --explore` with a budget of
+   `schema_explore_max_queries` (default 5, integer 1-1000). This is the only
+   stage with a tunable budget.
+
+The whole run has one deadline, `schema_maintenance_timeout_seconds = 90`
+(maximum 3600). Completed work is saved and reused at the next explicit end.
+Controls, all in `~/.xdr-cli/config.toml` unless noted:
+
+| Setting or flag | Effect |
+|---|---|
+| `session end --no-maintenance` | Skip upkeep for this one session end |
+| `schema_collect_on_session_end = false` | Disable all three stages |
+| `schema_refresh_on_session_end = false` | Skip only the refresh stage |
+| `schema_explore_on_session_end = false` | Skip only the exploration stage |
+| `schema_explore_max_queries = N` | Exploration query budget (default 5) |
+| `schema_maintenance_timeout_seconds = N` | Overall deadline (default 90) |
+
+The session is ended durably before upkeep starts, so never retry
+`session end`. Partial completion (budget pause, deadline, or an upstream
+failure) returns exit 14; Ctrl-C returns exit 130. Both leave a
+`record_type: "session-maintenance"` record with `maintenance.status`, the
+cause, and a `next_command` for recovery, normally `xdr schema collect` or
+`xdr schema collect --explore`. An unconfigured tenant skips upkeep. Idle
+expiry, automatic rotation, and ending an already closed session never run
+upkeep; nothing is scheduled in the background. See
+[session maintenance](sessions.md).
 
 ## End-to-end workflow
 
@@ -35,16 +103,22 @@ Use the recovery command reported by the actual error or diagnostics output.
 `schema refresh` is the tenant-calling operation that replaces the physical
 cache.
 
-Preview collection before making tenant calls:
+Browse the physical cache to form field locators:
+
+```bash
+xdr schema tables --search sign
+xdr schema show EntraIdSignInEvents --search Account
+```
+
+`tables --search` is a case-insensitive filter on table names; `show TABLE
+--search` filters that table's column names. Neither contacts the tenant.
+
+Preview collection before making tenant calls, then run routine collection or
+active exploration:
 
 ```bash
 xdr schema collect --plan-only
 xdr schema collect --explore --plan-only
-```
-
-Run routine collection or active exploration:
-
-```bash
 xdr schema collect
 xdr schema collect --explore
 ```
@@ -62,8 +136,6 @@ xdr schema pivot DeviceNetworkEvents.DeviceId
 xdr schema path DeviceNetworkEvents DeviceProcessEvents
 ```
 
-`xdr schema candidates` remains a compatibility alias for `discoveries`.
-
 ## Local-first collection
 
 ```bash
@@ -77,7 +149,7 @@ values, recovering physical field origins from their saved KQL. Supported querie
 include single-table projections, renames, direct nested-property access, and
 summary grouping keys. Aggregate/calculated outputs are excluded. Joins, unions,
 invoked functions, and unsupported let bindings are reported as coverage gaps.
-The saved query remains the source of truth for both old and new artifacts.
+The saved query remains the source of truth.
 
 `--plan-only` performs local indexing and plans focused validation without tenant
 queries or publishing graph observations. `--local-only` also publishes the local
@@ -101,15 +173,18 @@ day, including no-match outcomes. A no-match result does not erase historical
 positive evidence; inspect both when deciding whether a pivot is useful.
 
 The default validation budget is 20 queries per invocation. Each successful
-validation is saved; exit 14 indicates useful partial completion. Rerun the same
-command to re-plan remaining work. Local-only/plan-only can work without a physical
-cache; validation needs cached target fields and Timestamp or TimeGenerated.
-Refresh a missing/stale cache explicitly with `xdr schema refresh`.
+validation is saved; exit 14 indicates useful partial completion. Rerun the
+same command to re-plan remaining work. `--local-only` and `--plan-only` work
+without a physical cache; validation needs cached target fields and
+`Timestamp` or `TimeGenerated`. `schema status` never suggests those two
+flags: when the cache is missing or stale its `next_command` is
+`xdr schema refresh`, and you may still run the local-only forms yourself.
 
 Local-derived pivots appear in normal navigation and support private
 `candidate-review` context queries. They do not use `candidate-proposal`'s
-legacy active-probe-to-core promotion workflow; their generic identifier
-interpretations are empirical occurrence hypotheses, not authored entity claims.
+contributor workflow for drafting a reviewed core change; their generic
+identifier interpretations are empirical occurrence hypotheses, not authored
+entity claims.
 No background scheduler is installed.
 
 Collection reuses a recent validation only when its time window matches and its
@@ -126,6 +201,37 @@ reuse verified evidence within one operation, then discard that snapshot; the
 next command verifies the original files again. Scalar JSON decoding is not
 attributed to a raw column when a probe cannot reproduce that transformation.
 
+### `collect` flags
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--plan-only` | off | Index and plan only; no tenant queries, no overlay write |
+| `--local-only` | off | Publish saved-result overlaps; no tenant queries |
+| `--explore` | off | Active discovery of saved identifiers in new fields |
+| `--source Table.Column` | none | Restrict exploration seeds; repeatable |
+| `--lookback` | `30d` | Time window for validation and discovery queries |
+| `--samples` | 5 | Identifiers per local-overlap validation (1-100) |
+| `--batch-size` | 20 | Target fields per validation query (1-50) |
+| `--seed-batch-size` | 20 | Identifiers per discovery query (1-100) |
+| `--max-json-depth` | 6 | Nested JSON expansion levels (0-12) |
+| `--discovery-row-limit` | 2000 | Result rows per discovery query (1-10000) |
+| `--max-queries-per-page` | 20 | Total query budget this invocation (1-1000) |
+| `--timeout` | 120 | HTTP timeout per tenant query, seconds (1-3600) |
+
+`--local-only` and `--explore` are mutually exclusive. `--source` requires
+`--explore`. `--samples` and `--batch-size` shape focused validation and are
+ignored by `--explore`; the seed, depth, and row-limit flags shape exploration
+only. `--max-queries-per-page` and `--timeout` apply to both modes.
+
+Collection receipts distinguish pending work from excluded scope. Cached
+tables without a usable time column, unavailable targets, and unsupported
+property paths are recorded in `excluded_scope`. Completing eligible work can
+return success while reporting those exclusions. Budget exhaustion, output
+truncation, depth limits, and upstream failures remain partial. A valid
+source selector with no saved identifiers returns not-found. Completion
+history outlives the one-day refresh interval: never-tested cohorts run
+first, followed by the oldest verified cohorts. Earlier evidence can guide
+scheduling without satisfying the 30-day freshness requirement for promotion.
 
 ## Explicit active exploration
 
@@ -220,6 +326,27 @@ Run the receipt’s exact `context.next_command`. It contains `--from-run`,
 source sample is reused rather than sampled again. `context.plan_fingerprint`,
 `query_start`, `query_stop`, and `page_complete` make progress auditable.
 
+### `observe` flags
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--plan-only` | off | Show the deterministic target plan; no auth or KQL |
+| `--lookback` | `30d` | Source and target time window |
+| `--samples` | 5 | Distinct valid source values to test (1-100) |
+| `--batch-size` | 20 | Target locators per Advanced Hunting batch (1-50) |
+| `--max-targets` | 100 | Target cap for a routine run (1-10000) |
+| `--exhaustive` | off | Probe every eligible locator; preview first |
+| `--target-table TABLE` | none | Probe only these cached tables; repeatable |
+| `--exclude-table TABLE` | none | Skip a table and report the coverage gap |
+| `--timeout` | `api_timeout` | Per-call HTTP timeout, seconds (1-3600) |
+| `--max-queries` | none | Target table queries this invocation (1-1000) |
+| `--from-run RUN_ID` | none | Reuse the source-sample artifact of a prior page |
+| `--start-query N` | 0 | Zero-based table-query cursor from a prior receipt |
+| `--schema-generation` | none | Require the physical-cache generation of a prior page |
+| `--from-file FILE` | none | Explicit seed values, one per line |
+| `--from-stdin` | off | Explicit seed values from stdin |
+| `--private-debug-output` | none | Sensitive seed/query diagnostics; never share |
+
 Explicit seeds are also supported:
 
 ```bash
@@ -296,20 +423,50 @@ xdr schema candidate-review <relationship-id>
 xdr results head <candidate-review-run-id> --limit 20
 ```
 
+`candidate-review` runs one bounded target query and saves rows privately
+with no stdout preview. `--lookback` overrides the observation window (for
+example `7d`), `--limit` caps retained target rows (1-100, default 20), and
+`--timeout` overrides `config.api_timeout` in seconds.
+
 `candidate-proposal` is a contributor workflow for drafting a value-free core
 JSONL change. It does not promote tenant evidence, edit the repository, or turn
 an empirical pivot into a join. Join/bridge proposals require explicit
 independent-contract provenance:
 
 ```bash
-xdr schema candidate-proposal <relationship-id> --help
+xdr schema candidate-proposal <relationship-id> \
+  --output proposal.jsonl \
+  --relationship semantic-equivalent --direction both \
+  --cardinality unknown --temporal same-retention-window \
+  --confidence medium --provenance contract:microsoft-identifier
 xdr schema validate-core --document docs/schema_pivots.md
 ```
+
+Every semantic decision is supplied explicitly; nothing is inferred from
+match counts:
+
+| Flag | Required | Meaning |
+|---|---|---|
+| `--output FILE` | yes | New review-only JSONL; never overwrites |
+| `--relationship` | yes | `semantic-equivalent`, `join-compatible`, `transform-required`, `bridge`, or `correlation-only` |
+| `--direction` | yes | `forward`, `reverse`, or `both`, relative to the reported source/target |
+| `--cardinality` | yes | `one-to-one`, `one-to-many`, `many-to-one`, `many-to-many`, or `unknown`; joins cannot use `unknown` |
+| `--temporal` | yes | Reviewed time guidance as a repository-safe slug |
+| `--confidence` | yes | `low`, `medium`, or `high` |
+| `--provenance` | no | Review/contract citation such as `contract:microsoft-device-id`; repeatable |
+| `--confirm-interpretation ID` | per endpoint | Exact candidate interpretation ID added to core; repeat for every non-core endpoint shown by `discoveries` |
+| `--acknowledge-independent-contract` | conditional | Required with `contract:`/`documentation:` provenance for `join-compatible` or `bridge` claims |
+
+`validate-core` checks the packaged graph and profile after a human-reviewed
+edit to the core JSONL. `--document PATH` also checks the generated block in
+a reference document, normally `docs/schema_pivots.md`; `--update-document`
+atomically rewrites that block. It never contacts a tenant.
 
 ## Pivot and path semantics
 
 `pivot` starts from a field locator and returns usable one-hop investigation
-routes. `path` returns routes between tables. Observed and validated routes are
+routes. `path` returns routes between tables, searching up to `--max-depth`
+relationship hops (1-12, default 4). Observed and validated routes are
 included by default; only true `candidate` hypotheses require
 `--include-candidates`.
 
@@ -346,6 +503,13 @@ queryable only after the reviewed packaged graph or passive artifact-shape
 ingestion establishes that exact path. Unseen arbitrary object keys are not
 guessed because payload values may be tenant-specific users, devices, domains,
 or copied text.
+
+Encoded JSON strings are expanded only for the documented physical JSON-string
+columns; native dynamic objects remain traversable. Free-text strings do not
+create nested schema fields merely because their content resembles JSON.
+Address exploration currently supports ASCII addresses only; receipts expose
+that normalization scope. It does not claim Python casefold/IDNA equivalence
+with KQL `tolower` for non-ASCII values.
 
 ## BloodHound OpenGraph
 
@@ -633,21 +797,33 @@ must not be committed or shared.
 Active automatic evidence references the original hunt/library bundles, including
 their complete private results. Portable exports include those referenced bundles;
 they can be large and contain user identifiers. Retirement removes automatic pins
-before normal result pruning, rather than silently keeping old hunts forever.
+before normal result pruning, rather than silently keeping aged hunts forever.
 
-Retire old observations before pruning their referenced results:
+Routine retention needs only result pruning:
 
 ```bash
-xdr schema prune-evidence --older-than 90 --yes
 xdr results prune --older-than 90 --yes
 ```
 
-Result pruning retires automatic overlap, validation, and discovery observations
-that reference artifacts older than the requested cutoff before deleting those
-artifacts. A persistent tenant cutoff prevents subsequent collection from mining
-retired artifacts again, even if a proposal still protects their bytes. Explicit
-observation and live proposal pins remain protected. `prune-evidence` also
-persists the cutoff, including when no observations have been collected yet. Integrity failures stop pruning.
+Result pruning retires automatic overlap, validation, and discovery
+observations that reference artifacts older than the requested cutoff before
+deleting those artifacts. A persistent tenant cutoff prevents subsequent
+collection from mining retired artifacts again, even if a proposal still
+protects their bytes. Explicit `observe` observations and live proposal pins
+remain protected, so their artifacts are kept. Integrity failures stop
+pruning.
+
+`prune-evidence` is only needed when explicit observations should go too. It
+rewrites the private overlay, keeps discovered fields and interpretations,
+never deletes result artifacts, and persists the cutoff even when no
+observations exist yet. Observations without an observation timestamp are
+kept unless `--include-legacy` is passed. Run result pruning afterwards:
+
+```bash
+xdr schema prune-evidence --older-than 90 --yes
+xdr schema prune-evidence --older-than 90 --include-legacy --yes
+xdr results prune --older-than 90 --yes
+```
 
 Automatic discovery accepts structured identifiers and sufficiently varied
 opaque identifiers, excluding generic words, process names, control characters,
@@ -672,8 +848,13 @@ the configured tenant fingerprint and tenant key to match, a trusted archive
 source, and collision-free destinations. The manifest and SHA-256 bindings
 prove content integrity and routing, not authorship.
 
-Bundles include active physical/semantic generations and referenced evidence.
-They exclude configuration, tokens, cookies, query libraries, active-session
+Bundles include the current and retained physical/semantic generations,
+their manifests, maintenance state, and referenced evidence.
+`--no-include-evidence` drops the referenced result pairs, candidate reviews,
+and proposals (`--include-evidence` is the default and is required when
+evidence exists). Session history is excluded by default; `--include-sessions`
+adds session JSONL and sequence sidecars but never active markers. Bundles
+always exclude configuration, tokens, cookies, query libraries, active-session
 markers, locks, audit logs, and other machine-local state. Import permits
 tenant-local persisted relationships only as candidates, validates evidence
 references and session contracts, relocates absolute result/proposal paths,
@@ -703,7 +884,17 @@ xdr schema diagnostics
 
 `schema status` is cache-only and reports physical-cache state, overlay
 integrity/compatibility, collection-marker age, evidence-growth counts, and an
-exact `next_command`. Collection progress lives in verified query artifacts;
+exact `next_command`. That value is, in priority order:
+
+1. the overlay repair command when the overlay needs repair
+   (`xdr schema repair-overlay --yes`);
+2. `xdr schema migrate-cache --yes` when the cache is valid but has no
+   content binding;
+3. `xdr schema refresh` when the cache is missing, stale, or invalid;
+4. otherwise `xdr schema collect`.
+
+It never suggests `--local-only`, `--plan-only`, or `--explore`; those are
+choices you make. Collection progress lives in verified query artifacts;
 rerun the same collection command to continue remaining work.
 
 Diagnostics is also cache-only. It reports package/build identity, registered
@@ -727,8 +918,10 @@ xdr schema repair-overlay --reset-empty --yes
 ```
 
 `repair-overlay` selects the newest structurally valid retained overlay
-generation. When the overlay contract has drifted, the exact prior overlay
-files are quarantined before a new generation is atomically published:
+generation for the configured tenant; `--all-local` repairs every local
+tenant overlay, including orphaned generations. When the overlay contract has
+drifted, the exact prior overlay files are quarantined before a new
+generation is atomically published:
 compatible records are retained, obsolete provisional interpretations and
 their dependent observations are inactivated, and unsafe nested fields are
 excluded. Reviewed-contract conflicts fail closed without changing the
@@ -739,6 +932,35 @@ tenant or reads result-row values.
 Maintenance advisories appear on stderr and never change stdout JSON. `--quiet`
 suppresses them; `--no-quiet` forces them even when stdout is piped.
 
+## Offline correlation
+
+`schema correlate` joins saved result artifacts to each other without running
+any KQL. Give it at least two `--input Table=run-id` pairs (run IDs from
+`xdr results list`; each must be unique and declare the physical table its
+rows came from). Every artifact's sidecar must prove lineage, data digest,
+and binding to the active tenant; otherwise the command stops with
+`SCHEMA_CORRELATION_TENANT_MISMATCH`. `--allow-tenant-mismatch` overrides
+that check for intentional cross-tenant analysis of unbound or
+differently-bound artifacts.
+
+```bash
+xdr schema correlate \
+  --input EntraIdSignInEvents=RUN_ID_1 \
+  --input CloudAppEvents=RUN_ID_2
+```
+
+Only reviewed relationships from the packaged graph are used. By default a
+shared entity counts only across strong edges: `join-compatible`, not
+many-to-many, and without mutable or tight-time-window temporal guidance.
+`--include-contextual` adds the weaker edges (IP, UPN, hostname, and hash
+matches), which the output marks `contextual` because they need the returned
+temporal or surrounding-event checks. The receipt reports input, event,
+entity, shared-entity, contextual-match, and structural-route counts and
+whether tenant binding was verified; rows are saved privately with no stdout
+preview. Follow `context.next_command`
+(`xdr results rows RUN_ID --type relationship-path-match --limit 100`).
+Shared entities are row evidence; a structural route alone is not.
+
 ## Command map
 
 | Command | Network | Purpose |
@@ -746,46 +968,20 @@ suppresses them; `--no-quiet` forces them even when stdout is piped.
 | `schema status` | No | Maintenance state and exact next command |
 | `schema diagnostics` | No | Build, capability, cache, overlay, and collection summary |
 | `schema refresh` | Yes | Replace the tenant physical-schema cache |
-| `schema tables`, `schema show` | No | Browse cached tables and fields |
+| `schema tables`, `schema show` | No | Browse cached tables and fields (`--search`) |
 | `schema collect --plan-only` | No | Index saved results and preview focused validation |
 | `schema collect --local-only` | No | Publish saved-result overlaps |
 | `schema collect` | When candidates exist | Mine saved results and validate focused targets |
 | `schema collect --explore` | When work remains | Find saved identifiers in new fields and nested paths |
-| `schema observe --plan-only` | No | Preview one source’s targets and request estimate |
+| `schema observe --plan-only` | No | Preview one source's targets and request estimate |
 | `schema observe` | Yes | Sample/reuse identifiers and crawl target tables |
 | `schema discoveries` | No | Report observed/validated routes and policy decisions |
-| `schema candidates` | No | Compatibility alias for `discoveries` |
 | `schema pivot`, `schema path` | No | Explain usable field/table routes |
 | `schema candidate-review` | Yes | Optional bounded private context for one route |
 | `schema candidate-proposal` | No | Draft a contributor-owned core JSONL proposal |
 | `schema validate-core` | No | Validate the packaged graph/profile and check or update its generated reference block |
-| `schema correlate` | No | Correlate retained tenant-bound artifacts |
+| `schema correlate` | No | Correlate saved artifacts offline; see [Offline correlation](#offline-correlation) |
 | `schema export-opengraph` | No | Write a value-free BloodHound payload |
-| `schema repair-overlay`, `schema migrate-cache` | No | Repair compatible local state |
+| `schema repair-overlay`, `schema migrate-cache` | No | Repair local state |
 | `schema bundle inspect/export/import` | No | Inspect or move portable schema state |
-| `schema prune-evidence` | No | Retire stale observations before result pruning |
-
-Explicit session end refreshes a missing/stale physical cache, runs local-first
-collection, and explores new identifier locations. The exploration budget is
-`schema_explore_max_queries = 5` by default, separate from focused validation's
-20-query budget. `schema_collect_on_session_end = false` disables all stages;
-refresh and exploration also have individual off switches. Completed work is
-reused at subsequent explicit ends; idle expiry and rotation never trigger it.
-See [session maintenance](sessions.md).
-
-Collection receipts distinguish pending work from excluded scope. Cached tables
-without a usable time column, unavailable targets, and unsupported property paths
-are recorded in `excluded_scope`. Completing eligible work can return success
-while reporting those exclusions. Budget exhaustion, output truncation, depth
-limits, and upstream failures remain partial. A valid source selector
-with no saved identifiers returns not-found. Completion history outlives the
-one-day refresh interval: never-tested cohorts run first, followed by the oldest
-verified cohorts. Old evidence can guide scheduling without satisfying the
-30-day freshness requirement for promotion.
-
-Encoded JSON strings are expanded only for the documented physical JSON-string
-columns; native dynamic objects remain traversable. Free-text strings do not
-create nested schema fields merely because their content resembles JSON.
-Address exploration currently supports ASCII addresses only; receipts expose
-that normalization scope. It does not claim Python casefold/IDNA equivalence
-with KQL `tolower` for non-ASCII values.
+| `schema prune-evidence` | No | Retire explicit observations before result pruning |

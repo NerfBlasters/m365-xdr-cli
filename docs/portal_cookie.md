@@ -1,161 +1,366 @@
-# Portal-cookie backend: support and limits
+# Portal-cookie backend
 
-The default `auto` preference selects official authentication when a configured
-app secret or a matching MSAL access/refresh token is present. If those are absent
-and a structurally usable cookie store matches the configured tenant, commands
-select `portal-cookie` automatically. Importing a cookie is sufficient; no backend
-flag or configuration change is needed. Client ID/secret and MSAL are optional
-for a cookie-only setup; the tenant ID remains required.
+The portal-cookie backend reuses your logged-in security.microsoft.com
+browser session: `xdr` forwards the browser's Cookie header to the portal's
+undocumented `apiproxy` interface, the same one the Defender web UI calls.
+You would choose it because it takes minutes to set up and needs no Entra
+app registration and no admin consent; the official Graph/MDE backend
+(`xdr auth login`) remains the supported alternative. Everything below
+applies to a user session, not a service identity.
 
-Explicit `--backend official|portal-cookie` wins over configuration. A configured
-`api_backend = "official"` or `"portal-cookie"` pins that choice; `"auto"` restores
-automatic selection. CLI flags and the resolved choice do not rewrite the saved
-preference. `auth status` reports `backend` and `backend_preference`.
-An invalid saved `api_backend` produces a warning on stderr and uses `auto`;
-an explicit `--backend` still takes precedence. Correct the saved value to
-remove the warning.
-While that value is invalid, incident updates and device response actions stop
-with exit 4 before confirmation or API dispatch unless an explicit `--backend`
-choice is supplied. Reads, auth diagnostics and local dry runs remain available.
-Saving credentials during auth recovery preserves the invalid preference until
-you correct it; it does not silently enable future writes.
+> **Caveats, read before importing anything**
+>
+> - The `apiproxy` interface is undocumented and unsupported by Microsoft.
+>   It can change or break without notice; the CLI validates response shapes
+>   and fails closed rather than guessing.
+> - The imported cookie is a bearer credential for your user session. Anyone
+>   who reads `~/.xdr-cli/portal_cookies.json` can act as you in the portal.
+> - The session expires on Microsoft's schedule and is subject to your
+>   tenant's Conditional Access and sign-in-frequency policies. When it
+>   stops working, renewal is manual: capture and import again.
+> - `xdr auth logout` deletes the local copy only. It does not revoke the
+>   browser session at Microsoft; sign out in the browser for that.
+> - Your Defender RBAC still applies. The CLI can do exactly what your user
+>   can do in the portal, no more.
+> - Attribution in sign-in and activity logs is that of your browser
+>   session, not of a named application. Verify what your tenant records.
 
-Selection reads local stores without contacting Microsoft. It does not establish
-remote validity. Expired MSAL access tokens still count as present; refresh-token
-recovery belongs to MSAL. A corrupt/unreadable MSAL cache preserves official auth
-and its recovery path. Cookie stores from another tenant or with missing required
-material are not selected automatically. If neither credential method is present,
-the normal official configuration/login guidance applies.
+## Capture and import a cookie
 
-A command selects once, before session attribution and API work. Authentication,
-permission, network, or service errors never trigger a backend change or replay a
-request. With both credentials present, use an explicit override when you want to
-exercise cookie mode. In auto mode, `auth login` can establish MSAL credentials;
-`auth logout` removes credentials only for the backend selected for that invocation.
+Tested path: **Microsoft Edge** with the **Copy as cURL (bash)** menu item.
+Chrome, Firefox, and the cmd/PowerShell cURL variants are unverified; they
+may work if the result contains the full Cookie header, but nobody has
+checked.
 
-## Supported operations
+1. Configure the tenant. Cookie authentication needs `tenant_id` and
+   nothing else from the official setup; `client_id` and `client_secret`
+   can be absent.
 
-Cookie authentication supports hunting, library and schema hunting workflows,
-incident/alert reads and evidence, guided investigations, domain discovery,
-exact device lookup, and device timelines. Incident updates support status,
-classification, determination, and comments.
+   ```toml
+   # ~/.xdr-cli/config.toml
+   tenant_id = "00000000-0000-0000-0000-000000000000"
+   ```
 
-Device actions include Quick/Full antivirus scans, Selective/Full isolation,
-unisolation, execution restriction, investigation-package collection/download,
-and action status reads. `device unrestrict DEVICE_ID --comment "Recovery reason"`
-removes the execution restriction, with confirmation or `--yes`. Official auth
-uses Microsoft's [unrestrict API](https://learn.microsoft.com/en-us/defender-endpoint/api/unrestrict-code-execution);
-cookie auth submits the captured native `Unrestrict` policy action.
-Submission acceptance does not mean an action succeeded; use `device action-status`
-to check its outcome. Action completion does not independently prove an antivirus
-scan has finished.
-If a portal mutation times out, the structured error reports `retryable: false`
-because the action might already have been accepted. Inspect the incident or
-device state before deciding whether to submit another action.
+   Importing without `tenant_id` fails with exit 4 before anything is
+   stored.
 
-Incident and alert pagination skips IDs already returned when live pages overlap.
-The first observed record is retained; continuation validation and page bounds
-still apply. This is a live collection read, not a consistent point-in-time snapshot.
-Scan and isolation mode options accept any letter case and reject invalid values
-before confirmation or requests.
+2. In Edge, sign in to <https://security.microsoft.com> and open any page
+   that loads live data, for example a device page's timeline. Open
+   DevTools (F12), select the **Network** tab, and filter on `apiproxy`.
 
-## Domain sources
+3. Right-click any `apiproxy` request, choose **Copy**, then **Copy as cURL
+   (bash)**. Save the clipboard to a file, for example `mde-curl.txt`, or
+   keep it on the clipboard and pipe it in.
 
-`xdr domains list` saves source-labelled records from Entra and MDI-observed
-Active Directory domains. `--source entra` and `--source active-directory` select
-one source. Each record preserves its provider's identifier and native fields,
-plus `name` and `source`; same-named records are not merged. Only Entra records
-supply tenant verification semantics. AD records include `isDeleted` and must
-not be treated as exhaustive forest discovery.
+4. Import it. The argument is a file path or `-` for stdin; there is no
+   paste prompt because the header is far longer than a terminal line
+   accepts.
 
-Official auth supports Entra only. Default combined listing then returns a
-private artifact plus exit 14 for unavailable AD coverage. Explicit
-`--source entra` returns normal success. AD reads are bounded to 100 rows;
-`context.sources` reports the native `has_more`, returned count, reported total,
-and errors. Missing sources, truncation, or count discrepancies preserve usable
-records and report partial success. A valid empty response is distinguishable
-from unavailable data. No undocumented continuation parameter is guessed.
+   ```bash
+   xdr auth portal-cookie mde-curl.txt
+   pbpaste | xdr auth portal-cookie -        # macOS clipboard via stdin
+   ```
 
-## Device fields
+5. Confirm with `xdr auth status` (output shape below).
 
-Device responses preserve the portal record in `portal_source.raw`, identify
-unavailable fields, and mark field parity partial. `OsProcessor` values `32-bit`
-and `64-bit` map to official `osArchitecture`; they do not establish the deprecated
-`osProcessor` value (`x64`, for example). Other bitness values stay unmapped.
+The whole header matters. `apiproxy` requires the routing cookie
+`X-PortalEndpoint-RouteKey` and the session cookie `s.SessID` in addition to
+`sccauth`; with only `sccauth` it answers an opaque HTTP 500. A large
+`sccauth` is split by the portal into `sccauth=chunks:N` plus
+`sccauthC1..N`; all of these are forwarded verbatim.
 
-The portal's `lastSeen` follows its observation view; the official property is
-the last full device report. This semantic difference is also recorded in
-`portal_source.field_notes`. See Microsoft's
-[Machine resource reference](https://learn.microsoft.com/en-us/defender-endpoint/api/machine).
+### What the import accepts
 
-Additional mappings use device details and bounded, exact-ID supplementary reads:
+The source text is parsed in this order: the `-b '...'`/`--cookie '...'`
+value of a bash cURL blob; otherwise a line beginning `Cookie:`; otherwise
+the whole text as a bare cookie string. The result must contain an
+`sccauth` cookie, or the import stops with `PORTAL_COOKIE_INVALID` and
+neither stores nor deletes anything.
 
-| Field | Portal source and conversion |
+The XSRF token is taken from the `XSRF-TOKEN` cookie in the header and
+URL-decoded. Only when the header has no such cookie does the command
+prompt, with hidden input, for an `xsrf-token` value; an empty answer fails
+with `PORTAL_XSRF_TOKEN_MISSING`. That is the only interactive prompt.
+
+Cookies are written to `~/.xdr-cli/portal_cookies.json` with mode `0600`
+(user-profile ACL on Windows), together with the XSRF token, a timestamp,
+and a non-reversible fingerprint of the configured tenant. Cookie values
+never appear on the command line.
+
+### Options
+
+`--verify` / `--no-verify` (default: verify). After storing, the command
+issues one GET to `apiproxy/mtp/ndr/machines` with the imported cookies and
+reports `verified: true` or `verified: false` plus a `verify_error` string.
+This is a "do the cookies work at all" probe. It does **not** check which
+tenant the session belongs to; that check runs on your first API command
+(see [Errors you may see](#errors-you-may-see)). Network and HTTP failures
+are reported, not raised, so the command exits 0 either way.
+
+`--keep-source`. By default, once the cookies are stored, the source file
+is overwritten with random bytes, fsynced, and unlinked, because it holds a
+live session credential. Two honest qualifications: the cookies are stored
+*before* the verify probe, and the source file is shredded even when verify
+reports `false`; and the shred is best-effort, since SSD wear levelling and
+copy-on-write or journaling filesystems can retain copies. Symlinks are
+rejected as a source, and the file's identity (device and inode) is
+rechecked before overwrite; on a mismatch the import succeeds but warns you
+to remove the capture yourself. stdin (`-`) is never shredded. Pass
+`--keep-source` to skip the shred; the command then reminds you on stderr
+to delete the file.
+
+### `auth status` afterwards
+
+When the resolved backend is `portal-cookie`, `xdr auth status` prints a
+cookie-mode record (trimmed here):
+
+```json
+{
+  "backend": "portal-cookie",
+  "backend_preference": "auto",
+  "portal": {
+    "cookie_stored": true,
+    "session_validity": "not_checked"
+  },
+  "capabilities": [
+    "hunting", "incidents-list", "incidents-show", "alerts-list",
+    "alerts-show", "investigate", "domains-list", "device-show",
+    "device-timeline", "device-action-status-with-device",
+    "device-download-package", "incident-comments", "incidents-update",
+    "device-scan-quick", "device-scan-full", "device-isolate-selective",
+    "device-isolate-full", "device-unisolate", "device-collect-package",
+    "device-restrict", "device-unrestrict"
+  ],
+  "unverified_capabilities": [],
+  "validation_caveats": ["..."],
+  "full_parity": false
+}
+```
+
+`session_validity` is always `not_checked`: status reads local files and
+never contacts Microsoft. A store that parses but is bound to a different
+tenant shows `cookie_stored: false` and a `cookie_error` object with code
+`PORTAL_COOKIE_TENANT_MISMATCH`. When the resolved backend is `official`,
+the same `cookie_stored`/`cookie_error` fields appear under `portal`, next
+to the MSAL account details.
+
+## What works in cookie mode
+
+Supported operations, as reported by `auth status`:
+
+| Area | Commands |
 |---|---|
-| `deviceValue` | Inventory `DynamicAssetValue`, then `AssetValue`; explicit null values use the portal's `Normal` default. Criticality is a separate property. |
-| `machineTags` | Detail `ExtendedMachineTags.UserDefinedTags` plus `DynamicRulesTags`, deduplicated. Cloud-app labels and group/system labels stay in raw data. |
-| `managedBy` | Detail `MemEnrollmentStatus` mapped to official provider enum names. |
-| `managedByStatus` | Enrollment outcome normalized to official `Unknown`, `Success`, or `Error`; detailed native codes remain in raw data. |
-| `rbacGroupName` | Inventory `MachineGroup`, only when its RBAC group ID matches device detail. AD `ParentGroups` is not used. |
-| `ipAddresses` | Reported IP adapters, with address/MAC/interface/status fields. Portal data can omit loopbacks; this collection is not a complete official-API equivalent. |
-| `exclusionReason` | Null for explicitly included devices; excluded-device justification converted to the official exclusion enum after exact-device correlation. |
-| `vmMetadata` | Explicit null cloud-resource data, or Azure `VmId`, `ResourceId`, and `SubscriptionId` with an explicit Azure environment. Other cloud shapes remain unmapped. |
-| `mergedIntoMachineId` | Direct `MergedIntoMachineId` when supplied; absence does not imply null. |
+| Hunting | `hunt`, plus `library run` and schema workflows that execute KQL |
+| Incidents | `incidents list`, `incidents show` (with `--expand alerts`), `incidents update` (status, classification, determination, `--comment`) |
+| Alerts | `alerts list`, `alerts show` |
+| Investigation | `investigate` |
+| Domains | `domains list` (Entra and MDI-observed Active Directory) |
+| Devices | `device show`, `device timeline`, `device action-status` |
+| Device actions | `device scan` (Quick/Full), `device isolate` (Selective/Full), `device unisolate`, `device restrict`, `device unrestrict`, `device collect-package`, `device download-package` |
 
-The official provider, management-status, exclusion, and cloud enums are defined
-by the [MDE service metadata](https://api.security.microsoft.com/api/$metadata).
-The native enrollment code is retained because its detailed error information
-is more specific than the official status enum. Unknown codes are left unmapped.
+Input limits specific to the portal adapters:
 
-Inventory enrichment searches the exact hostname with a 100-row bound and uses
-only a unique matching MachineId. `portal_source.supplementary` retains the
-selected inventory record and adapter/exclusion responses; `field_sources` records
-the conversions. Optional-source permission, response-shape, network, or timeout
-failures are listed in `enrichment_errors` and leave affected fields unavailable.
-Authentication and rate-limit errors stop the command. Failures of the required
-tenant/device read also stop the command. Action submission prerequisites and
-timeline device verification do not fetch these supplementary views.
+- Incident IDs must be numeric. Alert IDs may be up to 512 characters of
+  letters, digits, `_`, `.` and `-`.
+- `incidents show --expand` accepts only `alerts`; any other value is
+  `BACKEND_CAPABILITY_UNAVAILABLE`.
+- `incidents update` accepts only `--status`, `--classification`,
+  `--determination`, and `--comment`. Fields are sent in one PATCH; the
+  comment is a second POST issued only after the PATCH succeeds.
+- Device reads take a 40-hex-character MachineId. A hostname is resolved by
+  an exact, case-insensitive `ComputerDnsName` match among MDE devices in
+  the portal's 180-day inventory view (up to 100 pages of 100 rows). Zero
+  matches is `API_NOT_FOUND` (exit 8); more than one is `STATE_CONFLICT`
+  (exit 13) asking for a MachineId.
+- Action IDs must be GUIDs. `device action-status` also needs the device:
+  pass `--device <MachineId>` unless a local association exists (see below).
+- Scan and isolation modes are case-insensitive but must be one of the
+  listed values; anything else is a usage error (exit 6) before any request.
+- Incident and alert listing skips IDs already returned when live pages
+  overlap; it is a live read, not a point-in-time snapshot.
 
-These views can disagree in time and meaning. In particular, the device-detail
-enrollment state can differ from inventory `ManagedBy` and the official API's
-last full report. Cloud-resource data describes the portal's discovered resource;
-null does not establish that the host is physically non-virtual. No inferred
-loopbacks, processor families, or duplicate flags are added.
+Anything not listed is refused locally with `BACKEND_CAPABILITY_UNAVAILABLE`
+(exit 3). No request is sent and the CLI never falls back to MSAL or to the
+official API for that call.
 
-`isPotentialDuplication` has no established source in these portal contracts.
-The deprecated `osProcessor` cannot be recovered from 32/64-bit architecture.
-A merge target remains unavailable when the portal omits it. Missing fields,
-unknown enum values, and unsupported cloud shapes remain explicit in
-`portal_source.unavailable_fields`; they are not replaced with synthetic defaults.
+Acceptance of a device action is not success. Check outcome with
+`device action-status`. A portal mutation that times out is reported with
+`retryable: false` because the action may already have been accepted;
+inspect the incident or device before submitting again.
 
-## Action history
+Sessions started in cookie mode (`xdr session start`) record the identity
+placeholder `automatic` rather than an operator UPN, and refuse to start
+without stored cookies.
 
-The device's overflow-menu Action Center displays real success/failure for the
-latest retained action in each category. The CLI reads that same source and
-correlates exact action/device IDs. An older action may disappear after another
-action of the same category replaces it. Global Action Center history can label
-both failed and successful actions `Completed`; it cannot supply a trustworthy
-outcome for a superseded action. This is a documented portal limitation, not a
-reason to infer success. Keep official auth available when such history is needed.
+## Backend selection
 
-## Credentials and operation
+The `--backend` global option takes `auto`, `official`, or `portal-cookie`;
+the `api_backend` key in `config.toml` takes the same values and defaults to
+`auto`. An explicit `--backend` wins over the configured value. Neither the
+flag nor the resolved choice rewrites the saved preference. `auth status`
+reports both `backend` (resolved) and `backend_preference` (requested).
 
-Cookies remain user-session credentials: expiry, Conditional Access and portal
-RBAC still apply. Manual import works. Automatic browser export/renewal and
-unattended reauthentication are not shipped. `auth status` checks local storage,
-not remote session validity. Rejected legacy or cross-tenant cookie stores are
-reported with `cookie_stored: false` and `cookie_error`; commands using those
-cookies still reject them. Explicit cookie-mode `auth login` directs import;
-cookie-mode `auth logout` deletes local cookies and legacy portal OAuth tokens
-without revoking Microsoft's browser session or deleting official credentials.
+In `auto` mode, a command selects once, before any API work:
 
-New cookie-mode sessions use the existing `automatic` identity placeholder;
-it is not an authenticated operator UPN. They do not borrow the MSAL account.
-Schema maintenance honors the selected backend. Investigation-package transfers
-use a separate client without portal credentials, publish private ZIP files
-atomically, and do not extract files.
+1. If official credentials are present, use `official`.
+2. Otherwise, if a structurally usable cookie store matches the configured
+   tenant, use `portal-cookie`.
+3. Otherwise use `official`, so the normal configuration and login guidance
+   applies.
 
-Browser-assisted renewal is scoped separately in the
-[browser cookie renewal follow-up proposal](browser_cookie_renewal.md), including
-manual renewal, profile ownership, tenant verification, failure recovery, optional
-dependencies, and acceptance checks.
+Selection reads local files only. It does not establish that any credential
+is still valid remotely, and authentication, permission, network, or
+service errors never trigger a backend change or a replayed request.
+
+"Official credentials present" means precisely: `tenant_id` and
+`client_id` are both set, and either `auth_mode = "client_credentials"`
+with a non-empty `client_secret` (a secret under any other `auth_mode` does
+not count), or `~/.xdr-cli/token_cache.json` holds an access or refresh
+token for that client ID and tenant. Expired access tokens still count. A
+corrupt or unreadable token cache also counts as present, so official auth
+and its recovery path are preserved rather than silently switching methods.
+
+"Usable cookie store" means `portal_cookies.json` parses, its tenant
+fingerprint matches the configured `tenant_id`, it has a non-empty XSRF
+token, and the cookie header contains `sccauth` (or `sccauth=chunks:N` with
+every `sccauthC1..N` cookie present, 1 ≤ N ≤ 100). Stores from another
+tenant or with missing material are never selected automatically.
+
+With both credential kinds present, `auto` picks official; pass
+`--backend portal-cookie` to exercise cookie mode.
+
+### Invalid `api_backend`
+
+If `config.toml` holds any other value, `xdr` prints a warning on stderr and
+behaves as `auto` for reads and diagnostics. Tenant writes (`incidents
+update`, `device isolate|unisolate|scan|collect-package|restrict|unrestrict`)
+stop with exit 4 before confirmation or dispatch unless `--backend` is given
+explicitly or the command is a `--dry-run`. `auth login` and `auth
+portal-cookie` still work during recovery but preserve the invalid value
+when they save configuration; correct it by hand to clear the warning.
+
+### `auth login` and `auth logout`
+
+`auth login` refuses with a usage error (exit 6) whenever the resolved
+backend is `portal-cookie` and the request was not `auto`, that is, under
+an explicit `--backend portal-cookie` or a pinned `api_backend =
+"portal-cookie"`. It directs you to `auth portal-cookie` instead. In `auto`
+mode with only cookies present, `auth login` proceeds with the official MSAL
+flow (which needs `client_id`).
+
+`auth logout` clears credentials for the backend selected for that
+invocation only. In cookie mode it deletes `portal_cookies.json` and
+reports `cookie_cleared`; official `token_cache.json` is untouched. In official mode it clears `token_cache.json` and leaves the
+cookies in place. Consequence in `auto` mode: with both present, `auth
+logout` clears MSAL, and the next command silently selects cookies. Run
+`auth portal-logout`, which always clears the portal files regardless of
+backend, if you intend to remove cookies too. None of these revoke the
+browser session at Microsoft.
+
+## Known gaps and differences
+
+### Device detail is partial
+
+`device show` maps the portal fields that correspond directly to official
+`Machine` properties and carries the rest under `portal_source`:
+`raw` (the portal record), `supplementary` (inventory, IP-adapter and
+exclusion reads), `field_sources` (where each derived field came from),
+`enrichment_errors` (optional reads that failed, by error code),
+`field_notes`, and `unavailable_fields`. `field_parity` is always
+`partial`. Nothing is backfilled with synthetic defaults.
+
+- `lastSeen` is the portal's observation time; the official property is the
+  time of the last full device report. Recorded in `field_notes`.
+- `osArchitecture` is set only when the portal's `OsProcessor` is `32-bit`
+  or `64-bit`. The official `osProcessor` value (such as `x64`) cannot be
+  recovered and stays in `unavailable_fields`.
+- `deviceValue`, `machineTags`, `managedBy`, `managedByStatus`,
+  `rbacGroupName`, `ipAddresses`, `exclusionReason`, `vmMetadata`, and
+  `mergedIntoMachineId` come from a bounded exact-hostname inventory read
+  and per-device supplementary reads; each is listed in `unavailable_fields`
+  when its source did not supply it. `ipAddresses` can omit loopbacks.
+  `isPotentialDuplication` has no portal source.
+- Enrichment failures (permission, shape, network, timeout) are recorded
+  and leave fields unavailable; authentication and rate-limit errors stop
+  the command. Action submission and timeline device verification skip
+  enrichment entirely.
+
+### Action status needs the device
+
+The portal's "latest actions" endpoint is queried per device, so
+`device action-status` needs a MachineId. When an action is submitted or
+first read through this backend, the CLI stores the pairing under
+`~/.xdr-cli/action_associations/<tenant-fingerprint>/<action-id>.json`
+(mode `0700`/`0600`) and later reads can omit `--device`. Pass
+`--device <MachineId>` on first sight of an action created elsewhere or
+when the association could not be saved (a stderr warning says so).
+
+The endpoint keeps the latest retained action per category. A superseded
+action can disappear and then reads as `API_NOT_FOUND`; this is a portal
+limitation, not evidence of success or failure. Keep official credentials
+available when you need durable action history. Response fields follow the
+portal contract (`portal_source.status_contract: "portal-native"`).
+
+### `domains list` has an Active Directory source
+
+On this backend `domains list` combines Entra domains with MDI-observed
+Active Directory domains, each record labelled with `source` and keeping its
+provider identifier; same-named records are not merged. `--source entra`
+and `--source active-directory` select one. The AD read is capped at 100
+rows; `context.sources.active-directory` reports `has_more`, the returned
+count, the portal's `reported_total`, and upstream errors. Truncation, a
+count mismatch, or one failed source still writes the usable rows and exits
+14 (`PARTIAL_SUCCESS`). AD records are not an exhaustive forest inventory. On the official backend the default `all`
+listing writes Entra rows and exits 14 for the unavailable AD source;
+`--source active-directory` there is `BACKEND_CAPABILITY_UNAVAILABLE`.
+
+### `download-package`
+
+`device download-package ACTION_ID --device MACHINE_ID --output PATH`
+fetches an investigation package already collected by a succeeded
+`collect-package` action. Both `--device` and `--output` are required. The
+action must be a package-collection action (`Type: ForensicsResponse`) with
+status `Succeeded`; otherwise exit 6 or exit 13 respectively. `--force`
+replaces an existing output path atomically; `--max-bytes` (default 1 GiB)
+caps the transfer. The parent directory must be a directory that is not
+group- or world-writable unless it carries the sticky bit (exit 12). The
+download goes to the signed Azure Blob URL with a separate client that
+carries no portal cookies or tenant headers; the URL never appears in
+output. The ZIP container is checked but not extracted. The receipt's
+output key is `data_path`, with `bytes`, `sha256`, `action_id`,
+`device_id`, and `api_backend`. On the official backend this command is a
+usage error (exit 6).
+
+### `device timeline`
+
+With `--backend portal-cookie`, timeline reads use the stored cookies and
+`--refresh-token` is rejected (exit 4). On the official backend the timeline
+keeps its own credential order: explicit refresh token, then stored cookies.
+See [device_timeline.md](device_timeline.md).
+
+## Errors you may see
+
+| Code | Exit | Meaning and fix |
+|---|---|---|
+| `PORTAL_COOKIE_INVALID` | 4 | The import source has no `sccauth` cookie. Nothing was stored or deleted. Re-copy as cURL (bash) from an `apiproxy` request. |
+| `PORTAL_XSRF_TOKEN_MISSING` | 4 | The header had no `XSRF-TOKEN` cookie and the prompt was answered empty. Re-copy, or supply the token at the prompt. |
+| `PORTAL_COOKIE_TENANT_MISMATCH` | 4 | `portal_cookies.json` is bound to a different tenant than `tenant_id`, or has no binding. Also shown as `cookie_error` by `auth status`. Re-import for the configured tenant. |
+| `CONFIG_ERROR` "Authenticated portal tenant does not match configured tenant_id" | 4 | Raised on the first API call of a command: the portal reports a different tenant for your session than `tenant_id`. Sign in to the right tenant in the browser and re-import. |
+| `NOT_AUTHENTICATED` | 2 | The portal answered 401/440, redirected to sign-in, or returned HTML. The session has expired or was revoked. Re-import with `xdr auth portal-cookie`. |
+| `BACKEND_CAPABILITY_UNAVAILABLE` | 3 | The operation has no portal adapter (or used an unsupported option such as `--expand` other than `alerts`). No request was sent; use `--backend official`. |
+| `PERMISSION_MISSING_SCOPE` | 7 | The portal answered 403. Check the signed-in user's Defender roles. |
+| `STATE_CONFLICT` | 13 | A hostname matched several devices (supply a MachineId), or a package download targeted an action that has not succeeded. |
+
+The import command itself exits 0 even when `--verify` reports
+`verified: false`; read the `verify_error` and re-import if the cookies are
+stale.
+
+## Related
+
+- [device_timeline.md](device_timeline.md): the timeline command, including
+  the original capture walkthrough and secret-handling notes.
+- [troubleshooting.md](troubleshooting.md): exit codes, error record shape,
+  and output streams.
+- [../README.md](../README.md): installation and the official backend.
+- [Browser cookie renewal](proposals/browser_cookie_renewal.md):
+  proposal, not implemented.

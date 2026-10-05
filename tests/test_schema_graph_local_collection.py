@@ -258,12 +258,13 @@ def test_evidence_prune_does_not_repin_still_present_hunts(local_results):
 
 
 @pytest.mark.parametrize("flag", ["--resume", "--exhaustive"])
-def test_retired_collection_flags_never_suggest_unrelated_options(local_results, flag):
+def test_retired_collection_flags_are_ordinary_unknown_options(local_results, flag):
     args = ["schema", "collect", flag]
     if flag == "--resume":
         args.append("old-run")
     with patch("xdr_cli.main.load_config", return_value=Config(tenant_id="tenant")):
         result = runner.invoke(app, args)
     assert result.exit_code == 6
-    assert "CLI_REMOVED_OPTION" in result.stdout
-    assert "nearest_option" not in result.stdout
+    error = json.loads(result.stdout)["error"]
+    assert error["code"] == "CLI_UNKNOWN_OPTION"
+    assert error["invalid"]["value"] == flag

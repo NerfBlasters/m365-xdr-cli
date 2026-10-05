@@ -10,6 +10,7 @@ Contents:
 - [Exit codes and error codes](#exit-codes-and-error-codes)
 - [Output streams, piping, and non-interactive mode](#output-streams-piping-and-non-interactive-mode)
 - [Authentication and consent](#authentication-and-consent)
+- [Portal-cookie backend](#portal-cookie-backend)
 - [Command-line usage errors](#command-line-usage-errors)
 - [Query library](#query-library)
 - [Installation](#installation)
@@ -53,31 +54,59 @@ Fields worth scripting against:
 
 ## Exit codes and error codes
 
-Exit codes are grouped by the recovery action they require. The `code`
-strings below are the ones you will most commonly see for each class; a
-class may carry more than one code.
+Exit codes are grouped by the recovery action they require. Every `code`
+string the CLI emits is listed under its exit code; the schema-cache codes
+are grouped separately below the table because they only come from
+`xdr schema ...` and `xdr results` proposal commands.
 
-| Exit | Class                | Common `code` values                                                    | What to do                                                        |
+| Exit | Class                | `code` values                                                           | What to do                                                        |
 | ---- | -------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | 0    | `SUCCESS`            | --                                                                      | --                                                                |
 | 1    | `INTERNAL_ERROR`     | `INTERNAL_ERROR`                                                        | Re-run with `--debug`; report a bug                               |
-| 2    | `AUTH_ERROR`         | `AUTH_LOGIN_REQUIRED`, `NOT_AUTHENTICATED`                              | `xdr auth status`, then `xdr auth login`                          |
-| 3    | `UPSTREAM_API_ERROR` | `API_ERROR`                                                             | Inspect `original.status` / `original.detail`                     |
-| 4    | `CONFIG_ERROR`       | `CONFIG_ERROR`                                                          | Check `~/.xdr-cli/config.toml`                                    |
-| 5    | `QUERY_ERROR`        | `QUERY_ERROR`, `QUERY_UNKNOWN_TABLE`, `QUERY_UNKNOWN_COLUMN`, `QUERY_SEMANTIC_ERROR` | Fix KQL; `xdr schema tables --search <name>`         |
-| 6    | `USAGE_ERROR`        | `CLI_USAGE_ERROR`, `CLI_UNKNOWN_COMMAND`, `CLI_UNKNOWN_OPTION`, `CLI_REMOVED_OPTION`, `CLI_INVALID_VALUE`, `CLI_INVALID_ENUM`, `CLI_MISSING_VALUE` | Follow `help_command` / `corrected_argv` |
+| 2    | `AUTH_ERROR`         | `AUTH_LOGIN_REQUIRED`, `NOT_AUTHENTICATED`, `TOKEN_EXPIRED`             | `xdr auth status`, then `xdr auth login` (official) or `xdr auth portal-cookie <source>` (cookie mode) |
+| 3    | `UPSTREAM_API_ERROR` | `API_ERROR`, `API_MALFORMED_RESPONSE`, `API_INVALID_RESPONSE_SHAPE`, `BACKEND_CAPABILITY_UNAVAILABLE` | Inspect `original.status` / `original.detail`; for the capability code, no request was sent -- pick the other `--backend` |
+| 4    | `CONFIG_ERROR`       | `CONFIG_ERROR`, `PORTAL_COOKIE_INVALID`, `PORTAL_XSRF_TOKEN_MISSING`, `PORTAL_COOKIE_TENANT_MISMATCH`, `PACKAGE_DATA_MISSING` | Check `~/.xdr-cli/config.toml`; re-import cookies; reinstall for the package code |
+| 5    | `QUERY_ERROR`        | `QUERY_ERROR`, `QUERY_UNKNOWN_TABLE`, `QUERY_UNKNOWN_COLUMN`, `QUERY_SEMANTIC_ERROR`, `LIBRARY_UNKNOWN_ENTRY`, `LIBRARY_UNKNOWN_PARAM`, `LIBRARY_MISSING_PARAM`, `LIBRARY_INVALID_PARAM` | Fix KQL (`xdr schema tables --search <name>`) or the library call (`xdr library show <name>`) |
+| 6    | `USAGE_ERROR`        | `CLI_USAGE_ERROR`, `CLI_UNKNOWN_COMMAND`, `CLI_UNKNOWN_OPTION`, `CLI_INVALID_VALUE`, `CLI_INVALID_ENUM`, `CLI_MISSING_VALUE` | Follow `help_command` / `corrected_argv` |
 | 7    | `PERMISSION_ERROR`   | `PERMISSION_MISSING_SCOPE`, `PERMISSION_DENIED`                         | Grant the missing API permission and admin consent (see below)    |
-| 8    | `NOT_FOUND`          | `API_NOT_FOUND`, `LOCAL_NOT_FOUND`, `RESULT_QUERY_NOT_FOUND`            | Verify the ID or run-id                                           |
+| 8    | `NOT_FOUND`          | `API_NOT_FOUND`, `LOCAL_NOT_FOUND`, `RESULT_NOT_FOUND`, `RESULT_QUERY_NOT_FOUND` | Verify the ID or run-id (`xdr results list`)              |
 | 9    | `RATE_LIMIT`         | `API_RATE_LIMITED`                                                      | Wait `retry_after_seconds`, then retry                            |
-| 10   | `TIMEOUT`            | `API_TIMEOUT`                                                           | Raise `--timeout` / `api_timeout`; narrow the query               |
+| 10   | `TIMEOUT`            | `API_TIMEOUT`, `AUTH_CACHE_LOCK_TIMEOUT`, `SESSION_SCHEMA_MAINTENANCE_TIMEOUT` | Raise `--timeout` / `api_timeout`; narrow the query; retry after the other `xdr` login finishes |
 | 11   | `NETWORK_ERROR`      | `API_NETWORK_ERROR`                                                     | Check connectivity / proxy                                        |
-| 12   | `ARTIFACT_ERROR`     | `ARTIFACT_WRITE_FAILED`                                                 | Check free space and permissions under `~/.xdr-cli/results`       |
-| 13   | `CONFLICT`           | `STATE_CONFLICT`                                                        | Resolve the conflicting local state, then retry                   |
+| 12   | `ARTIFACT_ERROR`     | `ARTIFACT_WRITE_FAILED`, `RESULT_INTEGRITY_FAILED`                      | Check free space and permissions under `~/.xdr-cli/results`; `xdr results show <run-id>` for integrity failures |
+| 13   | `CONFLICT`           | `STATE_CONFLICT`                                                        | Resolve the conflicting local state, then retry; also returned when you answer no to a confirmation prompt |
 | 14   | `PARTIAL_SUCCESS`    | `PARTIAL_SUCCESS`                                                       | Receipt was written; inspect the trailing error for failed parts  |
-| 130  | (SIGINT)             | --                                                                      | Command was interrupted with Ctrl-C; POSIX convention             |
+| 130  | (SIGINT)             | `SESSION_SCHEMA_MAINTENANCE_CANCELLED` (from `session end` only), otherwise none | Command was interrupted with Ctrl-C; POSIX convention   |
 
-Note that there is no `FORBIDDEN` code. An HTTP 403 from either API is
-reported as `PERMISSION_MISSING_SCOPE` with exit code 7.
+Schema-cache codes, by exit code:
+
+- 8 (`NOT_FOUND`): `SCHEMA_CACHE_MISSING`, `SCHEMA_UNKNOWN_TABLE`,
+  `SCHEMA_UNKNOWN_SEMANTIC_FIELD`, `SCHEMA_FIELD_UNAVAILABLE`,
+  `SCHEMA_CANDIDATE_NOT_FOUND`, `SCHEMA_CANDIDATE_SOURCE_EVIDENCE_MISSING`
+- 12 (`ARTIFACT_ERROR`): `SCHEMA_CACHE_INVALID`, `SEMANTIC_GRAPH_INVALID`,
+  `SEMANTIC_PROFILE_INVALID`, `SCHEMA_OVERLAY_INVALID`,
+  `SCHEMA_OVERLAY_REPAIR_FAILED`, `SCHEMA_PROVISIONAL_SOURCE_REJECTED`,
+  `SCHEMA_PROPOSAL_INTEGRITY_FAILED`, `SCHEMA_BUNDLE_INVALID`,
+  `SCHEMA_BUNDLE_EXPORT_FAILED`, `SCHEMA_BUNDLE_IMPORT_FAILED`
+- 13 (`CONFLICT`): `SCHEMA_OVERLAY_COMPATIBILITY_REQUIRED`,
+  `SCHEMA_EFFECTIVE_GRAPH_CONFLICT`, `SEMANTIC_DOCUMENT_MARKERS_MISSING`,
+  `SEMANTIC_DOCUMENT_STALE`, `SCHEMA_PROBE_TEMPORAL_COLUMN_MISSING`,
+  `SCHEMA_BUNDLE_COLLISION`, `SCHEMA_CANDIDATE_EVIDENCE_INSUFFICIENT`,
+  `SCHEMA_PROPOSAL_CORE_RELATIONSHIP_EXISTS`,
+  `SCHEMA_PROPOSAL_EVIDENCE_CHANGED`, `SCHEMA_CORRELATION_TENANT_MISMATCH`
+- 14 (`PARTIAL_SUCCESS`): `SCHEMA_PROPOSAL_PARTIAL_PUBLICATION`
+
+Recovery for these is covered in the
+[semantic schema graph guide](schema_graph.md).
+
+Note that there is no `FORBIDDEN` code. An HTTP 403 from either API, or
+from the Defender portal in cookie mode, is reported as
+`PERMISSION_MISSING_SCOPE` with exit code 7.
+
+`BACKEND_CAPABILITY_UNAVAILABLE` is the one exit-3 code that is raised
+locally: the selected backend has no adapter for the operation, so no
+request is sent and no fallback to the other backend is attempted. See
+[Portal-cookie backend](#portal-cookie-backend).
 
 `CLI_COMMAND_FAILED` is not tied to one class: it wraps a command that exited
 without a structured error and keeps that command's own exit code.
@@ -142,11 +171,16 @@ and `session end --no-maintenance` available.
 
 ### A prompt was skipped, or a destructive action refused to run
 
-`xdr` never prompts when stdin **or** stdout is not a TTY, or when
-`--no-interactive` is given. Commands that would normally ask for
-confirmation (the device actions `isolate`, `unisolate`, `restrict`, `scan`,
-`collect-package`, plus `incidents update` and `results prune`) then refuse
-with `CLI_USAGE_ERROR` (exit 6) unless `--yes` is passed.
+`xdr` prompts only when **both** stdin and stdout are TTYs and
+`--no-interactive` is not given. If either stream is redirected or piped,
+the CLI never prompts. Commands that would normally ask for confirmation
+(the device actions `isolate`, `unisolate`, `restrict`, `unrestrict`,
+`scan`, `collect-package`, plus `incidents update` and `results prune`)
+then refuse with `CLI_USAGE_ERROR` (exit 6) unless `--yes` is passed.
+
+Answering no at the prompt is reported as `STATE_CONFLICT` (exit 13) with a
+message such as *Device action 'isolate' was cancelled by the operator.*
+Nothing was sent.
 
 `auth login` is a separate interactive flow and is not made unattended by
 `--no-interactive`. Agents should surface authentication failures to a human
@@ -156,12 +190,24 @@ rather than retrying login in a subprocess.
 xdr --no-interactive device isolate <machine-id> --yes --comment "IR-1234"
 ```
 
+### `investigate` asks "Run which queries?" or runs every enrichment query
+
+When an incident yields suggested enrichment queries, `xdr investigate`
+without `--auto-enrich` prints the numbered list on stderr and prompts
+`Run which queries?` (default `a` for all; `n` for none; or a
+comma-separated list of numbers) -- but only on a TTY. When stdin or
+stdout is not a TTY, or `--no-interactive` is set, there is no prompt and
+every suggested query runs. Pass `--auto-enrich` to get that behaviour on
+a TTY too, or answer `n` to skip enrichment.
+
 ## Authentication and consent
 
 ### `xdr auth status` shows `"configured": false`
 
-No `tenant_id` / `client_id` is present in `~/.xdr-cli/config.toml`. Run
-the login once with both IDs; they are saved to the config file:
+This field appears only when the official backend is selected (it sits
+under `main`). No `tenant_id` / `client_id` is present in
+`~/.xdr-cli/config.toml`. Run the login once with both IDs; they are saved
+to the config file:
 
 ```bash
 xdr auth login --tenant-id <TENANT-ID> --client-id <CLIENT-ID>
@@ -170,13 +216,24 @@ xdr auth login --tenant-id <TENANT-ID> --client-id <CLIENT-ID>
 Any later command that needs a token before configuration exists raises
 `CONFIG_ERROR` (exit 4) with the same hint.
 
+If you intend to use cookies only, ignore the `auth login` hint: the
+official backend was selected because no cookies are stored for the
+configured tenant, so there is nothing for `auto` to fall back to. Set
+`tenant_id` in `config.toml` and import a cookie instead (see
+[Portal-cookie backend](#portal-cookie-backend)).
+
 ### `NOT_AUTHENTICATED` or `AUTH_LOGIN_REQUIRED`
 
 `NOT_AUTHENTICATED` means the token cache holds no signed-in account.
 `AUTH_LOGIN_REQUIRED` means an account is cached but a token could not be
-refreshed silently. Re-run `xdr auth login`. The token cache lives at
-`~/.xdr-cli/token_cache.json`; `xdr auth logout` deletes it if you want a
-clean start.
+refreshed silently. `TOKEN_EXPIRED` (same class, exit 2) means the cached
+token has expired and could not be renewed. Re-run `xdr auth login`. The
+token cache lives at `~/.xdr-cli/token_cache.json`; `xdr auth logout`
+deletes it if you want a clean start.
+
+In cookie mode the same exit code means the stored portal cookies are
+missing or rejected; the fix is `xdr auth portal-cookie <source>`, not
+`auth login`. See [Portal-cookie backend](#portal-cookie-backend).
 
 If the message says *Interactive authentication required for scope ...*
 (code `AUTH_LOGIN_REQUIRED`), the cache holds an account but that API
@@ -260,7 +317,7 @@ scope.
 
 Defender for Endpoint endpoints live at
 `api.security.microsoft.com/api/...`, but their tokens must be issued for
-the **legacy `api.securitycenter.microsoft.com` audience**. This is
+the **`api.securitycenter.microsoft.com` audience**. This is
 Microsoft's current guidance (see the
 [Defender for Endpoint APIs docs](https://learn.microsoft.com/en-us/defender-endpoint/api/exposed-apis-create-app-nativeapp)).
 That is why the permissions you add in the portal are listed under
@@ -277,34 +334,159 @@ applications** (shown as *Public client/native*). Add it and retry.
 
 This can be expected. In `client_credentials` mode the CLI uses a
 confidential client and acquires an application token with the client
-secret on demand. `xdr auth status` derives `authenticated` from the presence
-of a cached delegated user account. With no such account it reports:
+secret on demand. `xdr auth status` derives `main.authenticated` from the
+presence of a cached delegated user account. With no such account the
+`data` block of the envelope reports (trimmed):
 
 ```json
-{"authenticated": false, "configured": true, "account": null, "tenant": "..."}
+{"main": {"authenticated": false, "configured": true, "account": null,
+          "tenant": "...", "backend": "official",
+          "backend_preference": "auto"},
+ "portal": {"authenticated": false, "method": null, "account": null,
+            "tenant": "...", "cookie_stored": false, ...}}
 ```
 
-If a delegated account remains from an earlier login, the field can instead
-be `true`. Neither value validates the client secret. Commands attempt to obtain
-application tokens on demand when configured. `xdr auth login` is **not applicable** in this mode -- it
-drives the interactive user flow, which a confidential client does not
-support. If token acquisition itself fails you will see
-`AUTH_LOGIN_REQUIRED` with *Client credentials auth failed: ...*, or
-`PERMISSION_MISSING_SCOPE` when the description mentions consent. Check
-that `client_secret` is set, has not expired, and that the app has
-**application** (not delegated) permissions with admin consent.
+If a delegated account remains from an earlier login, `main.authenticated`
+can instead be `true`. Neither value validates the client secret. Commands
+attempt to obtain application tokens on demand when configured. `xdr auth
+login` is **not applicable** in this mode -- it drives the interactive user
+flow, which a confidential client does not support. If token acquisition
+itself fails you will see `AUTH_LOGIN_REQUIRED` with *Client credentials
+auth failed: ...*, or `PERMISSION_MISSING_SCOPE` when the description
+mentions consent. Check that `client_secret` is set, has not expired, and
+that the app has **application** (not delegated) permissions with admin
+consent.
+
+## Portal-cookie backend
+
+The portal-cookie backend talks to `security.microsoft.com` with a browser
+session you import; the official backend uses MSAL tokens against the
+Graph and Defender for Endpoint APIs. Both expose the same named
+operations, but the error you see for "not signed in" and the fix differ.
+
+### Which backend is in use, and why
+
+`xdr auth status` reports two fields: `backend` is the backend actually
+selected for this invocation and `backend_preference` is what was asked
+for (`--backend` if given, otherwise `api_backend` from `config.toml`,
+default `auto`). In the official shape both sit under `main`; in cookie
+mode they are top-level:
+
+```json
+{"backend": "portal-cookie", "backend_preference": "auto",
+ "portal": {"cookie_stored": true, "session_validity": "not_checked"},
+ "capabilities": ["hunting", "incidents-list", ...],
+ "full_parity": false}
+```
+
+Selection is local and never checks whether a token or cookie still works.
+Under `auto`, the official backend wins when `tenant_id` and `client_id`
+are configured and either a `client_secret` is set in `client_credentials`
+mode or `token_cache.json` holds a token or refresh token for that tenant
+and client. Otherwise cookie mode is chosen if `portal_cookies.json` holds
+a usable cookie bound to the configured tenant; with neither present the
+official backend is selected and `auth status` reports
+`"configured": false`. `--backend official` or `--backend portal-cookie`
+pins the choice.
+
+### Exit 2 (`NOT_AUTHENTICATED`) in cookie mode
+
+The message is *Portal credentials are missing, expired, or require
+interactive sign-in.* and the suggestion is `xdr auth portal-cookie
+<cookie-source>`. The same error is raised when the portal answers 401 or
+440, redirects to a sign-in page, or returns HTML instead of JSON. Import
+a fresh cookie; `auth login` does not help here.
+
+Running `xdr auth login` while the cookie backend is pinned (`--backend
+portal-cookie` or `api_backend = "portal-cookie"`) is a `CLI_USAGE_ERROR`
+(exit 6) pointing at `xdr auth portal-cookie --help`. Under `auto` the
+login proceeds and, once a token is cached, the next command selects the
+official backend.
+
+### Cookies stopped working
+
+Portal cookies have no fixed lifetime; the session ends when the portal
+decides, typically after sign-out, a password or Conditional Access
+re-evaluation, or an idle period. `auth status` never probes them
+(`session_validity` is always `not_checked`). The import itself does probe
+by default: `xdr auth portal-cookie <source>` reports `verified: true` or
+`false` plus `verify_error`; use `--no-verify` to skip the call. Re-import
+when a command returns exit 2.
+
+### `PORTAL_COOKIE_INVALID` / `PORTAL_XSRF_TOKEN_MISSING` at import
+
+Both are `CONFIG_ERROR` (exit 4) from `xdr auth portal-cookie`.
+`PORTAL_COOKIE_INVALID` means the source carries no `sccauth` cookie, so
+it is not a Defender portal session; nothing is stored and the source file
+is not deleted. Copy the whole request as cURL (bash) from DevTools, not a
+single cookie value. `PORTAL_XSRF_TOKEN_MISSING` means the header had no
+`XSRF-TOKEN` cookie and the manual prompt was left empty.
+
+### Tenant mismatch: `PORTAL_COOKIE_TENANT_MISMATCH` or exit 4 on the first call
+
+Stored cookies are bound to a fingerprint of the `tenant_id` configured at
+import time. If `tenant_id` later changes, loading the store raises
+`PORTAL_COOKIE_TENANT_MISMATCH` (exit 4); `auth status` surfaces the same
+condition as `portal.cookie_error` instead of failing. Re-run
+`xdr auth portal-cookie <source>` for the current tenant.
+
+A cookie whose fingerprint matches but that was captured while signed in
+to a different tenant fails on the first API call: the backend reads the
+portal's tenant context before any operation and raises `CONFIG_ERROR`
+(exit 4) with *Authenticated portal tenant does not match configured
+tenant_id.* No operation was sent. Sign in to the right tenant in the
+browser and import again.
+
+### Stderr warning: "invalid api_backend in config.toml"
+
+`api_backend` accepts `auto`, `official`, or `portal-cookie`. Any other
+value prints *Warning: invalid api_backend in config.toml; using auto for
+reads and diagnostics* on stderr and the command continues under `auto`.
+Tenant writes (`device isolate`, `unisolate`, `scan`, `collect-package`,
+`restrict`, `unrestrict`, `incidents update`) are blocked with
+`CONFIG_ERROR` (exit 4) until the value is corrected or `--backend` is
+passed explicitly; `--dry-run` runs are not blocked. Passing `--backend`
+with an unknown value is a `CLI_INVALID_ENUM` usage error.
+
+### `BACKEND_CAPABILITY_UNAVAILABLE` (exit 3)
+
+The selected backend has no validated adapter for the operation. The
+error is raised locally: no request was sent and no fallback to the other
+backend was attempted, so the exit-3 class is misleading if you read it as
+an upstream failure. The two cases:
+
+- `xdr domains list --source active-directory` on the official backend: Active Directory
+  domain inventory exists only in cookie mode. Use `--backend
+  portal-cookie`, or `--source entra`. With the default `--source all` the
+  Entra rows are still written and the AD failure is reported as
+  `PARTIAL_SUCCESS` (exit 14).
+- A cookie-mode operation without a portal adapter; the suggestion is
+  `--backend official`. `xdr auth status` lists the cookie backend's
+  `capabilities`.
+
+`xdr device download-package` is the reverse case and is reported as a
+plain `CLI_USAGE_ERROR` (exit 6): it requires `--backend portal-cookie`.
+
+### `auth logout` switched me to cookies
+
+`xdr auth logout` clears the credentials of the backend that is selected
+when it runs. Under `auto` with both a token cache and a cookie store, the
+official backend is selected, so `logout` deletes `token_cache.json`; the
+next command then finds only cookies and runs in cookie mode. Use
+`xdr auth portal-logout` to clear cookies only, and run `auth logout`
+again under `--backend portal-cookie` to clear both.
 
 ## Command-line usage errors
 
-### `CLI_REMOVED_OPTION` for `--jq`, `--fields`, or hunt `--limit`
+### `CLI_UNKNOWN_OPTION` for `--jq`, `--fields`, or hunt `--limit`
 
 These flags do not exist. `xdr` does not project or filter results
 locally, and hunts save every row the API returns; you shape the JSONL
 artifact with shell tools. (`incidents list`, `alerts list` and
 `results list` do take `--limit`, which bounds how many items are fetched.)
-The one-line error includes `corrected_argv` (the same command with the
-offending flag and its value stripped) and a `suggestions` entry explaining
-the replacement:
+`schema collect` likewise takes no `--resume` or `--exhaustive`: plain
+`xdr schema collect` continues pending validation and `--explore` drives
+identifier-led discovery.
 
 | Flag                 | Instead                                                            |
 | -------------------- | ------------------------------------------------------------------ |
@@ -448,9 +630,12 @@ Incident IDs come from `xdr incidents list` or from the Defender portal
 URL. Device IDs are 40-character hex MachineIds, not hostnames -- get them
 from the evidence rows of `xdr incidents show <id> --expand alerts`
 (`mdeDeviceId`), from `xdr device show <hostname>`, or from a hunting query
-(`DeviceInfo | project DeviceId, DeviceName`). A `LOCAL_NOT_FOUND` with
-the same exit code (8) means a local artifact, session, or cache entry
-was not found; check the run-id with `xdr results list`.
+(`DeviceInfo | project DeviceId, DeviceName`). A `RESULT_NOT_FOUND` with
+the same exit code (8) means no saved result matches the run-id (or
+run-id prefix) you gave; check it with `xdr results list`. An ambiguous
+prefix that matches several results is `STATE_CONFLICT` (exit 13) instead.
+`LOCAL_NOT_FOUND` is the generic form for other local artifacts, sessions,
+and cache entries.
 
 ### Inspecting HTTP traffic
 
@@ -522,10 +707,10 @@ dispatches, so every accepted syntax is covered and an argument that
 happens to equal a command name does not count):
 
 - Device actions: `device isolate`, `device unisolate`, `device scan`,
-  `device collect-package`, `device restrict`
+  `device collect-package`, `device restrict`, `device unrestrict`
 - Incident updates: `incidents update`
-- Authentication: `auth login`, `auth logout`, `auth portal-login`,
-  `auth portal-cookie`, `auth portal-logout`
+- Authentication: `auth login`, `auth logout`, `auth portal-cookie`,
+  `auth portal-logout`
 - Guided investigation: `investigate`
 - Lists: `lists init`
 - Schema cache writes: `schema repair-overlay`, `schema migrate-cache`,

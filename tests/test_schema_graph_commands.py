@@ -64,7 +64,6 @@ def test_schema_help_is_actionable_and_examples_are_copyable(config_dir):
     path = runner.invoke(app, ["schema", "path", "--help"])
     correlate = runner.invoke(app, ["schema", "correlate", "--help"])
     discoveries = runner.invoke(app, ["schema", "discoveries", "--help"])
-    candidates = runner.invoke(app, ["schema", "candidates", "--help"])
     review = runner.invoke(app, ["schema", "candidate-review", "--help"])
     proposal = runner.invoke(app, ["schema", "candidate-proposal", "--help"])
     prune = runner.invoke(app, ["schema", "prune-evidence", "--help"])
@@ -98,8 +97,6 @@ def test_schema_help_is_actionable_and_examples_are_copyable(config_dir):
     assert "xdr results list" in _normalized_help(correlate.stdout)
     assert "data digest" in _normalized_help(correlate.stdout)
     assert "observed investigation pivot" in _normalized_help(discoveries.stdout)
-    assert "Compatibility alias" in _normalized_help(candidates.stdout)
-    assert "xdr schema candidate-review" in _normalized_help(candidates.stdout)
     assert "xdr schema discoveries --include-evidence-refs" in _normalized_help(review.stdout)
     assert "xdr results head RUN_ID" in _normalized_help(review.stdout)
     normalized_proposal_help = _normalized_help(proposal.stdout)
@@ -1028,7 +1025,7 @@ def test_schema_observe_uses_file_seeds_but_persists_only_counts(tmp_path, monke
     assert secret not in semantic_files[-1].read_text()
     assert secret.lower() not in semantic_files[-1].read_text()
     with patch("xdr_cli.commands.schema_cmd._semantic_graph", return_value=_probe_graph()):
-        candidates = runner.invoke(app, ["schema", "candidates"])
+        candidates = runner.invoke(app, ["schema", "discoveries"])
     assert candidates.exit_code == 0, candidates.output
     _, candidate_rows = _artifact_rows(candidates.stdout)
     assert candidate_rows[0]["ValidatedPositiveRuns"] == 0
@@ -1704,7 +1701,7 @@ def test_schema_candidate_review_collects_private_context_and_updates_gate(tmp_p
         patch("xdr_cli.main.load_config", return_value=Config(tenant_id="default")),
         patch("xdr_cli.commands.schema_cmd._semantic_graph", return_value=graph),
     ):
-        reused_candidates = runner.invoke(app, ["schema", "candidates"])
+        reused_candidates = runner.invoke(app, ["schema", "discoveries"])
     _, reused_rows = _artifact_rows(reused_candidates.stdout)
     assert "needs-at-least-two-independent-evidence-bundles" in reused_rows[0]["BlockingReasons"]
     assert "needs-at-least-two-distinct-sampled-seed-cohorts" in reused_rows[0]["BlockingReasons"]
@@ -1738,7 +1735,7 @@ def test_schema_candidate_review_collects_private_context_and_updates_gate(tmp_p
         ),
     ):
         empty_review = runner.invoke(app, ["schema", "candidate-review", relationship_id])
-        blocked_candidates = runner.invoke(app, ["schema", "candidates"])
+        blocked_candidates = runner.invoke(app, ["schema", "discoveries"])
         reviewed = runner.invoke(app, ["schema", "candidate-review", relationship_id])
 
     publish_tenant_overlay("default", observations=(mismatched_evidence_observation,))
@@ -1746,7 +1743,7 @@ def test_schema_candidate_review_collects_private_context_and_updates_gate(tmp_p
         patch("xdr_cli.main.load_config", return_value=Config(tenant_id="default")),
         patch("xdr_cli.commands.schema_cmd._semantic_graph", return_value=graph),
     ):
-        candidates = runner.invoke(app, ["schema", "candidates"])
+        candidates = runner.invoke(app, ["schema", "discoveries"])
 
     assert empty_review.exit_code == 14, empty_review.output
     _, blocked_rows = _artifact_rows(blocked_candidates.stdout)
@@ -2482,3 +2479,11 @@ def test_schema_correlate_rejects_project_rename_lineage_spoof(tmp_path, monkeyp
 
     assert result.exit_code == 12
     assert "physical lineage" in json.loads(result.stdout)["error"]["message"]
+
+
+def test_schema_candidates_alias_is_unknown_command(config_dir):
+    result = runner.invoke(app, ["schema", "candidates"])
+    assert result.exit_code == 6, result.output
+    error = json.loads(result.stdout.splitlines()[-1])["error"]
+    assert error["code"] == "CLI_UNKNOWN_COMMAND"
+    assert "discoveries" in result.stdout

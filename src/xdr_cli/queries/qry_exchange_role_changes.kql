@@ -3,7 +3,7 @@
 -- tier: r1
 -- params: hours=72, actor_upn=, mode=summary
 -- lists: InternalSubnets, KnownServiceAccounts
--- agent_hint: tables=[CloudAppEvents, EntraIdSignInEvents]; row_volume=low; cpu_class=low; Exchange-side actor resolves from RawEventData.UserId (AccountObjectId/AccountUpn on the outer row are unreliable for Exchange operations per existing qry_inbox_rule_audit agent_hint). RoleName / MemberName extracted from RawEventData.Parameters mv-apply.
+-- agent_hint: tables=[CloudAppEvents, EntraIdSignInEvents]; row_volume=low; cpu_class=low; Exchange-side actor resolves from RawEventData.UserId (AccountObjectId/AccountUpn on the outer row are unreliable for Exchange operations — same caveat as qry_inbox_rule_activity). RoleName / MemberName extracted from RawEventData.Parameters mv-apply.
 let _xdr_InternalSubnets      = dynamic([]);
 let _xdr_KnownServiceAccounts = dynamic([]);
 let Window = {hours}h;

@@ -1,5 +1,5 @@
 """Auth commands: login, logout, status, and the unofficial-portal
-counterparts (portal-login, portal-cookie, portal-logout)."""
+counterparts (portal-cookie, portal-logout)."""
 
 from __future__ import annotations
 
@@ -32,7 +32,6 @@ from xdr_cli.output import OutputFormatter, err_console
 from xdr_cli.portal_auth import (
     PORTAL_COOKIE_AUDIT_APP_NAME,
     PORTAL_COOKIE_FILENAME,
-    PortalAuth,
     load_portal_cookies,
     save_portal_cookies,
 )
@@ -138,7 +137,7 @@ def logout(ctx: typer.Context) -> None:
     if app_ctx.config.backend_profile.cookie_auth:
         portal_data = _clear_portal_credentials(app_ctx)
         cache_path = get_config_home() / PORTAL_COOKIE_FILENAME
-        cleared = portal_data["cookie_cleared"] or portal_data["token_cache_cleared"]
+        cleared = portal_data["cookie_cleared"]
     else:
         auth = AuthManager(app_ctx.config)
         cache_path = auth._cache_path()
@@ -158,21 +157,6 @@ def logout(ctx: typer.Context) -> None:
         session_label=app_ctx.session_label,
     )
     typer.echo(fmt.format_output(data))
-
-
-@auth_app.command("portal-login")
-def portal_login(
-    ctx: typer.Context,
-    tenant_id: str | None = typer.Option(
-        None, "--tenant-id", help="Override the configured tenant ID."
-    ),
-) -> None:
-    """Retired portal OAuth route; use portal-cookie to import a browser session."""
-    raise UsageError(
-        "portal-login is retired: its Microsoft preauthorization flow was not validated. "
-        "Use xdr auth portal-cookie <cookie-source> instead.",
-        help_command="xdr auth portal-cookie --help",
-    )
 
 
 async def _verify_portal_cookies(
@@ -381,9 +365,8 @@ def portal_cookie(
 ) -> None:
     """Configure portal auth from a logged-in security.microsoft.com session.
 
-    Import cookies for the experimental portal backend; `portal-login` is
-    retired. Provide the WHOLE browser Cookie
-    header: in Microsoft Edge (logged in to security.microsoft.com), open
+    Import cookies for the portal-cookie backend. Provide the WHOLE
+    browser Cookie header: in Microsoft Edge (logged in to security.microsoft.com), open
     DevTools > Network, right-click the timeline apiproxy request > Copy >
     "Copy as cURL (bash)" (the cmd/PowerShell variants are untested), save it
     to a file, and
@@ -395,8 +378,8 @@ def portal_cookie(
     header is required. The XSRF token is auto-extracted from the header (you're
     prompted only if it carries no `XSRF-TOKEN` cookie). Stored in
     ~/.xdr-cli/portal_cookies.json (0600), bound to the configured tenant's
-    non-reversible fingerprint — cookie values never reach argv. Legacy or
-    different-tenant stores must be re-imported.
+    non-reversible fingerprint — cookie values never reach argv. A store
+    bound to a different tenant must be re-imported.
 
     On a successful import the exact regular source file is overwritten and
     deleted on a best-effort basis; pass `--keep-source` to keep it. Symlinks
@@ -474,29 +457,29 @@ def portal_cookie(
 
 
 def _clear_portal_credentials(app_ctx: AppContext) -> dict:
-    """Clear cookies and retired portal OAuth credentials together."""
-    auth = PortalAuth(app_ctx.config)
-    token_cache_path = auth._cache_path()
-    token_cache_cleared = token_cache_path.exists()
-    auth.logout()  # clears portal_token_cache.json; no-op if absent
+    """Delete the stored portal cookie store; a no-op when absent.
 
+    Also removes a ``portal_token_cache.json`` left behind by an earlier
+    release's portal sign-in, so one logout fully cleans an upgraded home.
+    """
     cookie_path = get_config_home() / PORTAL_COOKIE_FILENAME
     cookie_cleared = cookie_path.exists()
-    if cookie_path.exists():
+    if cookie_cleared:
         cookie_path.unlink()
+    stale_token_cache = get_config_home() / "portal_token_cache.json"
+    if stale_token_cache.is_file():
+        stale_token_cache.unlink(missing_ok=True)
 
     return {
         "authenticated": False,
-        "token_cache_cleared": token_cache_cleared,
         "cookie_cleared": cookie_cleared,
-        "token_cache_file": str(token_cache_path),
         "cookie_file": str(cookie_path),
     }
 
 
 @auth_app.command("portal-logout")
 def portal_logout(ctx: typer.Context) -> None:
-    """Clear portal cookies and legacy portal tokens, preserving official tokens."""
+    """Clear stored portal cookies, preserving official tokens."""
     app_ctx: AppContext = ctx.obj
     data = _clear_portal_credentials(app_ctx)
     fmt = OutputFormatter(
@@ -555,38 +538,16 @@ def status(ctx: typer.Context) -> None:
         app_ctx.config, "_api_backend_requested", app_ctx.config.api_backend,
     )
 
-    portal_auth = PortalAuth(app_ctx.config)
-    portal_status = portal_auth.get_auth_status()
-    msal_cached = bool(portal_status["authenticated"])
     cookie_stored = cookie_status["cookie_stored"]
 
-    # Precedence mirrors auth-strategy selection for `device timeline`
-    # (Task 8): a deliberately-configured cookie store wins over a cached
-    # MSAL account, since its presence means the user ran `portal-cookie`
-    # (typically because FOCI/MSAL is blocked in their tenant).
-    if cookie_stored:
-        method: str | None = "cookie"
-        portal_authenticated = True
-        portal_account = None
-        portal_audit_app_name: str | None = PORTAL_COOKIE_AUDIT_APP_NAME
-    elif msal_cached:
-        method = "msal"
-        portal_authenticated = True
-        portal_account = portal_status["account"]
-        portal_audit_app_name = portal_status["audit_app_name"]
-    else:
-        method = None
-        portal_authenticated = False
-        portal_account = None
-        portal_audit_app_name = None
-
+    # The stored cookie store is the only persistent portal credential; a
+    # per-run --refresh-token is never reflected here.
     portal_info = {
-        "authenticated": portal_authenticated,
-        "method": method,
-        "account": portal_account,
+        "authenticated": cookie_stored,
+        "method": "cookie" if cookie_stored else None,
+        "account": None,
         "tenant": app_ctx.config.tenant_id or None,
-        "audit_app_name": portal_audit_app_name,
-        "msal_cached": msal_cached,
+        "audit_app_name": PORTAL_COOKIE_AUDIT_APP_NAME if cookie_stored else None,
         **cookie_status,
     }
 

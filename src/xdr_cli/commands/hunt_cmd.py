@@ -190,68 +190,6 @@ async def _hunt_run(
     emit_result(artifact)
 
 
-@hunt_app.command("library")
-def hunt_library(ctx: typer.Context) -> None:
-    """Deprecated alias for ``xdr library list``."""
-    from xdr_cli.commands.library_cmd import library_list
-
-    typer.echo("warning: use 'xdr library list'; this alias will be removed in 1.0", err=True)
-    library_list(ctx, search=None, tier=None)
-
-
-@hunt_app.command("library-run")
-def hunt_library_run(
-    ctx: typer.Context,
-    name: str = typer.Argument(
-        help="Query name from the library.",
-    ),
-    param: list[str] | None = typer.Option(
-        None,
-        "--param",
-        "-p",
-        help="Parameter as key=value. Repeatable.",
-    ),
-    raw: bool = typer.Option(
-        False,
-        "--raw",
-        help=(
-            "Keep JSON-string columns (RawEventData, AdditionalFields, "
-            "ResourceData) as raw strings instead of parsing them into "
-            "objects. Use when piping verbatim to another tool."
-        ),
-    ),
-    timeout: int | None = typer.Option(
-        None,
-        "--timeout",
-        help=(
-            "Per-call HTTP timeout in seconds. Overrides config.api_timeout "
-            "(default 120). Library hunts that aggregate or join across large "
-            "tables may need 180-300s on busy tenants."
-        ),
-    ),
-) -> None:
-    """Deprecated alias for ``xdr library run``."""
-    app_ctx: AppContext = ctx.obj
-    typer.echo("warning: use 'xdr library run'; this alias will be removed in 1.0", err=True)
-
-    # Imported here: library_cmd imports this module.
-    from xdr_cli.commands.library_cmd import _parse_params
-
-    params = _parse_params(name, param)
-    kql = load_query(name, **params)
-
-    asyncio.run(
-        _hunt_run(
-            app_ctx,
-            kql,
-            raw=raw,
-            library_query=name,
-            params=params,
-            timeout=timeout,
-        )
-    )
-
-
 @hunt_app.command("library-show")
 def hunt_library_show(
     ctx: typer.Context,
@@ -272,8 +210,9 @@ def hunt_library_show(
     substitution or pasting into the Defender Advanced Hunting GUI to compare
     behaviour against the CLI execution path.
     """
-    # Imported here: library_cmd imports this module. Validating exactly as
-    # `library run` does keeps the rendered KQL identical to what it sends.
+    # Imported here: library_cmd imports ``_hunt_run`` from this module.
+    # Validating exactly as `library run` does keeps the rendered KQL
+    # identical to what it sends.
     from xdr_cli.commands.library_cmd import _parse_params
 
     kql = load_query(name, **_parse_params(name, param))

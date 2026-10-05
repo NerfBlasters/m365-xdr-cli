@@ -602,7 +602,6 @@ def create_session(
 _AUTO_SESSION_COMMANDS: frozenset[str] = frozenset(
     {
         "hunt run",
-        "hunt library-run",
         "library run",
         "schema observe",
         "schema candidate-review",

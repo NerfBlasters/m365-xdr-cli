@@ -78,7 +78,7 @@ _TENANT_MUTATION_COMMANDS = frozenset({
 })
 _WRITE_COMMANDS = _TENANT_MUTATION_COMMANDS | frozenset({
     "auth login", "auth logout",
-    "auth portal-login", "auth portal-cookie", "auth portal-logout",
+    "auth portal-cookie", "auth portal-logout",
     "investigate",
     "lists init",
     "schema repair-overlay", "schema migrate-cache", "schema bundle import",

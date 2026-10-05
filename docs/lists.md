@@ -18,7 +18,7 @@ This copies the in-repo seed files (`src/xdr_cli/lists_seed/`) into
 `~/.xdr-cli/lists/`. Public seeds (`InternalSubnets.txt`, `KnownGoodSigners.txt`,
 `KnownRemoteSupportTools.txt`, `KnownGoodParentDomains.txt`) ship populated.
 Most tenant-specific lists (`TenantDomains.txt`, `KnownEgressIPs.txt`, etc.)
-ship empty — populate by hand or wait for the future `xdr enumerate` spec.
+ship empty — populate them by hand (see the table below).
 `KnownServiceAccounts.txt` is an exception: the seed ships pre-populated with
 universal Windows service principals (`NT AUTHORITY\*`, `MSOL_*`, `AAD_*`,
 `Sync_*`); add tenant-specific accounts to the user copy.
@@ -39,16 +39,16 @@ still loaded; staleness is advisory.
 
 | Block | Purpose | How to populate |
 |---|---|---|
-| `TenantDomains` | Tenant-owned host/domain strings. Used by inbox-rule, mailbox-delegation, and DNS queries for internal/external classification. | Run `python scripts/extract_tenant_domains.py` once to migrate inline strings from legacy queries. Add new domains by hand. |
+| `TenantDomains` | Tenant-owned host/domain strings. Used by inbox-rule, mailbox-delegation, and DNS queries for internal/external classification. | By hand, or from `xdr domains list`: its receipt's `data_path` names a JSONL file whose rows carry `name` and `source`, so `jq -r 'select(.source=="entra" and .isVerified==true) \| .name' "$DATA_PATH" >> ~/.xdr-cli/lists/TenantDomains.txt` appends the verified Entra domains. Keep the `isVerified` filter: an unverified domain is not yours yet, and listing it would classify mail sent to it as internal. |
 | `InternalSubnets` | Tenant-internal IPv4 CIDRs. | Public seed ships RFC1918 + CGNAT. Add tenant-specific ranges. |
 | `KnownServiceAccounts` | IT-managed service accounts (UPN / sAMAccountName). | Pre-populated seed ships with universal Windows service principals (`NT AUTHORITY\*`, `MSOL_*`, `AAD_*`, `Sync_*`). Add tenant-specific accounts (e.g. `svc_*`, `MSSQL$*`) to the user copy. |
 | `KnownGoodSigners` | Widely-trusted Authenticode publishers. | Public seed ships ~40. Add tenant-specific signers. |
-| `KnownGoodServiceImagePaths` | Canonical Windows service ImagePath values. | By hand or via future `xdr enumerate`. |
+| `KnownGoodServiceImagePaths` | Canonical Windows service ImagePath values. | By hand. |
 | `KnownRemoteSupportTools` | RMM binary names. | Public seed ships common tools. Add tenant-specific. |
 | `KnownEgressIPs` | Corp VPN egress, CGNAT, Starlink, iOS Private Relay. | By hand. |
 | `KnownGoodParentDomains` | Universal CDN/ad-tech/SaaS allowlist. | Public seed ships. |
-| `DomainControllers` | Tenant Domain Controller hostnames / FQDNs. | By hand or via future `xdr enumerate`. |
-| `AiTMInfrastructure` / `MaliciousDomains` / `AnonymizingIPRanges` | Deny-lists. | Future `xdr lists refresh` will pull from feeds; populate by hand for now. |
+| `DomainControllers` | Tenant Domain Controller hostnames / FQDNs. | By hand. |
+| `AiTMInfrastructure` / `MaliciousDomains` / `AnonymizingIPRanges` | Deny-lists. | By hand, from your IOC feeds. |
 | `RiskyKeywords` | Inbox-rule BEC content flags. | By hand. Suggested seeds in placeholder file. |
 
 ## Empty-list semantics

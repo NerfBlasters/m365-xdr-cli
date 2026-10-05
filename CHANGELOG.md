@@ -10,6 +10,56 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.14.0] - 2026-10-04
+
+Second documentation pass for a reader arriving fresh at the public
+repository, and removal of the compatibility aliases, stubs and
+removed-option hints carried over from before 0.9.0.
+
+### Removed
+
+- `xdr hunt library` and `xdr hunt library-run`, the aliases for
+  `xdr library list` and `xdr library run`. `xdr hunt library-show` stays as
+  the resolved-KQL renderer.
+- `xdr schema candidates`, the alias for `xdr schema discoveries`.
+- `xdr auth portal-login` and the portal OAuth token cache
+  (`portal_token_cache.json`) behind it. Portal access is cookie-based and
+  `auth status` no longer reports `msal_cached`. `auth portal-logout` (and
+  cookie-mode `auth logout`) still delete a `portal_token_cache.json` left by
+  an earlier release, so one logout cleans up an upgraded installation.
+- The `CLI_REMOVED_OPTION` shims for `--fields`, `--jq`, hunt `--limit`, and
+  `schema collect --resume`/`--exhaustive`. These are ordinary unknown
+  options now.
+- The hidden, always-rejected `schema collect --max-targets`.
+- The deprecated query aliases `qry_inbox_rule_audit` and
+  `qry_inbox_rule_triggers`; use `qry_inbox_rule_activity`. The `deprecated`
+  tier and `alias_of` mechanism remain for future deprecations.
+
+### Changed
+
+- `xdr history stats` counts only `library run` records in its
+  `hunt_library_run` ratio; the output key name is unchanged.
+- README leads with the two sign-in paths and presents the portal cookie as
+  the quick start (no app registration or admin consent); the Entra app
+  registration follows as the supported path. The cookie backend's
+  undocumented-interface and credential caveats now precede its setup steps.
+- README states that the schema graph and sessions are optional, what an
+  explicit `session end` costs, and how to keep it offline.
+- `docs/portal_cookie.md` rewritten newcomer-first: capture and import steps,
+  what works in cookie mode and its input limits, backend selection, known
+  gaps, and error codes.
+- Corrected against source: `unrestrict` requires `--comment`; exit 2 in
+  cookie mode is fixed by re-importing a cookie, not `auth login`; the
+  `auth status` shape differs by backend; `results prune` retires automatic
+  graph evidence; `observe` accepts `TimeGenerated`; the auto-session command
+  set; the audit-log scope; missing run IDs report `RESULT_NOT_FOUND`;
+  unknown `--tier` is a usage error; declined confirmations exit 13.
+- Documented every `xdr schema` flag that had no mention, `--backend`,
+  `api_backend`, `action_associations/`, and the
+  cookie-backend error codes in the troubleshooting reference.
+- `docs/schema_probe.md` folded into `docs/schema_pivots.md`; the browser
+  cookie renewal proposal moved to `docs/proposals/`.
+
 ## [0.13.0] - 2026-10-04
 
 Experimental portal-cookie authentication, a shared API backend interface, and

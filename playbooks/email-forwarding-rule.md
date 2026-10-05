@@ -43,8 +43,9 @@ xdr library run qry_inbox_rule_activity \
   --param account_upn=<user> --param hours=168 --param mode=detail
 ```
 
-Single call replaces the legacy `qry_inbox_rule_audit` + `qry_inbox_rule_triggers`
-+ `xdr domains list` chain. Output includes:
+`qry_inbox_rule_activity` covers rule changes, rule triggers and tenant-domain
+classification in a single call, so no separate `xdr domains list` step is
+needed. Output includes:
 
 - Rule changes (create / set / remove / enable / disable across inbox-rules,
   transport-rules, mailbox-level forwarding via `Set-Mailbox`).

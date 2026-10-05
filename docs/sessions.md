@@ -16,8 +16,9 @@ Resolution order is:
 1. a valid explicit `XDR_SESSION`;
 2. a matching incident/alert anchor;
 3. exactly one unexpired marker;
-4. automatic creation for `hunt run`, `library run`, the deprecated
-   `hunt library-run` alias, `investigate`, and alert/incident `show`;
+4. automatic creation for `hunt run`, `library run`,
+   `schema observe`, `schema candidate-review`, `investigate`,
+   `incidents show`, and `alerts show`;
 5. unattached execution when multiple unmatched sessions remain.
 
 Ambiguity is deliberately nonblocking. stderr provides both forms:
@@ -30,9 +31,10 @@ XDR_SESSION=<id> xdr ...
 $env:XDR_SESSION = "<id>"
 ```
 
-Help, lists, auth, result browsing, and library/schema discovery do not create
-sessions. Expired markers are retired with `end_reason: "idle-timeout"`; their
-JSONL history remains.
+Help, lists, auth, result browsing, and `library list`/`library show` do not
+create sessions; of the `schema` commands only `observe` and `candidate-review`
+do. Expired markers are retired with `end_reason: "idle-timeout"`; their JSONL
+history remains.
 
 ## Manual and concurrent sessions
 
@@ -44,6 +46,11 @@ it requires a cached authenticated account so the session has an operator identi
 ```bash
 xdr session start --label incident-12345 --timeout 1800
 ```
+
+`--timeout` is the inactivity timeout in seconds (minimum 1; default 1,800).
+`--quiet` is accepted for caller compatibility only: there is no banner to
+suppress, and the bare session ID on stdout already suits
+`$(xdr session start --quiet)` capture.
 
 With `--backend portal-cookie`, manual start requires locally stored cookies
 bound to the configured tenant; it does not check their remote validity. New
@@ -68,6 +75,11 @@ explicit attachment there is deliberately no unambiguous current session to
 end.
 
 ## Ending and append-only feedback
+
+`session end` is actor-restricted: when `XDR_ACTOR` is set to anything other
+than `operator` it refuses unless `--force` is passed, so a sub-agent cannot
+cut off its siblings' ability to write records and clear gates. Ending an
+already ended session is a conflict error.
 
 Explicit `xdr session end` closes the session first, then runs three foreground
 maintenance stages: refresh a missing or stale physical cache, mine saved results
@@ -177,10 +189,10 @@ successful lesson.
 
 - Known secret argv values such as `device timeline --refresh-token` are
   replaced with `***REDACTED***`; do not pass other secrets on argv.
-- `XDR_SESSION` must name a live, real session JSONL. Arbitrary synthetic IDs
-  no longer create sessions, and a terminal `session_ended` record cannot be
-  reopened implicitly; append feedback or explicitly start/resume a live
-  session instead.
+- `XDR_SESSION` must name an existing session (a live, real session JSONL).
+  An arbitrary synthetic ID does not create a session, and a terminal
+  `session_ended` record is never reopened implicitly; append feedback or
+  explicitly start/resume a live session instead.
 - Locking uses `filelock` and supports PowerShell/bash on local filesystems.
 - Copilot transcripts remain the canonical corpus for agentic efficacy;
   sessions are optional enrichment.

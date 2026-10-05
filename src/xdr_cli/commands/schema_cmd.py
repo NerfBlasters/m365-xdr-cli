@@ -1288,7 +1288,14 @@ def collect_saved_results(
 @schema_app.command("collect")
 def schema_collect(
     ctx: typer.Context,
-    local_only: bool = typer.Option(False, "--local-only"),
+    local_only: bool = typer.Option(
+        False,
+        "--local-only",
+        help=(
+            "Mine saved results and publish local evidence without any tenant "
+            "query. Cannot be combined with --explore."
+        ),
+    ),
     explore: bool = typer.Option(
         False, "--explore", help="Find saved identifiers in unknown fields and nested paths."
     ),
@@ -1316,7 +1323,6 @@ def schema_collect(
     ),
     timeout: int = typer.Option(120, "--timeout", min=1, max=3600),
     plan_only: bool = typer.Option(False, "--plan-only"),
-    max_targets: int | None = typer.Option(None, "--max-targets", hidden=True),
 ) -> None:
     """Mine saved results, or actively discover new locations of their identifiers.
 
@@ -1327,10 +1333,6 @@ def schema_collect(
     xdr schema show DeviceNetworkEvents to inspect the cached physical schema.
     No six-field matrix or catalog target sweep is used by new collections.
     """
-    if max_targets is not None:
-        raise UsageError(
-            "--max-targets is obsolete; --explore discovers matching locations directly."
-        )
     if local_only and explore:
         raise UsageError("--local-only cannot be combined with active discovery.")
     try:
@@ -3667,7 +3669,7 @@ def _candidate_report(
 
 
 def _emit_schema_discoveries(app_ctx: AppContext, *, include_evidence_refs: bool) -> None:
-    """Emit the shared discoveries/candidates artifact."""
+    """Emit the discoveries artifact."""
 
     rows, cache, tenant_overlay, _effective = _candidate_report(
         app_ctx, include_evidence_refs=include_evidence_refs
@@ -3719,29 +3721,6 @@ def schema_discoveries(
     A completed positive probe is an observed investigation pivot, not merely
     a possible relationship. Repeated independent evidence can advance it to a
     validated pivot. Neither state claims a raw equality join is safe.
-    """
-
-    _emit_schema_discoveries(ctx.obj, include_evidence_refs=include_evidence_refs)
-
-
-@schema_app.command("candidates")
-def schema_candidates(
-    ctx: typer.Context,
-    include_evidence_refs: bool = typer.Option(
-        False,
-        "--include-evidence-refs",
-        help="Include private result run IDs needed for local evidence inspection.",
-    ),
-) -> None:
-    """Compatibility alias for `xdr schema discoveries`.
-
-    Example: `xdr schema candidates`
-
-    Optionally generate private context with the row's `ReviewCommand`, for example `xdr
-    schema candidate-review rel:0123456789abcdef01234567`; inspect its returned
-    `xdr results head RUN_ID` command, then use the row's
-    `ProposalCommand` only for a contributor-owned core change. A proposal
-    requires explicit human semantics and never modifies the packaged graph.
     """
 
     _emit_schema_discoveries(ctx.obj, include_evidence_refs=include_evidence_refs)
