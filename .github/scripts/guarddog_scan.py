@@ -15,8 +15,6 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
-from guarddog_rdap import RDAPLookup
-
 
 def canonical(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
@@ -117,6 +115,7 @@ def main(requirements: Path, reports: Path) -> int:
     from guarddog.ecosystems import ECOSYSTEM
     from guarddog.reporters.sarif import SarifReporter
     from guarddog.scanners.pypi_project_scanner import PypiRequirementsScanner
+    from guarddog_rdap import RDAPLookup
     from whois.exceptions import PywhoisError
 
     if version("guarddog") != "3.2.0":
