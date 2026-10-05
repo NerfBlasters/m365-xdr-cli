@@ -1,4 +1,4 @@
-"""Application context passed through Typer commands."""
+"""Application context passed through Click commands."""
 
 from __future__ import annotations
 

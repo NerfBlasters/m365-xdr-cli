@@ -4,18 +4,19 @@ from __future__ import annotations
 import asyncio
 from enum import StrEnum
 
-import typer
+import click
 
 from xdr_cli.api.domains import iter_domains
 from xdr_cli.auth import AuthManager
 from xdr_cli.backend_contract import ad_unavailable
 from xdr_cli.backends import create_client
+from xdr_cli.cli_params import EnumValueChoice
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import APIError, PartialSuccessError, XDRError
 from xdr_cli.results import emit_result, write_result
 
-domains_app = typer.Typer(
+domains_app = click.Group(
     name="domains", help="Entra tenant and observed Active Directory domains.",
     no_args_is_help=True,
 )
@@ -28,11 +29,17 @@ class DomainSource(StrEnum):
 
 
 @domains_app.command("list")
+@click.option(
+    "--source",
+    type=EnumValueChoice(DomainSource, case_sensitive=True),
+    default=DomainSource.ALL.value,
+    show_default=True,
+    help="Domain inventory source (default: both).",
+)
+@click.pass_context
 def domains_list(
-    ctx: typer.Context,
-    source: DomainSource = typer.Option(
-        DomainSource.ALL, "--source", help="Domain inventory source (default: both).",
-    ),
+    ctx: click.Context,
+    source: DomainSource,
 ) -> None:
     """Save domain records with source labels as private JSONL.
 

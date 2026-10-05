@@ -24,8 +24,8 @@ from datetime import UTC, datetime, timedelta
 from math import gcd
 from typing import Any
 
+import click
 import pytimeparse2
-import typer
 
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import ConflictError, UsageError
@@ -33,13 +33,6 @@ from xdr_cli.kql_parse import extract_tables
 from xdr_cli.output import OutputFormatter, err_console
 from xdr_cli.queries import list_queries
 from xdr_cli.sessions import current_session, list_sessions, load_session_records
-
-history_app = typer.Typer(
-    name="history",
-    help="Browse session records.",
-    invoke_without_command=True,  # default to browse when no subcommand
-    no_args_is_help=False,
-)
 
 
 def _parse_since(spec: str) -> timedelta:
@@ -143,29 +136,32 @@ def _iter_filtered_records(
             yield rec
 
 
-@history_app.callback()
-def history_browse(
-    ctx: typer.Context,
-    session: str = typer.Option(
-        "", "--session", help="Session ID. Defaults to the current session."
+@click.group(
+    name="history",
+    help="Browse session records.",
+    invoke_without_command=True,
+    no_args_is_help=False,
+)
+@click.option("--session", default="", help="Session ID. Defaults to the current session.")
+@click.option(
+    "--operator",
+    default="",
+    help=(
+        "Operator initials -- aggregates across that operator's sessions. "
+        "Ignored when --session is also passed."
     ),
-    operator: str = typer.Option(
-        "",
-        "--operator",
-        help=(
-            "Operator initials -- aggregates across that operator's sessions. "
-            "Ignored when --session is also passed."
-        ),
-    ),
-    since: str = typer.Option(
-        "", "--since", help="Duration spec like 24h, 7d, 30d, 1w, 2y."
-    ),
-    command: str = typer.Option(
-        "", "--command", help="Substring match against the `command` field."
-    ),
-    incident: str = typer.Option(
-        "", "--incident", help="Filter records where anchor_incident == ID."
-    ),
+)
+@click.option("--since", default="", help="Duration spec like 24h, 7d, 30d, 1w, 2y.")
+@click.option("--command", default="", help="Substring match against the `command` field.")
+@click.option("--incident", default="", help="Filter records where anchor_incident == ID.")
+@click.pass_context
+def history_app(
+    ctx: click.Context,
+    session: str,
+    operator: str,
+    since: str,
+    command: str,
+    incident: str,
 ) -> None:
     """Browse invocation records (default; no subcommand needed)."""
     if ctx.invoked_subcommand is not None:
@@ -180,9 +176,7 @@ def history_browse(
     # Resolve which session(s) to read from.
     # ------------------------------------------------------------------
     if session and operator:
-        err_console.print(
-            "[yellow]--session takes precedence; --operator ignored[/yellow]"
-        )
+        err_console.print("[yellow]--session takes precedence; --operator ignored[/yellow]")
 
     session_ids: list[str]
     if session:
@@ -228,7 +222,7 @@ def history_browse(
         session_id=app_ctx.session_id,
         session_label=app_ctx.session_label,
     )
-    typer.echo(fmt.format_output(records))
+    click.echo(fmt.format_output(records))
 
 
 # ---------------------------------------------------------------------------
@@ -380,17 +374,12 @@ def _compute_failure_rate(records: list[dict[str, Any]]) -> dict[str, Any]:
             # paths or a bare string for str(api_error) writes — fall back
             # to exit_code when no structured code is available.
             code: Any = (
-                err["code"]
-                if isinstance(err, dict) and "code" in err
-                else r.get("exit_code")
+                err["code"] if isinstance(err, dict) and "code" in err else r.get("exit_code")
             )
             failed_codes.append(str(code))
     failed = len(failed_codes)
     rate = round((failed / total) * 100.0, 2) if total else 0.0
-    top = [
-        {"code": code, "count": count}
-        for code, count in Counter(failed_codes).most_common(3)
-    ]
+    top = [{"code": code, "count": count} for code, count in Counter(failed_codes).most_common(3)]
     return {
         "total": total,
         "failed": failed,
@@ -432,10 +421,7 @@ def _compute_table_coverage_gaps(
             if covered_by is None:
                 continue
             gaps_seen.setdefault(table, covered_by)
-    gaps = [
-        {"table": table, "covered_by": covered}
-        for table, covered in sorted(gaps_seen.items())
-    ]
+    gaps = [{"table": table, "covered_by": covered} for table, covered in sorted(gaps_seen.items())]
     return gaps, indeterminate
 
 
@@ -482,41 +468,40 @@ def _bucket_by_actor(
 
 
 @history_app.command("stats")
+@click.option("--session", default="", help="Session ID. Defaults to the current session.")
+@click.option(
+    "--operator",
+    default="",
+    help=(
+        "Operator initials -- aggregates across that operator's sessions. "
+        "Ignored when --session is also passed. When set, "
+        "session_duration_seconds is null because spanning multiple sessions "
+        "makes a single duration meaningless."
+    ),
+)
+@click.option("--since", default="", help="Duration spec like 24h, 7d, 30d, 1w, 2y.")
+@click.option("--command", default="", help="Substring match against the `command` field.")
+@click.option("--incident", default="", help="Filter records where anchor_incident == ID.")
+@click.option(
+    "--by-actor",
+    is_flag=True,
+    help=(
+        "Add a nested by_actor breakdown to invocations / hunt_ratio / "
+        "failure_rate, plus a sibling cpu_usage_total_by_actor key "
+        "(cpu_usage_total itself stays a string). session_duration_seconds and "
+        "table_coverage_gaps stay session-global because per-actor windows / "
+        "library coverage are misleading at actor granularity."
+    ),
+)
+@click.pass_context
 def history_stats(
-    ctx: typer.Context,
-    session: str = typer.Option(
-        "", "--session", help="Session ID. Defaults to the current session."
-    ),
-    operator: str = typer.Option(
-        "",
-        "--operator",
-        help=(
-            "Operator initials -- aggregates across that operator's sessions. "
-            "Ignored when --session is also passed. When set, "
-            "session_duration_seconds is null because spanning multiple "
-            "sessions makes a single duration meaningless."
-        ),
-    ),
-    since: str = typer.Option(
-        "", "--since", help="Duration spec like 24h, 7d, 30d, 1w, 2y."
-    ),
-    command: str = typer.Option(
-        "", "--command", help="Substring match against the `command` field."
-    ),
-    incident: str = typer.Option(
-        "", "--incident", help="Filter records where anchor_incident == ID."
-    ),
-    by_actor: bool = typer.Option(
-        False,
-        "--by-actor",
-        help=(
-            "Add a nested by_actor breakdown to invocations / hunt_ratio "
-            "/ failure_rate, plus a sibling cpu_usage_total_by_actor key "
-            "(cpu_usage_total itself stays a string). session_duration_seconds and "
-            "table_coverage_gaps stay session-global because per-actor "
-            "windows / library coverage are misleading at actor granularity."
-        ),
-    ),
+    ctx: click.Context,
+    session: str,
+    operator: str,
+    since: str,
+    command: str,
+    incident: str,
+    by_actor: bool,
 ) -> None:
     """Aggregate metrics over filtered invocation records."""
     app_ctx: AppContext = ctx.obj
@@ -525,9 +510,7 @@ def history_stats(
     # Resolve session(s) — same precedence rules as the browse callback.
     # ------------------------------------------------------------------
     if session and operator:
-        err_console.print(
-            "[yellow]--session takes precedence; --operator ignored[/yellow]"
-        )
+        err_console.print("[yellow]--session takes precedence; --operator ignored[/yellow]")
 
     multi_session = False
     session_ids: list[str]
@@ -578,28 +561,20 @@ def history_stats(
     hunt_ratio_block = _compute_hunt_ratio(records)
     cpu_total = _compute_cpu_total(records)
     failure_block = _compute_failure_rate(records)
-    duration = (
-        None if multi_session else _compute_session_duration(records)
-    )
+    duration = None if multi_session else _compute_session_duration(records)
 
     if by_actor:
         buckets = _bucket_by_actor(records)
         invocations_block["by_actor"] = {
-            actor: _compute_invocations(bucket)
-            for actor, bucket in buckets.items()
+            actor: _compute_invocations(bucket) for actor, bucket in buckets.items()
         }
         hunt_ratio_block["by_actor"] = {
-            actor: _compute_hunt_ratio(bucket)
-            for actor, bucket in buckets.items()
+            actor: _compute_hunt_ratio(bucket) for actor, bucket in buckets.items()
         }
         failure_block["by_actor"] = {
-            actor: _compute_failure_rate(bucket)
-            for actor, bucket in buckets.items()
+            actor: _compute_failure_rate(bucket) for actor, bucket in buckets.items()
         }
-        cpu_by_actor = {
-            actor: _compute_cpu_total(bucket)
-            for actor, bucket in buckets.items()
-        }
+        cpu_by_actor = {actor: _compute_cpu_total(bucket) for actor, bucket in buckets.items()}
     else:
         cpu_by_actor = None
 
@@ -625,4 +600,4 @@ def history_stats(
         session_id=app_ctx.session_id,
         session_label=app_ctx.session_label,
     )
-    typer.echo(fmt.format_output(data, metadata=metadata))
+    click.echo(fmt.format_output(data, metadata=metadata))

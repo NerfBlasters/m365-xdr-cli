@@ -8,8 +8,9 @@ import ipaddress
 import json
 import re
 
-import typer
+import click
 
+from xdr_cli.cli_params import optional_multiple
 from xdr_cli.commands.hunt_cmd import _hunt_run
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import QueryError, UsageError
@@ -17,7 +18,7 @@ from xdr_cli.kql_parse import extract_tables
 from xdr_cli.queries import _validate_parameter_value, list_queries, load_query
 from xdr_cli.results import emit_result, write_result
 
-library_app = typer.Typer(
+library_app = click.Group(
     name="library",
     help="Discover and run the built-in KQL library.",
     no_args_is_help=True,
@@ -228,10 +229,13 @@ def _parse_params(name: str, values: list[str] | None) -> dict[str, str]:
 
 
 @library_app.command("list")
+@click.option("--search", default=None)
+@click.option("--tier", default=None)
+@click.pass_context
 def library_list(
-    ctx: typer.Context,
-    search: str | None = typer.Option(None, "--search"),
-    tier: str | None = typer.Option(None, "--tier"),
+    ctx: click.Context,
+    search: str | None,
+    tier: str | None,
 ) -> None:
     """List library descriptors without dumping KQL source."""
     queries = list_queries()
@@ -275,11 +279,12 @@ def library_list(
 
 
 @library_app.command("show")
+@click.argument("name", type=str, required=True, help="Exact library entry name.")
 def library_show(
-    name: str = typer.Argument(help="Exact library entry name."),
+    name: str,
 ) -> None:
     """Show one typed library descriptor."""
-    typer.echo(
+    click.echo(
         json.dumps(
             {"status": "success", "data": _descriptor(_find(name))},
             separators=(",", ":"),
@@ -288,12 +293,17 @@ def library_show(
 
 
 @library_app.command("run")
+@click.argument("name", type=str, required=True, help="Exact library entry name.")
+@click.option("--param", "-p", default=None, multiple=True, callback=optional_multiple)
+@click.option("--raw", is_flag=True)
+@click.option("--timeout", type=int, default=None)
+@click.pass_context
 def library_run(
-    ctx: typer.Context,
-    name: str = typer.Argument(help="Exact library entry name."),
-    param: list[str] | None = typer.Option(None, "--param", "-p"),
-    raw: bool = typer.Option(False, "--raw"),
-    timeout: int | None = typer.Option(None, "--timeout"),
+    ctx: click.Context,
+    name: str,
+    param: list[str] | None,
+    raw: bool,
+    timeout: int | None,
 ) -> None:
     """Run a named KQL query through the artifact-first execution path."""
     app_ctx: AppContext = ctx.obj

@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import typer
+import click
 
 from xdr_cli.config import get_config_home
 from xdr_cli.context import AppContext
@@ -27,7 +27,7 @@ from xdr_cli.schema_graph.overlay import (
     schema_evidence_lock,
 )
 
-results_app = typer.Typer(
+results_app = click.Group(
     name="results",
     help="Browse locally saved investigation result artifacts.",
     no_args_is_help=True,
@@ -55,7 +55,7 @@ def _results_root() -> Path:
 
 
 def _emit(value: Any) -> None:
-    typer.echo(json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str))
+    click.echo(json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str))
 
 
 def _metadata_paths() -> list[Path]:
@@ -615,11 +615,13 @@ def _find_meta(run_id: str) -> Path:
 
 
 @results_app.command("list")
+@click.option("--limit", type=click.IntRange(min=1, max=1000), default=100, show_default=True)
 def results_list(
-    limit: int = typer.Option(100, "--limit", min=1, max=1000),
+    limit: int,
 ) -> None:
     """List results, storage use, and copyable physical correlation inputs.
 
+    \b
     Example: `xdr results list`. A non-null `correlate_input` can be passed to
     `xdr schema correlate --input TABLE=RUN_ID` alongside a second artifact.
     """
@@ -669,9 +671,13 @@ def results_list(
 
 
 @results_app.command("show")
-def results_show(run_id: str = typer.Argument()) -> None:
+@click.argument("run_id", type=str, required=True)
+def results_show(
+    run_id: str,
+) -> None:
     """Show bounded provenance and correlation input for one result.
 
+    \b
     Example: `xdr results show RUN_ID`. For physically attributed artifacts,
     copy `correlate_input` into `xdr schema correlate --input TABLE=RUN_ID`.
     """
@@ -718,7 +724,10 @@ def results_show(run_id: str = typer.Argument()) -> None:
 
 
 @results_app.command("query")
-def results_query(run_id: str = typer.Argument()) -> None:
+@click.argument("run_id", type=str, required=True)
+def results_query(
+    run_id: str,
+) -> None:
     """Print the exact KQL stored with one result."""
 
     meta_path = _find_meta(run_id)
@@ -729,22 +738,27 @@ def results_query(run_id: str = typer.Argument()) -> None:
         error.error_code = "RESULT_QUERY_NOT_FOUND"
         error.help_command = f"xdr results show {run_id}"
         raise error
-    typer.echo(query)
+    click.echo(query)
 
 
 @results_app.command("head")
+@click.argument(
+    "run_id", type=str, required=True, help="Run ID or unambiguous prefix from `xdr results list`."
+)
+@click.option(
+    "--limit",
+    type=click.IntRange(min=1, max=100),
+    default=20,
+    show_default=True,
+    help="Maximum private rows to print (1-100; default 20).",
+)
 def results_head(
-    run_id: str = typer.Argument(help="Run ID or unambiguous prefix from `xdr results list`."),
-    limit: int = typer.Option(
-        20,
-        "--limit",
-        min=1,
-        max=100,
-        help="Maximum private rows to print (1-100; default 20).",
-    ),
+    run_id: str,
+    limit: int,
 ) -> None:
     """Print a bounded preview of private saved rows; never contacts the tenant.
 
+    \b
     Example: `xdr results head 20260801T084128011506Z-a01d707cfd37 --limit 20`
 
     Output may contain investigation values. Do not paste it into public issues
@@ -769,33 +783,37 @@ def results_head(
 
 
 @results_app.command("rows")
+@click.argument(
+    "run_id", type=str, required=True, help="Run ID or unambiguous prefix from `xdr results list`."
+)
+@click.option(
+    "--type",
+    "record_type",
+    default=None,
+    help="Exact `record_type` filter, for example `relationship-path-match`.",
+)
+@click.option(
+    "--offset",
+    type=click.IntRange(min=0, max=None),
+    default=0,
+    help="Skip this many matching rows before printing (default 0).",
+)
+@click.option(
+    "--limit",
+    type=click.IntRange(min=1, max=1000),
+    default=100,
+    show_default=True,
+    help="Maximum private matching rows to print (1-1000; default 100).",
+)
 def results_rows(
-    run_id: str = typer.Argument(
-        help="Run ID or unambiguous prefix from `xdr results list`."
-    ),
-    record_type: str | None = typer.Option(
-        None,
-        "--type",
-        help=(
-            "Exact `record_type` filter, for example `relationship-path-match`."
-        ),
-    ),
-    offset: int = typer.Option(
-        0,
-        "--offset",
-        min=0,
-        help="Skip this many matching rows before printing (default 0).",
-    ),
-    limit: int = typer.Option(
-        100,
-        "--limit",
-        min=1,
-        max=1000,
-        help="Maximum private matching rows to print (1-1000; default 100).",
-    ),
+    run_id: str,
+    record_type: str | None,
+    offset: int,
+    limit: int,
 ) -> None:
     """Inspect filtered or paginated private result rows; cache-only.
 
+    \b
     Example: `xdr results rows RUN_ID --type relationship-path-match --limit
     100`
 
@@ -844,10 +862,13 @@ def results_rows(
 
 
 @results_app.command("shape")
+@click.argument("run_id", type=str, required=True)
+@click.option("--search", default=None)
+@click.option("--limit", type=click.IntRange(min=1, max=1000), default=100, show_default=True)
 def results_shape(
-    run_id: str = typer.Argument(),
-    search: str | None = typer.Option(None, "--search"),
-    limit: int = typer.Option(100, "--limit", min=1, max=1000),
+    run_id: str,
+    search: str | None,
+    limit: int,
 ) -> None:
     """Show observed JSON paths, types, and field presence counts."""
 
@@ -887,18 +908,22 @@ def results_shape(
 
 
 @results_app.command("prune")
+@click.option(
+    "--older-than",
+    type=click.IntRange(min=1, max=None),
+    required=True,
+    help="Delete artifacts older than this many days.",
+)
+@click.option("--yes", "-y", is_flag=True, help="Confirm deletion.")
+@click.pass_context
 def results_prune(
-    ctx: typer.Context,
-    older_than: int = typer.Option(
-        ...,
-        "--older-than",
-        min=1,
-        help="Delete artifacts older than this many days.",
-    ),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Confirm deletion."),
+    ctx: click.Context,
+    older_than: int,
+    yes: bool,
 ) -> None:
     """Delete old results; retire automatic evidence and preserve explicit pins.
 
+    \b
     Example: `xdr results prune --older-than 90 --yes`
 
     Automatic discovery references are retired at the cutoff before deleting
@@ -929,7 +954,7 @@ def results_prune(
                 help_command="xdr results prune --help",
             )
         err_console.print(f"Delete {len(targets)} result bundle(s)?")
-        if not typer.confirm("Proceed?"):
+        if not click.confirm("Proceed?"):
             raise ConflictError("Result pruning was cancelled by the operator.")
         approved = True
 

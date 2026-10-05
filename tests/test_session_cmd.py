@@ -9,8 +9,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-import typer
-from typer.testing import CliRunner
+import click
+from click.testing import CliRunner
 
 from xdr_cli.main import app
 
@@ -53,7 +53,7 @@ def test_end_flushes_closure_before_maintenance_and_emits_terminal_failure(home,
     save_config(Config(tenant_id="tenant"))
     assert runner.invoke(app, ["session", "start"]).exit_code == 0
     events, observed = [], []
-    echo = typer.echo
+    echo = click.echo
 
     def observe_echo(message=None, **kwargs):
         echo(message, **kwargs)
@@ -73,7 +73,7 @@ def test_end_flushes_closure_before_maintenance_and_emits_terminal_failure(home,
         raise AuthError("private detail")
 
     with (
-        patch("xdr_cli.commands.session_cmd.typer.echo", side_effect=observe_echo),
+        patch("xdr_cli.commands.session_cmd.click.echo", side_effect=observe_echo),
         patch(
             "xdr_cli.schema_graph.session_maintenance.collect_session_schema", side_effect=maintain,
         ),
@@ -126,7 +126,7 @@ def test_end_deadline_emits_partial_retains_saved_evidence_and_stops_future_stag
         patch("xdr_cli.schema_graph.local_collection.collect_local", side_effect=validate),
         patch("xdr_cli.schema_graph.discovery.explore_saved_identifiers") as explore,
         patch("xdr_cli.schema_graph.maintenance.mark_collection_complete") as complete,
-        patch("xdr_cli.commands.session_cmd.typer.prompt") as prompt,
+        patch("xdr_cli.commands.session_cmd.click.prompt") as prompt,
     ):
         result = runner.invoke(app, ["session", "end"])
     assert result.exit_code == 14, result.output

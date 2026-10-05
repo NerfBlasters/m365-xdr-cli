@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from click import unstyle
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli.commands.schema_cmd import bundle_app, schema_app
 from xdr_cli.main import app
@@ -14,11 +14,7 @@ from xdr_cli.schema_graph.maintenance import maintenance_status
 
 
 def _command_names(application):
-    return {
-        item.name or item.callback.__name__.replace("_", "-")
-        for item in application.registered_commands
-        if item.callback is not None
-    }
+    return set(application.commands)
 
 
 def test_schema_capability_registry_matches_cli_and_documentation():

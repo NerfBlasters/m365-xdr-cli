@@ -130,6 +130,10 @@ uv run --frozen --extra dev ruff check src/ tests/ .github/scripts/
 uv run --frozen --extra dev pytest tests/ -q
 ```
 
+If the uv cache and virtual environment are on different filesystems, set
+`UV_LINK_MODE=copy` (or pass `--link-mode=copy` to `uv sync` / `uv pip install`).
+This selects the copy behavior explicitly and avoids uv's hardlink warning.
+
 After changing dependencies, run `uv lock`, review the lockfile diff, and commit
 it with `pyproject.toml`. See [CI security](docs/ci.md) for scanner behavior and
 finding review. CI never uses live tenant credentials.
@@ -458,3 +462,29 @@ public GitHub issues for security issues.
 
 See [`SECURITY.md`](SECURITY.md) for the contact channel, scope, and
 response-time expectations.
+
+## Adding a CLI command
+
+Register commands on the existing Click group in `src/xdr_cli/commands/`.
+Declare parameter types, defaults, and help explicitly with `@click.option`
+or `@click.argument`; type annotations alone do not configure the parser.
+Use `@click.pass_context` only when the callback accepts `ctx` as its first
+argument. Read application state from `ctx.obj`.
+
+Use `EnumValueChoice` from `xdr_cli.cli_params` for enum parameters: user input
+matches enum values and the callback receives a member. For optional repeated
+options use `multiple=True, callback=optional_multiple` so omission yields
+`None` and supplied values arrive as a list. Standard Click types handle
+paths (`click.Path(path_type=Path)`), dates (`click.DateTime`), ranges
+(`click.IntRange`), and literal choices (`click.Choice`).
+
+The root dispatcher installs command recording and mutation checks through
+Click's public callback interfaces. Do not wrap private parser internals.
+Rich is used independently for stderr messages; help uses Click's formatter.
+Preserve example layout with Click's `\b` paragraph marker when necessary.
+
+Run `pytest tests/test_cli_contract.py tests/test_cli_params.py -q` after CLI
+changes, in addition to the full suite. The contract fixtures cover the command
+surface, typed callback values, and parser errors. Regenerate deliberately with
+`XDR_REGENERATE_CLI_CONTRACT=1`; review every difference against the intended
+public contract change. Do not regenerate fixtures merely to make tests pass.

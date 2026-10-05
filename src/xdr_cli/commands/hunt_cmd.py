@@ -6,12 +6,13 @@ import asyncio
 import sys
 from pathlib import Path
 
-import typer
+import click
 
 from xdr_cli._recording import _parse_execution_time_ms, run_kql_with_recording
 from xdr_cli.api.hunting import run_query
 from xdr_cli.auth import AuthManager
 from xdr_cli.backends import create_client
+from xdr_cli.cli_params import optional_multiple
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import UsageError
@@ -19,7 +20,7 @@ from xdr_cli.queries import load_query, parse_frontmatter, query_source_hash
 from xdr_cli.results import emit_result, write_result
 from xdr_cli.schema_graph.ingest import infer_direct_table_lineage
 
-hunt_app = typer.Typer(
+hunt_app = click.Group(
     name="hunt",
     help="Advanced hunting with KQL queries.",
     no_args_is_help=True,
@@ -27,40 +28,50 @@ hunt_app = typer.Typer(
 
 
 @hunt_app.command("run")
+@click.argument("kql", type=str, required=False, default=None, help="Inline KQL query string.")
+@click.option(
+    "--from-file",
+    type=click.Path(
+        path_type=Path,
+        exists=False,
+        file_okay=True,
+        dir_okay=True,
+        writable=False,
+        readable=True,
+        resolve_path=False,
+        allow_dash=False,
+    ),
+    default=None,
+    help="Read KQL from a file.",
+)
+@click.option("--from-stdin", is_flag=True, help="Read KQL from stdin.")
+@click.option(
+    "--raw",
+    is_flag=True,
+    help=(
+        "Keep JSON-string columns (RawEventData, AdditionalFields, "
+        "ResourceData) as raw strings instead of parsing them into objects. Use"
+        " when piping verbatim to another tool."
+    ),
+)
+@click.option(
+    "--timeout",
+    type=int,
+    default=None,
+    help=(
+        "Per-call HTTP timeout in seconds. Overrides config.api_timeout "
+        "(default 120). Bump for hunts that aggregate or join across large "
+        "tables — these can run 30-90s+ on Defender."
+    ),
+)
+@click.pass_context
 def hunt_run(
-    ctx: typer.Context,
-    kql: str | None = typer.Argument(
-        None,
-        help="Inline KQL query string.",
-    ),
-    from_file: Path | None = typer.Option(
-        None,
-        "--from-file",
-        help="Read KQL from a file.",
-    ),
-    from_stdin: bool = typer.Option(
-        False,
-        "--from-stdin",
-        help="Read KQL from stdin.",
-    ),
-    raw: bool = typer.Option(
-        False,
-        "--raw",
-        help=(
-            "Keep JSON-string columns (RawEventData, AdditionalFields, "
-            "ResourceData) as raw strings instead of parsing them into "
-            "objects. Use when piping verbatim to another tool."
-        ),
-    ),
-    timeout: int | None = typer.Option(
-        None,
-        "--timeout",
-        help=(
-            "Per-call HTTP timeout in seconds. Overrides config.api_timeout "
-            "(default 120). Bump for hunts that aggregate or join across large "
-            "tables — these can run 30-90s+ on Defender."
-        ),
-    ),
+    ctx: click.Context,
+    kql: str | None,
+    from_file: Path | None,
+    from_stdin: bool,
+    raw: bool,
+    timeout: int | None,
 ) -> None:
     """Run a KQL advanced hunting query."""
     app_ctx: AppContext = ctx.obj
@@ -191,17 +202,20 @@ async def _hunt_run(
 
 
 @hunt_app.command("library-show")
+@click.argument("name", type=str, required=True, help="Query name from the library.")
+@click.option(
+    "--param",
+    "-p",
+    default=None,
+    multiple=True,
+    callback=optional_multiple,
+    help="Parameter as key=value. Repeatable.",
+)
+@click.pass_context
 def hunt_library_show(
-    ctx: typer.Context,
-    name: str = typer.Argument(
-        help="Query name from the library.",
-    ),
-    param: list[str] | None = typer.Option(
-        None,
-        "--param",
-        "-p",
-        help="Parameter as key=value. Repeatable.",
-    ),
+    ctx: click.Context,
+    name: str,
+    param: list[str] | None,
 ) -> None:
     """Render a library query without executing it.
 
@@ -216,4 +230,4 @@ def hunt_library_show(
     from xdr_cli.commands.library_cmd import _parse_params
 
     kql = load_query(name, **_parse_params(name, param))
-    typer.echo(kql)
+    click.echo(kql)

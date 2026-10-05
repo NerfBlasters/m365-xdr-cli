@@ -179,7 +179,7 @@ async def test_malformed_submission_reports_uncertain_outcome(client, reply):
 
 @respx.mock
 def test_cli_status_cookie_mode_with_device(client, monkeypatch):
-    from typer.testing import CliRunner
+    from click.testing import CliRunner
     from xdr_cli.config import save_config
     from xdr_cli.main import app
 

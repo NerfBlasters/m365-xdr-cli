@@ -15,32 +15,38 @@ from __future__ import annotations
 
 import os
 
-import typer
+import click
 
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import ConflictError, QueryError, UsageError
 from xdr_cli.sessions import current_session, write_annotation
 
 
+@click.argument(
+    "text",
+    type=str,
+    required=False,
+    default="",
+    help="Annotation text. Required unless --skip is supplied.",
+)
+@click.option(
+    "--skip", default="", help="Skip the annotation with a reason. Mutually exclusive with text."
+)
+@click.option(
+    "--refers-to",
+    type=int,
+    default=None,
+    help=(
+        "Seq of the invocation to annotate. Defaults to the calling actor's "
+        "most-recent unannotated invocation."
+    ),
+)
+@click.pass_context
 def annotate(
-    ctx: typer.Context,
-    text: str = typer.Argument(
-        "",
-        help="Annotation text. Required unless --skip is supplied.",
-    ),
-    skip: str = typer.Option(
-        "",
-        "--skip",
-        help="Skip the annotation with a reason. Mutually exclusive with text.",
-    ),
-    refers_to: int | None = typer.Option(
-        None,
-        "--refers-to",
-        help=(
-            "Seq of the invocation to annotate. "
-            "Defaults to the calling actor's most-recent unannotated invocation."
-        ),
-    ),
+    ctx: click.Context,
+    text: str,
+    skip: str,
+    refers_to: int | None,
 ) -> None:
     """Annotate the calling actor's most-recent unannotated invocation.
 
@@ -85,4 +91,4 @@ def annotate(
             app_ctx.recorder.skip_record()
         raise
 
-    typer.echo(f"annotated seq={seq}")
+    click.echo(f"annotated seq={seq}")

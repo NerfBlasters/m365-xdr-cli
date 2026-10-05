@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import httpx
 import pytest
 import respx
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli.backends import create_client
 from xdr_cli.commands.device_cmd import _resolve_machine_id

@@ -989,7 +989,7 @@ def load_session_records(session_id: str) -> list[str] | None:
 
 # ---------------------------------------------------------------------------
 # Recorder — accumulates fields during one CLI invocation, flushes one JSONL
-# line on exit. Lifetime is exactly one Typer invocation. Constructed in the
+# line on exit. Lifetime is exactly one Click invocation. Constructed in the
 # app callback (main.py); flushed in run()'s finally block.
 # ---------------------------------------------------------------------------
 

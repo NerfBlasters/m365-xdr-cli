@@ -7,7 +7,7 @@ library_query, params, anchor_incident), the API call itself, and post-API
 annotations (columns_projected, result.row_count / execution_time_ms /
 cpu_usage / has_more / sample_rows). Centralising it here:
 
-* keeps ``_hunt_run`` a thin wrapper (the OutputFormatter / typer.echo work
+* keeps ``_hunt_run`` a thin wrapper (the OutputFormatter / click.echo work
   stays in commands/hunt_cmd.py — the helper is recording-only),
 * lets ``investigate`` fan out internal hunts each as their own JSONL line
   without duplicating annotation logic,

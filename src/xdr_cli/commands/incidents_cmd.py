@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 from time import monotonic
 
-import typer
+import click
 
 from xdr_cli.api.incidents import (
     add_incident_comment,
@@ -17,6 +17,7 @@ from xdr_cli.api.incidents import (
 from xdr_cli.artifact_records import incident_records
 from xdr_cli.auth import AuthManager
 from xdr_cli.backends import create_client
+from xdr_cli.cli_params import optional_multiple
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import ConflictError, PartialSuccessError, UsageError, XDRError
@@ -49,7 +50,7 @@ def _validate_choice(
         raise error
     return value
 
-incidents_app = typer.Typer(
+incidents_app = click.Group(
     name="incidents",
     help="Manage security incidents.",
     no_args_is_help=True,
@@ -60,36 +61,48 @@ _VALID_EXPAND = frozenset({"alerts"})
 _VALID_INCIDENT_STATUS = frozenset({"active", "resolved", "redirected", "inProgress"})
 
 @incidents_app.command("list")
+@click.option(
+    "--severity",
+    "-s",
+    default=None,
+    multiple=True,
+    callback=optional_multiple,
+    help=(
+        "Filter by severity (high, medium, low, informational). Repeatable, or "
+        "comma-separated: --severity medium,high."
+    ),
+)
+@click.option(
+    "--status",
+    default=None,
+    multiple=True,
+    callback=optional_multiple,
+    help=(
+        "Filter by status (active, resolved, inProgress, redirected). "
+        "Repeatable, or comma-separated: --status active,inProgress."
+    ),
+)
+@click.option("--assigned-to", default=None, help="Filter by assignee.")
+@click.option("--since", default=None, help="Show incidents since (e.g., 7d, 24h, 30m).")
+@click.option(
+    "--limit",
+    "-l",
+    type=int,
+    default=None,
+    help="Max results to return [default: default_limit in config.toml, 25].",
+)
+@click.pass_context
 def incidents_list(
-    ctx: typer.Context,
-    severity: list[str] | None = typer.Option(
-        None, "--severity", "-s",
-        help=(
-            "Filter by severity (high, medium, low, informational). "
-            "Repeatable, or comma-separated: --severity medium,high."
-        ),
-    ),
-    status: list[str] | None = typer.Option(
-        None, "--status",
-        help=(
-            "Filter by status (active, resolved, inProgress, redirected). "
-            "Repeatable, or comma-separated: --status active,inProgress."
-        ),
-    ),
-    assigned_to: str | None = typer.Option(
-        None, "--assigned-to", help="Filter by assignee.",
-    ),
-    since: str | None = typer.Option(
-        None, "--since",
-        help="Show incidents since (e.g., 7d, 24h, 30m).",
-    ),
-    limit: int | None = typer.Option(
-        None, "--limit", "-l",
-        help="Max results to return [default: default_limit in config.toml, 25].",
-    ),
+    ctx: click.Context,
+    severity: list[str] | None,
+    status: list[str] | None,
+    assigned_to: str | None,
+    since: str | None,
+    limit: int | None,
 ) -> None:
     """List incidents in the tenant (use --status to filter, e.g. --status active).
 
+    \b
     Output schema (envelope at .data[]):
       id (str)               — Microsoft Graph incident id, e.g. "155278"
       displayName (str)      — analyst-facing title
@@ -187,13 +200,20 @@ async def _list(
 
 
 @incidents_app.command("show")
+@click.argument("incident_id", type=str, required=True, help="Incident ID.")
+@click.option(
+    "--expand",
+    "-e",
+    default=None,
+    multiple=True,
+    callback=optional_multiple,
+    help="Expand: alerts (each alert includes its evidence).",
+)
+@click.pass_context
 def incidents_show(
-    ctx: typer.Context,
-    incident_id: str = typer.Argument(help="Incident ID."),
-    expand: list[str] | None = typer.Option(
-        None, "--expand", "-e",
-        help="Expand: alerts (each alert includes its evidence).",
-    ),
+    ctx: click.Context,
+    incident_id: str,
+    expand: list[str] | None,
 ) -> None:
     """Show incident details."""
     app_ctx: AppContext = ctx.obj
@@ -281,36 +301,37 @@ _VALID_DETERMINATION = frozenset(
 
 
 @incidents_app.command("update")
+@click.argument("incident_id", type=str, required=True, help="Incident ID.")
+@click.option(
+    "--status", default=None, help=f"New status. One of: {', '.join(sorted(_VALID_STATUS))}."
+)
+@click.option(
+    "--classification", default=None, help=f"One of: {', '.join(sorted(_VALID_CLASSIFICATION))}."
+)
+@click.option(
+    "--determination", default=None, help=f"One of: {', '.join(sorted(_VALID_DETERMINATION))}."
+)
+@click.option(
+    "--comment",
+    default=None,
+    help=(
+        "Add a comment. Supports \\r\\n line breaks: the Defender portal squashes"
+        " them in the Activity log list view but renders them correctly in the "
+        "comment fly-out when clicked."
+    ),
+)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
+@click.option("--dry-run", is_flag=True, help="Show what would be updated without making changes.")
+@click.pass_context
 def incidents_update(
-    ctx: typer.Context,
-    incident_id: str = typer.Argument(help="Incident ID."),
-    status: str | None = typer.Option(
-        None, "--status",
-        help=f"New status. One of: {', '.join(sorted(_VALID_STATUS))}.",
-    ),
-    classification: str | None = typer.Option(
-        None, "--classification",
-        help=f"One of: {', '.join(sorted(_VALID_CLASSIFICATION))}.",
-    ),
-    determination: str | None = typer.Option(
-        None, "--determination",
-        help=f"One of: {', '.join(sorted(_VALID_DETERMINATION))}.",
-    ),
-    comment: str | None = typer.Option(
-        None, "--comment",
-        help=(
-            "Add a comment. Supports \\r\\n line breaks: the Defender portal "
-            "squashes them in the Activity log list view but renders them "
-            "correctly in the comment fly-out when clicked."
-        ),
-    ),
-    yes: bool = typer.Option(
-        False, "--yes", "-y", help="Skip confirmation prompt.",
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run",
-        help="Show what would be updated without making changes.",
-    ),
+    ctx: click.Context,
+    incident_id: str,
+    status: str | None,
+    classification: str | None,
+    determination: str | None,
+    comment: str | None,
+    yes: bool,
+    dry_run: bool,
 ) -> None:
     """Update an incident's status, classification, or determination."""
     app_ctx: AppContext = ctx.obj
@@ -338,7 +359,7 @@ def incidents_update(
     # We POST the comment in a second call after the PATCH succeeds (see _update).
 
     if not payload and not comment:
-        typer.echo(
+        click.echo(
             '{"status":"success","data":{"updated":false,'
             '"reason":"no-updates-specified"}}'
         )
@@ -357,7 +378,7 @@ def incidents_update(
         if comment:
             dry_info["comment"] = comment
         output = fmt.format_output(dry_info)
-        typer.echo(output)
+        click.echo(output)
         return
 
     if not yes and app_ctx.is_interactive:
@@ -366,7 +387,7 @@ def incidents_update(
         )
         for k, v in payload.items():
             err_console.print(f"  {k}: {v}")
-        if not typer.confirm("Proceed?"):
+        if not click.confirm("Proceed?"):
             raise ConflictError("Incident update was cancelled by the operator.")
 
     if not yes and not app_ctx.is_interactive:
@@ -449,6 +470,6 @@ async def _update(
                 "comment_added": comment is not None,
             },
         )
-        typer.echo(output)
+        click.echo(output)
     finally:
         await client.close()

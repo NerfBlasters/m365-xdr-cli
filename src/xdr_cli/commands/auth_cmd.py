@@ -14,8 +14,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import unquote
 
+import click
 import httpx
-import typer
 
 from xdr_cli.auth import AuthManager
 from xdr_cli.config import ensure_config_dir, get_config_home, save_config
@@ -38,7 +38,7 @@ from xdr_cli.portal_auth import (
 from xdr_cli.portal_client import CookieAuth, PortalClient
 from xdr_cli.results import tenant_fingerprint
 
-auth_app = typer.Typer(name="auth", help="Authentication management.", no_args_is_help=True)
+auth_app = click.Group(name="auth", help="Authentication management.", no_args_is_help=True)
 
 # `-b '...'` / `--cookie '...'` in a browser "Copy as cURL (bash)" blob. The cookie
 # string is single-quoted (bash) form.
@@ -60,7 +60,7 @@ def _extract_cookie_header(text: str) -> str:
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.lower().startswith("cookie:"):
-            return stripped[len("cookie:"):].strip()
+            return stripped[len("cookie:") :].strip()
     return text.strip()
 
 
@@ -87,15 +87,20 @@ _PORTAL_VERIFY_PATH = "ndr/machines"
 
 
 @auth_app.command()
+@click.option("--tenant-id", "-t", default="", help="Azure AD tenant ID.")
+@click.option("--client-id", "-c", default="", help="App registration client ID.")
+@click.pass_context
 def login(
-    ctx: typer.Context,
-    tenant_id: str = typer.Option("", "--tenant-id", "-t", help="Azure AD tenant ID."),
-    client_id: str = typer.Option("", "--client-id", "-c", help="App registration client ID."),
+    ctx: click.Context,
+    tenant_id: str,
+    client_id: str,
 ) -> None:
     """Authenticate interactively (WAM on Windows) with device code fallback."""
     app_ctx: AppContext = ctx.obj
-    if (app_ctx.config.backend_profile.cookie_auth
-            and getattr(app_ctx.config, "_api_backend_requested", "portal-cookie") != "auto"):
+    if (
+        app_ctx.config.backend_profile.cookie_auth
+        and getattr(app_ctx.config, "_api_backend_requested", "portal-cookie") != "auto"
+    ):
         raise UsageError(
             "The portal-cookie backend uses an imported browser session. "
             "Run xdr auth portal-cookie <cookie-source>.",
@@ -127,11 +132,14 @@ def login(
         session_id=app_ctx.session_id,
         session_label=app_ctx.session_label,
     )
-    typer.echo(fmt.format_output(info))
+    click.echo(fmt.format_output(info))
 
 
 @auth_app.command()
-def logout(ctx: typer.Context) -> None:
+@click.pass_context
+def logout(
+    ctx: click.Context,
+) -> None:
     """Clear cached credentials for the selected backend."""
     app_ctx: AppContext = ctx.obj
     if app_ctx.config.backend_profile.cookie_auth:
@@ -156,12 +164,10 @@ def logout(ctx: typer.Context) -> None:
         session_id=app_ctx.session_id,
         session_label=app_ctx.session_label,
     )
-    typer.echo(fmt.format_output(data))
+    click.echo(fmt.format_output(data))
 
 
-async def _verify_portal_cookies(
-    cookie_header: str, xsrf_token: str
-) -> tuple[bool, str | None]:
+async def _verify_portal_cookies(cookie_header: str, xsrf_token: str) -> tuple[bool, str | None]:
     """Issue one cheap authenticated apiproxy GET to confirm the pasted
     cookies actually work. Never raises — auth/API failures ("stale paste")
     and transient network errors (DNS/connect/timeout/TLS) are both expected
@@ -199,9 +205,7 @@ def _store_and_report_portal_cookies(
     verified: bool | None = None
     verify_error: str | None = None
     if verify:
-        verified, verify_error = asyncio.run(
-            _verify_portal_cookies(cookie_header, xsrf_token)
-        )
+        verified, verify_error = asyncio.run(_verify_portal_cookies(cookie_header, xsrf_token))
 
     data: dict = {
         "authenticated": True,
@@ -220,7 +224,7 @@ def _store_and_report_portal_cookies(
         session_id=app_ctx.session_id,
         session_label=app_ctx.session_label,
     )
-    typer.echo(fmt.format_output(data))
+    click.echo(fmt.format_output(data))
 
 
 @dataclass(frozen=True)
@@ -252,9 +256,9 @@ def _read_cookie_source(source: str) -> _CookieSource:
             flags |= os.O_NOFOLLOW
         descriptor = os.open(path, flags)
         opened = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(opened.st_mode)
-            or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)
+        if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (
+            before.st_dev,
+            before.st_ino,
         ):
             raise OSError("cookie source changed while it was being opened")
         with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
@@ -309,9 +313,9 @@ def _shred_file(source: _CookieSource) -> bool:
             flags |= os.O_NOFOLLOW
         descriptor = os.open(source.path, flags)
         opened = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(opened.st_mode)
-            or (opened.st_dev, opened.st_ino) != (source.device, source.inode)
+        if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (
+            source.device,
+            source.inode,
         ):
             return False
         remaining = opened.st_size
@@ -327,9 +331,9 @@ def _shred_file(source: _CookieSource) -> bool:
         descriptor = None
 
         current = source.path.lstat()
-        if (
-            not stat.S_ISREG(current.st_mode)
-            or (current.st_dev, current.st_ino) != (source.device, source.inode)
+        if not stat.S_ISREG(current.st_mode) or (current.st_dev, current.st_ino) != (
+            source.device,
+            source.inode,
         ):
             return False
         source.path.unlink()
@@ -343,25 +347,37 @@ def _shred_file(source: _CookieSource) -> bool:
 
 
 @auth_app.command("portal-cookie")
+@click.argument(
+    "source",
+    type=str,
+    required=True,
+    metavar="COOKIE_SOURCE",
+    help=(
+        "File holding the full browser Cookie header or a 'Copy as cURL (bash)' "
+        "blob; use '-' to read it from stdin."
+    ),
+)
+@click.option(
+    "--verify/--no-verify",
+    default=True,
+    is_flag=True,
+    show_default=True,
+    help=("After storing, make one lightweight apiproxy call to confirm the cookies work."),
+)
+@click.option(
+    "--keep-source",
+    is_flag=True,
+    help=(
+        "Keep the cookie source file after import (default: identity-bound "
+        "best-effort overwrite and delete)."
+    ),
+)
+@click.pass_context
 def portal_cookie(
-    ctx: typer.Context,
-    source: str = typer.Argument(
-        ...,
-        metavar="COOKIE_SOURCE",
-        help="File holding the full browser Cookie header or a 'Copy as cURL (bash)' "
-        "blob; use '-' to read it from stdin.",
-    ),
-    verify: bool = typer.Option(
-        True,
-        "--verify/--no-verify",
-        help="After storing, make one lightweight apiproxy call to confirm the cookies work.",
-    ),
-    keep_source: bool = typer.Option(
-        False,
-        "--keep-source",
-        help="Keep the cookie source file after import (default: identity-bound "
-        "best-effort overwrite and delete).",
-    ),
+    ctx: click.Context,
+    source: str,
+    verify: bool,
+    keep_source: bool,
 ) -> None:
     """Configure portal auth from a logged-in security.microsoft.com session.
 
@@ -406,7 +422,7 @@ def portal_cookie(
             "[yellow]Note:[/yellow] no XSRF-TOKEN cookie in the header; "
             "enter the xsrf-token value manually."
         )
-        xsrf_token = typer.prompt("xsrf-token", hide_input=True)
+        xsrf_token = click.prompt("xsrf-token", hide_input=True)
     if not xsrf_token.strip():
         error = ConfigError(
             "xsrf-token must not be empty.",
@@ -478,7 +494,10 @@ def _clear_portal_credentials(app_ctx: AppContext) -> dict:
 
 
 @auth_app.command("portal-logout")
-def portal_logout(ctx: typer.Context) -> None:
+@click.pass_context
+def portal_logout(
+    ctx: click.Context,
+) -> None:
     """Clear stored portal cookies, preserving official tokens."""
     app_ctx: AppContext = ctx.obj
     data = _clear_portal_credentials(app_ctx)
@@ -486,7 +505,7 @@ def portal_logout(ctx: typer.Context) -> None:
         session_id=app_ctx.session_id,
         session_label=app_ctx.session_label,
     )
-    typer.echo(fmt.format_output(data))
+    click.echo(fmt.format_output(data))
 
 
 def _cookie_status(tenant_id: str) -> dict:
@@ -501,41 +520,68 @@ def _cookie_status(tenant_id: str) -> dict:
 
 
 @auth_app.command()
-def status(ctx: typer.Context) -> None:
+@click.pass_context
+def status(
+    ctx: click.Context,
+) -> None:
     """Show current authentication status."""
     app_ctx: AppContext = ctx.obj
     cookie_status = _cookie_status(app_ctx.config.tenant_id)
     if app_ctx.config.backend_profile.cookie_auth:
         fmt = OutputFormatter(session_id=app_ctx.session_id, session_label=app_ctx.session_label)
-        typer.echo(fmt.format_output({
-            "backend": "portal-cookie",
-            "backend_preference": getattr(
-                app_ctx.config, "_api_backend_requested", app_ctx.config.api_backend,
-            ),
-            "portal": {**cookie_status, "session_validity": "not_checked"},
-            "capabilities": [
-                "hunting", "incidents-list", "incidents-show", "alerts-list", "alerts-show",
-                "investigate", "domains-list", "device-show", "device-timeline",
-                "device-action-status-with-device",
-                "device-download-package",
-                "incident-comments", "device-scan-quick", "device-isolate-selective",
-                "device-isolate-full", "device-unisolate", "device-collect-package",
-                "device-restrict", "device-unrestrict", "incidents-update", "device-scan-full",
-            ],
-            "unverified_capabilities": [],
-            "validation_caveats": [
-                "AD domains are capped at 100 observed records; incomplete coverage is reported.",
-                "Superseded device actions may be absent from portal status reads.",
-                "Native device and action response fields retain partial-contract provenance.",
-            ],
-            "full_parity": False,
-        }))
+        click.echo(
+            fmt.format_output(
+                {
+                    "backend": "portal-cookie",
+                    "backend_preference": getattr(
+                        app_ctx.config,
+                        "_api_backend_requested",
+                        app_ctx.config.api_backend,
+                    ),
+                    "portal": {**cookie_status, "session_validity": "not_checked"},
+                    "capabilities": [
+                        "hunting",
+                        "incidents-list",
+                        "incidents-show",
+                        "alerts-list",
+                        "alerts-show",
+                        "investigate",
+                        "domains-list",
+                        "device-show",
+                        "device-timeline",
+                        "device-action-status-with-device",
+                        "device-download-package",
+                        "incident-comments",
+                        "device-scan-quick",
+                        "device-isolate-selective",
+                        "device-isolate-full",
+                        "device-unisolate",
+                        "device-collect-package",
+                        "device-restrict",
+                        "device-unrestrict",
+                        "incidents-update",
+                        "device-scan-full",
+                    ],
+                    "unverified_capabilities": [],
+                    "validation_caveats": [
+                        "AD domains are capped at 100 observed records; "
+                        "incomplete coverage is reported.",
+                        "Superseded device actions may be absent from portal status reads.",
+                        "Native device and action response fields retain "
+                        "partial-contract provenance.",
+                    ],
+                    "full_parity": False,
+                }
+            )
+        )
         return
     auth = AuthManager(app_ctx.config)
     main_info = auth.get_auth_status()
     main_info["backend"] = "official"
     main_info["backend_preference"] = getattr(
-        app_ctx.config, "_api_backend_requested", app_ctx.config.api_backend,
+        app_ctx.config,
+        "_api_backend_requested",
+        app_ctx.config.api_backend,
     )
 
     cookie_stored = cookie_status["cookie_stored"]
@@ -558,4 +604,4 @@ def status(ctx: typer.Context) -> None:
         session_label=app_ctx.session_label,
     )
     output = fmt.format_output(info)
-    typer.echo(output)
+    click.echo(output)

@@ -9,7 +9,7 @@ import re
 from time import monotonic
 from typing import Any
 
-import typer
+import click
 
 from xdr_cli._recording import run_kql_with_recording
 from xdr_cli.api.hunting import run_query
@@ -264,12 +264,13 @@ def _build_recommended_actions(
     }
 
 
+@click.argument("incident_id", type=str, required=True, help="Incident ID to investigate.")
+@click.option("--auto-enrich", is_flag=True, help="Auto-run all relevant enrichment queries.")
+@click.pass_context
 def investigate(
-    ctx: typer.Context,
-    incident_id: str = typer.Argument(help="Incident ID to investigate."),
-    auto_enrich: bool = typer.Option(
-        False, "--auto-enrich", help="Auto-run all relevant enrichment queries."
-    ),
+    ctx: click.Context,
+    incident_id: str,
+    auto_enrich: bool,
 ) -> None:
     """Guided incident investigation."""
     app_ctx: AppContext = ctx.obj
@@ -369,7 +370,7 @@ async def _investigate(ctx: AppContext, incident_id: str, auto_enrich: bool) -> 
                 err_console.print("  [a] All")
                 err_console.print("  [n] None")
 
-                choice = typer.prompt("Run which queries?", default="a")
+                choice = click.prompt("Run which queries?", default="a")
 
                 if choice.lower() == "n":
                     pass

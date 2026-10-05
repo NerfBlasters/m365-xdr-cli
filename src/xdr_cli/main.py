@@ -5,18 +5,17 @@ from __future__ import annotations
 import contextlib
 import contextvars
 import functools
-import inspect
 import logging
 import os
 import sys
 import time
 
 import click
-import typer
 
 from xdr_cli import __version__
 from xdr_cli.backend_selection import select_backend
 from xdr_cli.backends import APIBackend
+from xdr_cli.cli_params import EnumValueChoice
 from xdr_cli.commands.alerts_cmd import alerts_app
 from xdr_cli.commands.annotate_cmd import annotate
 from xdr_cli.commands.auth_cmd import auth_app
@@ -33,7 +32,7 @@ from xdr_cli.commands.schema_cmd import schema_app
 from xdr_cli.commands.session_cmd import session_app
 from xdr_cli.config import ensure_config_dir, get_config_home, load_config
 from xdr_cli.context import AppContext
-from xdr_cli.error_boundary import StructuredTyperGroup
+from xdr_cli.error_boundary import StructuredGroup
 from xdr_cli.exceptions import ConflictError, XDRError, format_error_json
 from xdr_cli.sessions import (
     Recorder,
@@ -42,47 +41,35 @@ from xdr_cli.sessions import (
     resolve_session_for_invocation,
 )
 
-app = typer.Typer(
-    name="xdr",
-    cls=StructuredTyperGroup,
-    help="Microsoft 365 Defender XDR investigation CLI.",
-    no_args_is_help=True,
-)
-
-# Register sub-apps
-app.add_typer(alerts_app)
-app.add_typer(auth_app)
-app.add_typer(device_app)
-app.add_typer(domains_app)
-app.add_typer(history_app)
-app.add_typer(hunt_app)
-app.add_typer(incidents_app)
-app.add_typer(lists_app)
-app.add_typer(library_app)
-app.add_typer(results_app)
-app.add_typer(schema_app)
-app.add_typer(session_app)
-app.command("investigate")(investigate)
-app.command("annotate")(annotate)
-
-
 # Resolved command chains that modify state (plus `investigate`, for
 # traceability) — logged to the audit log when Click dispatches them. Matching
 # the resolved chain, not raw argv, means every syntax Click accepts (`--`,
 # clustered short flags, `--opt=value`) is covered and an argument that
 # happens to equal a command name is not.
-_TENANT_MUTATION_COMMANDS = frozenset({
-    "device isolate", "device unisolate", "device scan",
-    "device collect-package", "device restrict", "device unrestrict",
-    "incidents update",
-})
-_WRITE_COMMANDS = _TENANT_MUTATION_COMMANDS | frozenset({
-    "auth login", "auth logout",
-    "auth portal-cookie", "auth portal-logout",
-    "investigate",
-    "lists init",
-    "schema repair-overlay", "schema migrate-cache", "schema bundle import",
-})
+_TENANT_MUTATION_COMMANDS = frozenset(
+    {
+        "device isolate",
+        "device unisolate",
+        "device scan",
+        "device collect-package",
+        "device restrict",
+        "device unrestrict",
+        "incidents update",
+    }
+)
+_WRITE_COMMANDS = _TENANT_MUTATION_COMMANDS | frozenset(
+    {
+        "auth login",
+        "auth logout",
+        "auth portal-cookie",
+        "auth portal-logout",
+        "investigate",
+        "lists init",
+        "schema repair-overlay",
+        "schema migrate-cache",
+        "schema bundle import",
+    }
+)
 
 
 def _audit_dispatched_command(chain: str | None, argv: list[str]) -> None:
@@ -128,9 +115,13 @@ def _redact_argv(argv: list[str]) -> list[str]:
 # Commands EXEMPT from the learning-mode gate. Annotate clears the gate;
 # session/history are control-plane and shouldn't be blocked by it. Matched
 # against the TOP-LEVEL group only (first space-separated token of the chain).
-_LEARNING_GATE_BYPASS: frozenset[str] = frozenset({
-    "annotate", "session", "history",
-})
+_LEARNING_GATE_BYPASS: frozenset[str] = frozenset(
+    {
+        "annotate",
+        "session",
+        "history",
+    }
+)
 
 
 def _is_help_invocation(argv: list[str]) -> bool:
@@ -227,7 +218,6 @@ def _emit_schema_maintenance_advisory(app_ctx: AppContext, chain: str | None) ->
         )
 
 
-
 def _setup_audit_log() -> logging.Logger:
     """Set up audit logging to ``$XDR_CLI_HOME/audit.log``.
 
@@ -241,7 +231,8 @@ def _setup_audit_log() -> logging.Logger:
     target = str(log_path)
     # Reuse only if the existing handler points to the same file.
     keep = [
-        h for h in logger.handlers
+        h
+        for h in logger.handlers
         if isinstance(h, logging.FileHandler) and h.baseFilename == target
     ]
     if keep and len(keep) == len(logger.handlers):
@@ -265,22 +256,20 @@ def _setup_audit_log() -> logging.Logger:
 def _setup_debug_logging() -> None:
     """Configure httpx and msal loggers to DEBUG level on stderr."""
     handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s")
-    )
+    handler.setFormatter(logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s"))
     for name in ("httpx", "msal", "xdr_cli"):
         log = logging.getLogger(name)
         log.setLevel(logging.DEBUG)
         log.addHandler(handler)
 
 
-def version_callback(value: bool) -> None:
-    if value:
-        typer.echo(f"xdr-cli {__version__}")
-        raise typer.Exit()
+def version_callback(ctx: click.Context, param: click.Parameter, value: bool) -> None:
+    if value and not ctx.resilient_parsing:
+        click.echo(f"xdr-cli {__version__}")
+        raise click.exceptions.Exit()
 
 
-# "Active" AppContext pointer used by run()'s finally block. The Typer
+# "Active" AppContext pointer used by run()'s finally block. The Click
 # callback stores ctx.obj here so the recorder can be flushed even when the
 # click context has already exited (KeyboardInterrupt mid-command, uncaught
 # BaseException, etc.).
@@ -295,38 +284,52 @@ _active_app_ctx: contextvars.ContextVar[AppContext | None] = contextvars.Context
 )
 
 
-@app.callback()
-def main(
-    ctx: typer.Context,
-    version: bool = typer.Option(
-        False, "--version", "-v", callback=version_callback, is_eager=True,
-        help="Show version and exit.",
+@click.group(
+    name="xdr",
+    cls=StructuredGroup,
+    help="Microsoft 365 Defender XDR investigation CLI.",
+    no_args_is_help=True,
+)
+@click.option(
+    "--version",
+    "-v",
+    is_flag=True,
+    callback=version_callback,
+    is_eager=True,
+    help="Show version and exit.",
+)
+@click.option(
+    "--backend",
+    type=EnumValueChoice(APIBackend, case_sensitive=True),
+    default=None,
+    help="API backend: auto (default), official, or portal-cookie.",
+)
+@click.option("--no-interactive", is_flag=True, help="Disable all interactive prompts.")
+@click.option("--debug", is_flag=True, help="Enable debug output to stderr.")
+@click.option(
+    "--quiet/--no-quiet",
+    "-q",
+    default=None,
+    is_flag=True,
+    help=(
+        "Suppress progress output. Auto-enabled when stdout is piped. Use "
+        "--no-quiet to force progress on."
     ),
-    backend: APIBackend | None = typer.Option(  # noqa: B008 - Typer option declaration
-        None, "--backend", help="API backend: auto (default), official, or portal-cookie.",
-    ),
-    no_interactive: bool = typer.Option(
-        False, "--no-interactive",
-        help="Disable all interactive prompts.",
-    ),
-    debug: bool = typer.Option(
-        False, "--debug",
-        help="Enable debug output to stderr.",
-    ),
-    quiet: bool | None = typer.Option(
-        None, "--quiet/--no-quiet", "-q",
-        help=(
-            "Suppress progress output. Auto-enabled when stdout is piped. "
-            "Use --no-quiet to force progress on."
-        ),
-    ),
-    rationale: str = typer.Option(
-        "", "--rationale",
-        help=(
-            "Pre-run intent. Captured on any invocation record when a "
-            "session is active."
-        ),
-    ),
+)
+@click.option(
+    "--rationale",
+    default="",
+    help=("Pre-run intent. Captured on any invocation record when a session is active."),
+)
+@click.pass_context
+def app(
+    ctx: click.Context,
+    version: bool,
+    backend: APIBackend | None,
+    no_interactive: bool,
+    debug: bool,
+    quiet: bool | None,
+    rationale: str,
 ) -> None:
     """Microsoft 365 Defender XDR investigation CLI."""
     from copy import copy
@@ -345,11 +348,11 @@ def main(
     )
     # Construct the Recorder in the callback so every command path has access
     # to it via ctx.obj.recorder. invoked_command is filled in later by the
-    # leaf-callback hook once Typer has resolved the subcommand chain.
+    # leaf-callback hook once Click has resolved the subcommand chain.
     #
     # The hunt-requires-session and learning-mode gates fire from inside the
     # leaf-callback hook (where the resolved subcommand chain is known).
-    # ``--help`` short-circuits Typer before the leaf runs, so help paths
+    # ``--help`` short-circuits Click before the leaf runs, so help paths
     # naturally bypass both gates without a special case.
     app_ctx.recorder = Recorder(
         session=current_session(),
@@ -362,11 +365,28 @@ def main(
     _active_app_ctx.set(app_ctx)
 
 
+# Register sub-apps
+app.add_command(alerts_app)
+app.add_command(auth_app)
+app.add_command(device_app)
+app.add_command(domains_app)
+app.add_command(history_app)
+app.add_command(hunt_app)
+app.add_command(incidents_app)
+app.add_command(lists_app)
+app.add_command(library_app)
+app.add_command(results_app)
+app.add_command(schema_app)
+app.add_command(session_app)
+app.command("investigate")(investigate)
+app.command("annotate")(annotate)
+
+
 def _capture_chain_from_leaf() -> None:
     """Hook fired from inside every leaf subcommand to capture the resolved
     subcommand chain on AppContext / Recorder.
 
-    Why a leaf hook instead of a Typer ``result_callback``: Click's
+    Why a leaf hook instead of a Click ``result_callback``: Click's
     ``result_callback`` runs at the root level after invocation completes,
     where the subcommand chain has already unwound. From inside the leaf
     callback we walk the click context's parent chain bottom-up, collect each
@@ -433,9 +453,7 @@ def _capture_chain_from_leaf() -> None:
     # Alert -> incident identity is learned only from Graph. Defer automatic
     # attachment until alerts_cmd has the authoritative incidentId. Explicit
     # XDR_SESSION remains authoritative and is resolved immediately.
-    defer_alert_identity = chain == "alerts show" and not os.environ.get(
-        "XDR_SESSION", ""
-    ).strip()
+    defer_alert_identity = chain == "alerts show" and not os.environ.get("XDR_SESSION", "").strip()
     if defer_alert_identity:
         session, attachment = None, "deferred-alert-identity"
     else:
@@ -477,81 +495,52 @@ def _capture_chain_from_leaf() -> None:
         print(
             "Multiple live sessions; command is running unattached. "
             "POSIX: XDR_SESSION=<id> xdr ... | "
-            "PowerShell: $env:XDR_SESSION = \"<id>\"",
+            'PowerShell: $env:XDR_SESSION = "<id>"',
             file=sys.stderr,
         )
     _emit_schema_maintenance_advisory(app_ctx, chain)
     _check_learning_mode_gate(chain, argv, app_ctx.recorder)
 
 
-def _install_leaf_hook(typer_app: typer.Typer, *, _seen: set[int] | None = None) -> None:
-    """Wrap every leaf callback registered on ``typer_app`` (and its sub-apps)
-    so the full subcommand chain is captured into AppContext.invoked_command.
+def _install_leaf_hook(command: click.Command, *, _seen: set[int] | None = None) -> None:
+    """Capture dispatch using Click's persistent command tree and public callbacks.
 
-    We mutate Typer's ``CommandInfo`` registry rather than the realized Click
-    command tree because ``typer.Typer.__call__`` re-builds the Click tree on
-    every invocation (via ``get_command``), so any wrapping applied to the
-    Click tree is discarded. The Typer registry is the source of truth.
-
-    Idempotent: callbacks tagged with ``_xdr_chain_wrapped`` are skipped, and
-    sub-apps already visited in this walk are skipped via ``_seen`` to prevent
-    infinite recursion if a sub-app is registered into multiple parents.
-
-    IMPLEMENTATION NOTE: This walks Typer's internal registry attributes
-    (``registered_commands``, ``registered_groups``, ``CommandInfo.callback``).
-    These are NOT documented as public API. Verified working against
-    Typer 0.24.x (see the ``>=0.24.0,<0.25.0`` range in pyproject.toml). On a
-    Typer minor-version bump, re-verify that the registry shape hasn't changed
-    by running the chain-capture smoke test (``test_chain_capture_smoke`` in
-    test_main.py).
+    Callback-only groups participate as leaves. Repeated installation and shared
+    subgroups are safe; the wrapper never accumulates across run() invocations.
     """
     if _seen is None:
         _seen = set()
-    if id(typer_app) in _seen:
+    if id(command) in _seen:
         return
-    _seen.add(id(typer_app))
+    _seen.add(id(command))
+    is_group = isinstance(command, click.Group)
+    if not is_group or command.invoke_without_command:
+        original = command.callback
+        if original is not None and not getattr(original, "_xdr_chain_wrapped", False):
 
-    def make_wrapper(orig):
-        @functools.wraps(orig)
-        def wrapper(*args, **kwargs):
-            _capture_chain_from_leaf()
-            return orig(*args, **kwargs)
+            @functools.wraps(original)
+            def wrapper(*args, **kwargs):
+                _capture_chain_from_leaf()
+                return original(*args, **kwargs)
 
-        # functools.wraps preserves __name__/__doc__/__wrapped__/__annotations__;
-        # __signature__ is NOT copied by wraps and is what Typer's parameter
-        # parsing reads, so set it explicitly.
-        wrapper.__signature__ = inspect.signature(orig)  # type: ignore[attr-defined]
-        wrapper._xdr_chain_wrapped = True  # type: ignore[attr-defined]
-        return wrapper
+            wrapper._xdr_chain_wrapped = True
+            command.callback = wrapper
+    if is_group:
+        for child in command.commands.values():
+            _install_leaf_hook(child, _seen=_seen)
 
-    for cmd_info in typer_app.registered_commands:
-        original = cmd_info.callback
-        if original is None or getattr(original, "_xdr_chain_wrapped", False):
-            continue
-        cmd_info.callback = make_wrapper(original)
 
-    # Sub-apps with ``invoke_without_command=True`` use their *callback* as the
-    # leaf when no subcommand is given (e.g., ``xdr history`` defaulting to
-    # browse). The Typer registry stores that callback on
-    # ``registered_callback.callback``; wrap it so the chain hook fires for
-    # bare-group invocations too. Skip when the field is a Typer
-    # DefaultPlaceholder (no callback registered) or when already wrapped.
-    if typer_app.info.invoke_without_command is True and typer_app.registered_callback is not None:
-        cb_info = typer_app.registered_callback
-        cb_original = cb_info.callback
-        if (
-            callable(cb_original)
-            and not getattr(cb_original, "_xdr_chain_wrapped", False)
-        ):
-            cb_info.callback = make_wrapper(cb_original)
-
-    for group_info in typer_app.registered_groups:
-        if group_info.typer_instance is not None:
-            _install_leaf_hook(group_info.typer_instance, _seen=_seen)
+def _set_command_summaries(command: click.Command) -> None:
+    """Keep complete first-line descriptions in group listings at every width."""
+    if command.short_help is None and command.help:
+        command.short_help = command.help.strip().splitlines()[0]
+    if isinstance(command, click.Group):
+        for child in command.commands.values():
+            _set_command_summaries(child)
 
 
 def _ensure_chain_hook_installed() -> None:
-    """Install the leaf-callback hook on the live Typer app.
+    """Install the leaf-callback hook on the live Click app.
 
     Idempotent at the callback level — :func:`_install_leaf_hook` skips
     callbacks already tagged with ``_xdr_chain_wrapped``. We deliberately do
@@ -559,7 +548,7 @@ def _ensure_chain_hook_installed() -> None:
     ``xdr_cli.main.app`` (or rebuild the app) re-install the hook on each
     ``run()`` invocation.
     """
-    if not isinstance(app, typer.Typer):
+    if not isinstance(app, click.Command):
         # Test harness may patch app to a Mock; nothing to wrap.
         return
     _install_leaf_hook(app)
@@ -568,7 +557,7 @@ def _ensure_chain_hook_installed() -> None:
 def run() -> None:
     """Entry point for the CLI.
 
-    Wraps the Typer dispatcher in a ``try/finally`` so the recorder always
+    Wraps the Click dispatcher in a ``try/finally`` so the recorder always
     flushes on every exit path. Without this, the most interesting failures
     (Ctrl-C mid-hunt, unexpected crash in an async path) would leave no
     training record.
@@ -578,7 +567,7 @@ def run() -> None:
     - ``0`` on normal completion.
     - ``XDRError.exit_code`` on XDR-shaped errors (envelope already emitted
       to stdout; we convert to ``sys.exit`` so the JSON is preserved).
-    - ``typer.Exit``'s ``exit_code`` on typer-driven exits (re-raised).
+    - ``click.exceptions.Exit``'s ``exit_code`` on Click-driven exits (re-raised).
     - ``130`` on ``KeyboardInterrupt`` — matches POSIX convention; converted
       via ``sys.exit`` rather than re-raising so wrapper scripts and
       pytest's ``SystemExit``-catching pattern see uniform exit semantics.
@@ -622,7 +611,7 @@ def run() -> None:
             sys.stdout.write(format_error_json(e) + "\n")
             exit_code = e.exit_code
             suppressed_xdr_error = True
-        except typer.Exit as e:
+        except click.exceptions.Exit as e:
             exit_code = e.exit_code or 0
             raise
         except KeyboardInterrupt:
@@ -656,4 +645,5 @@ def run() -> None:
 # which doesn't go through :func:`run`. ``_ensure_chain_hook_installed`` is
 # idempotent: if ``run()`` later calls it again, the wrappers are already
 # tagged ``_xdr_chain_wrapped`` and skipped.
+_set_command_summaries(app)
 _ensure_chain_hook_installed()

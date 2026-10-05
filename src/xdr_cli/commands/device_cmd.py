@@ -20,7 +20,7 @@ from pathlib import Path
 from time import monotonic
 from typing import TextIO
 
-import typer
+import click
 
 from xdr_cli.api.devices import (
     collect_investigation_package,
@@ -37,6 +37,7 @@ from xdr_cli.api.timeline import stream_device_timeline
 from xdr_cli.auth import AuthManager
 from xdr_cli.backend_contract import Backend
 from xdr_cli.backends import create_client
+from xdr_cli.cli_params import EnumValueChoice
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import (
@@ -63,7 +64,7 @@ from xdr_cli.portal_client import (
 )
 from xdr_cli.results import ResultStreamWriter, emit_result
 
-device_app = typer.Typer(
+device_app = click.Group(
     name="device",
     help="Device info and response actions.",
     no_args_is_help=True,
@@ -120,14 +121,16 @@ def _confirm_action(
         f"[bold yellow]About to {action} device "
         f"{target}.[/bold yellow]"
     )
-    if not typer.confirm("Proceed?"):
+    if not click.confirm("Proceed?"):
         raise ConflictError(f"Device action {action!r} was cancelled by the operator.")
 
 
 @device_app.command("show")
+@click.argument("device", type=str, required=True, help="Device ID or hostname.")
+@click.pass_context
 def device_show(
-    ctx: typer.Context,
-    device: str = typer.Argument(help="Device ID or hostname."),
+    ctx: click.Context,
+    device: str,
 ) -> None:
     """Show device details."""
     app_ctx: AppContext = ctx.obj
@@ -143,28 +146,33 @@ async def _device_show(ctx: AppContext, device: str) -> None:
             session_id=ctx.session_id,
             session_label=ctx.session_label,
         )
-        typer.echo(fmt.format_output(result))
+        click.echo(fmt.format_output(result))
     finally:
         await client.close()
 
 
 @device_app.command("isolate")
+@click.argument("device_id", type=str, required=True, help="Device ID.")
+@click.option(
+    "--type",
+    "-t",
+    "isolation_type",
+    type=EnumValueChoice(IsolationType, case_sensitive=False),
+    default=IsolationType.FULL.value,
+    show_default=True,
+    help="Isolation type: Full or Selective.",
+)
+@click.option("--comment", "-c", required=True, help="Reason for isolation.")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
+@click.option("--dry-run", is_flag=True, help="Show what would happen.")
+@click.pass_context
 def device_isolate(
-    ctx: typer.Context,
-    device_id: str = typer.Argument(help="Device ID."),
-    isolation_type: IsolationType = typer.Option(
-        IsolationType.FULL, "--type", "-t", case_sensitive=False,
-        help="Isolation type: Full or Selective.",
-    ),
-    comment: str = typer.Option(
-        ..., "--comment", "-c", help="Reason for isolation.",
-    ),
-    yes: bool = typer.Option(
-        False, "--yes", "-y", help="Skip confirmation.",
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Show what would happen.",
-    ),
+    ctx: click.Context,
+    device_id: str,
+    isolation_type: IsolationType,
+    comment: str,
+    yes: bool,
+    dry_run: bool,
 ) -> None:
     """Isolate a device from the network."""
     app_ctx: AppContext = ctx.obj
@@ -174,7 +182,7 @@ def device_isolate(
             session_id=app_ctx.session_id,
             session_label=app_ctx.session_label,
         )
-        typer.echo(fmt.format_output({
+        click.echo(fmt.format_output({
             "dry_run": True,
             "action": "isolate",
             "device_id": device_id,
@@ -192,16 +200,15 @@ def device_isolate(
 
 
 @device_app.command("unisolate")
+@click.argument("device_id", type=str, required=True, help="Device ID.")
+@click.option("--comment", "-c", required=True, help="Reason for releasing isolation.")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
+@click.pass_context
 def device_unisolate(
-    ctx: typer.Context,
-    device_id: str = typer.Argument(help="Device ID."),
-    comment: str = typer.Option(
-        ..., "--comment", "-c",
-        help="Reason for releasing isolation.",
-    ),
-    yes: bool = typer.Option(
-        False, "--yes", "-y", help="Skip confirmation.",
-    ),
+    ctx: click.Context,
+    device_id: str,
+    comment: str,
+    yes: bool,
 ) -> None:
     """Release a device from network isolation."""
     app_ctx: AppContext = ctx.obj
@@ -214,22 +221,27 @@ def device_unisolate(
 
 
 @device_app.command("scan")
+@click.argument("device_id", type=str, required=True, help="Device ID.")
+@click.option(
+    "--scan-type",
+    type=EnumValueChoice(ScanType, case_sensitive=False),
+    default=ScanType.QUICK.value,
+    show_default=True,
+    help="Quick or Full.",
+)
+@click.option(
+    "--comment", "-c", default="Scan triggered via xdr-cli", show_default=True, help="Comment."
+)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
+@click.option("--dry-run", is_flag=True, help="Show what would happen.")
+@click.pass_context
 def device_scan(
-    ctx: typer.Context,
-    device_id: str = typer.Argument(help="Device ID."),
-    scan_type: ScanType = typer.Option(
-        ScanType.QUICK, "--scan-type", case_sensitive=False, help="Quick or Full.",
-    ),
-    comment: str = typer.Option(
-        "Scan triggered via xdr-cli",
-        "--comment", "-c", help="Comment.",
-    ),
-    yes: bool = typer.Option(
-        False, "--yes", "-y", help="Skip confirmation.",
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Show what would happen.",
-    ),
+    ctx: click.Context,
+    device_id: str,
+    scan_type: ScanType,
+    comment: str,
+    yes: bool,
+    dry_run: bool,
 ) -> None:
     """Run an antivirus scan on a device."""
     app_ctx: AppContext = ctx.obj
@@ -239,7 +251,7 @@ def device_scan(
             session_id=app_ctx.session_id,
             session_label=app_ctx.session_label,
         )
-        typer.echo(fmt.format_output({
+        click.echo(fmt.format_output({
             "dry_run": True,
             "action": "scan",
             "device_id": device_id,
@@ -257,19 +269,23 @@ def device_scan(
 
 
 @device_app.command("collect-package")
+@click.argument("device_id", type=str, required=True, help="Device ID.")
+@click.option(
+    "--comment",
+    "-c",
+    default="Forensic package requested via xdr-cli",
+    show_default=True,
+    help="Comment.",
+)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
+@click.option("--dry-run", is_flag=True, help="Show what would happen.")
+@click.pass_context
 def device_collect_package(
-    ctx: typer.Context,
-    device_id: str = typer.Argument(help="Device ID."),
-    comment: str = typer.Option(
-        "Forensic package requested via xdr-cli",
-        "--comment", "-c", help="Comment.",
-    ),
-    yes: bool = typer.Option(
-        False, "--yes", "-y", help="Skip confirmation.",
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Show what would happen.",
-    ),
+    ctx: click.Context,
+    device_id: str,
+    comment: str,
+    yes: bool,
+    dry_run: bool,
 ) -> None:
     """Request a forensic investigation package."""
     app_ctx: AppContext = ctx.obj
@@ -279,7 +295,7 @@ def device_collect_package(
             session_id=app_ctx.session_id,
             session_label=app_ctx.session_label,
         )
-        typer.echo(fmt.format_output({
+        click.echo(fmt.format_output({
             "dry_run": True,
             "action": "collect-package",
             "device_id": device_id,
@@ -295,18 +311,17 @@ def device_collect_package(
 
 
 @device_app.command("restrict")
+@click.argument("device_id", type=str, required=True, help="Device ID.")
+@click.option("--comment", "-c", required=True, help="Reason for restriction.")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
+@click.option("--dry-run", is_flag=True, help="Show what would happen.")
+@click.pass_context
 def device_restrict(
-    ctx: typer.Context,
-    device_id: str = typer.Argument(help="Device ID."),
-    comment: str = typer.Option(
-        ..., "--comment", "-c", help="Reason for restriction.",
-    ),
-    yes: bool = typer.Option(
-        False, "--yes", "-y", help="Skip confirmation.",
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Show what would happen.",
-    ),
+    ctx: click.Context,
+    device_id: str,
+    comment: str,
+    yes: bool,
+    dry_run: bool,
 ) -> None:
     """Restrict app execution to Microsoft-signed binaries."""
     app_ctx: AppContext = ctx.obj
@@ -316,7 +331,7 @@ def device_restrict(
             session_id=app_ctx.session_id,
             session_label=app_ctx.session_label,
         )
-        typer.echo(fmt.format_output({
+        click.echo(fmt.format_output({
             "dry_run": True,
             "action": "restrict",
             "device_id": device_id,
@@ -334,18 +349,17 @@ def device_restrict(
 
 
 @device_app.command("unrestrict")
+@click.argument("device_id", type=str, required=True, help="Device ID.")
+@click.option("--comment", "-c", required=True, help="Reason for removing restriction.")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
+@click.option("--dry-run", is_flag=True, help="Show what would happen.")
+@click.pass_context
 def device_unrestrict(
-    ctx: typer.Context,
-    device_id: str = typer.Argument(help="Device ID."),
-    comment: str = typer.Option(
-        ..., "--comment", "-c", help="Reason for removing restriction.",
-    ),
-    yes: bool = typer.Option(
-        False, "--yes", "-y", help="Skip confirmation.",
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Show what would happen.",
-    ),
+    ctx: click.Context,
+    device_id: str,
+    comment: str,
+    yes: bool,
+    dry_run: bool,
 ) -> None:
     """Remove the Defender app-execution restriction."""
     app_ctx: AppContext = ctx.obj
@@ -355,7 +369,7 @@ def device_unrestrict(
             session_id=app_ctx.session_id,
             session_label=app_ctx.session_label,
         )
-        typer.echo(fmt.format_output({
+        click.echo(fmt.format_output({
             "dry_run": True,
             "action": "unrestrict",
             "device_id": device_id,
@@ -373,17 +387,42 @@ def device_unrestrict(
 
 
 @device_app.command("download-package")
+@click.argument(
+    "action_id", type=str, required=True, help="Completed package-collection action ID."
+)
+@click.option("--device", "device_id", required=True, help="MachineId associated with the action.")
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(
+        path_type=Path,
+        exists=False,
+        file_okay=True,
+        dir_okay=True,
+        writable=False,
+        readable=True,
+        resolve_path=False,
+        allow_dash=False,
+    ),
+    required=True,
+    help="Destination ZIP path.",
+)
+@click.option("--force", is_flag=True, help="Atomically replace an existing output path.")
+@click.option(
+    "--max-bytes",
+    type=click.IntRange(min=1, max=None),
+    default=DEFAULT_MAX_BYTES,
+    show_default=True,
+    help="Maximum archive size (default 1 GiB).",
+)
+@click.pass_context
 def device_download_package(
-    ctx: typer.Context,
-    action_id: str = typer.Argument(help="Completed package-collection action ID."),
-    device_id: str = typer.Option(..., "--device", help="MachineId associated with the action."),
-    output: Path = typer.Option(..., "--output", "-o", help="Destination ZIP path."),
-    force: bool = typer.Option(
-        False, "--force", help="Atomically replace an existing output path.",
-    ),
-    max_bytes: int = typer.Option(
-        DEFAULT_MAX_BYTES, "--max-bytes", min=1, help="Maximum archive size (default 1 GiB).",
-    ),
+    ctx: click.Context,
+    action_id: str,
+    device_id: str,
+    output: Path,
+    force: bool,
+    max_bytes: int,
 ) -> None:
     """Download an existing investigation ZIP with portal-cookie auth, without extracting it.
 
@@ -416,18 +455,24 @@ async def _download_package(
             action_id=action_id, device_id=device_id, api_backend=client.profile.name.value,
         )
         fmt = OutputFormatter(session_id=ctx.session_id, session_label=ctx.session_label)
-        typer.echo(fmt.format_output(receipt))
+        click.echo(fmt.format_output(receipt))
     finally:
         await client.close()
 
 
 @device_app.command("action-status")
+@click.argument("action_id", type=str, required=True, help="Machine action ID.")
+@click.option(
+    "--device",
+    "device_id",
+    default=None,
+    help="MachineId required when no local portal action association exists.",
+)
+@click.pass_context
 def device_action_status(
-    ctx: typer.Context,
-    action_id: str = typer.Argument(help="Machine action ID."),
-    device_id: str | None = typer.Option(
-        None, "--device", help="MachineId required when no local portal action association exists.",
-    ),
+    ctx: click.Context,
+    action_id: str,
+    device_id: str | None,
 ) -> None:
     """Check the status of a machine action."""
     app_ctx: AppContext = ctx.obj
@@ -471,7 +516,7 @@ async def _device_action(
             session_id=ctx.session_id,
             session_label=ctx.session_label,
         )
-        typer.echo(
+        click.echo(
             fmt.format_output(
                 result,
                 metadata={
@@ -497,7 +542,7 @@ async def _action_status(
             session_id=ctx.session_id,
             session_label=ctx.session_label,
         )
-        typer.echo(fmt.format_output(result))
+        click.echo(fmt.format_output(result))
     finally:
         await client.close()
 
@@ -520,7 +565,7 @@ def _ensure_utc(dt: datetime) -> datetime:
     """Coerce a naive datetime to UTC-aware; pass already-aware ones through.
 
     `stream_device_timeline`'s `Next`-cutoff compare (``parsed_from_date >
-    to_date``) raises ``TypeError`` when `to_date` is naive. Typer/click's
+    to_date``) raises ``TypeError`` when `to_date` is naive. Click's
     datetime parsing for ``--from``/``--to`` produces a naive datetime when
     the user doesn't include a UTC offset, so both options are coerced here
     before anything downstream ever sees them.
@@ -728,50 +773,96 @@ def _open_timeline_sink(output: Path | None, gzip_out: bool, *, force: bool = Fa
 
 
 @device_app.command("timeline")
+@click.argument(
+    "device", type=str, required=True, help="Device hostname or MachineId (40 hex chars)."
+)
+@click.option(
+    "--from",
+    "from_date",
+    type=click.DateTime(
+        formats=[
+            "%Y-%m-%dT%H:%M:%S%z",
+            "%Y-%m-%dT%H:%M:%S.%f%z",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d",
+        ]
+    ),
+    default=None,
+    help="RFC3339, e.g. 2026-07-24T21:00:00Z; defaults to the lookback window.",
+)
+@click.option(
+    "--to",
+    "to_date",
+    type=click.DateTime(
+        formats=[
+            "%Y-%m-%dT%H:%M:%S%z",
+            "%Y-%m-%dT%H:%M:%S.%f%z",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d",
+        ]
+    ),
+    default=None,
+    help="RFC3339, e.g. 2026-07-24T21:00:00Z; defaults to now.",
+)
+@click.option(
+    "--days",
+    type=click.IntRange(min=1, max=None),
+    default=None,
+    help="Lookback days when --from is not given (max 180; default 7).",
+)
+@click.option(
+    "--hours",
+    type=click.IntRange(min=1, max=None),
+    default=None,
+    help=("Lookback hours when --from is not given; mutually exclusive with --days."),
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(
+        path_type=Path,
+        exists=False,
+        file_okay=True,
+        dir_okay=True,
+        writable=False,
+        readable=True,
+        resolve_path=False,
+        allow_dash=False,
+    ),
+    default=None,
+    help=(
+        "Atomically write owner-only JSONL here; refuses existing paths and "
+        "unsafe shared directories."
+    ),
+)
+@click.option("--gzip", "-z", "gzip_out", is_flag=True, help="Gzip the output file (.jsonl.gz).")
+@click.option(
+    "--force",
+    is_flag=True,
+    help=("Replace an existing --output path; replaces a symlink entry, never its target."),
+)
+@click.option("--page-size", type=click.IntRange(min=1, max=1000), default=1000, show_default=True)
+@click.option(
+    "--refresh-token",
+    default=None,
+    envvar="MDE_REFRESH_TOKEN",
+    help=("CI/non-interactive: redeem this FOCI refresh token instead of stored portal auth."),
+)
+@click.pass_context
 def device_timeline(
-    ctx: typer.Context,
-    device: str = typer.Argument(..., help="Device hostname or MachineId (40 hex chars)."),
-    from_date: datetime | None = typer.Option(
-        None, "--from", formats=_TIME_INPUT_FORMATS,
-        help="RFC3339, e.g. 2026-07-24T21:00:00Z; defaults to the lookback window.",
-    ),
-    to_date: datetime | None = typer.Option(
-        None, "--to", formats=_TIME_INPUT_FORMATS,
-        help="RFC3339, e.g. 2026-07-24T21:00:00Z; defaults to now.",
-    ),
-    days: int | None = typer.Option(
-        None, "--days", min=1,
-        help="Lookback days when --from is not given (max 180; default 7).",
-    ),
-    hours: int | None = typer.Option(
-        None, "--hours", min=1,
-        help="Lookback hours when --from is not given; mutually exclusive with --days.",
-    ),
-    output: Path | None = typer.Option(
-        None,
-        "--output",
-        "-o",
-        help=(
-            "Atomically write owner-only JSONL here; refuses existing paths "
-            "and unsafe shared directories."
-        ),
-    ),
-    gzip_out: bool = typer.Option(
-        False, "--gzip", "-z", help="Gzip the output file (.jsonl.gz).",
-    ),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        help="Replace an existing --output path; replaces a symlink entry, never its target.",
-    ),
-    page_size: int = typer.Option(1000, "--page-size", min=1, max=1000),
-    refresh_token: str | None = typer.Option(
-        None, "--refresh-token", envvar="MDE_REFRESH_TOKEN",
-        help=(
-            "CI/non-interactive: redeem this FOCI refresh token instead of "
-            "stored portal auth."
-        ),
-    ),
+    ctx: click.Context,
+    device: str,
+    from_date: datetime | None,
+    to_date: datetime | None,
+    days: int | None,
+    hours: int | None,
+    output: Path | None,
+    gzip_out: bool,
+    force: bool,
+    page_size: int,
+    refresh_token: str | None,
 ) -> None:
     """Stream a device's MDE timeline into a local JSONL artifact.
 
@@ -798,6 +889,7 @@ def device_timeline(
     (DeviceInfo, DeviceEvents, DeviceProcessEvents, DeviceNetworkEvents, …), so
     a timeline pivots cleanly into a hunt:
 
+    \b
         DeviceProcessEvents
         | where DeviceId == '<40-hex MachineId>' and DeviceName =~ '<hostname>'
 

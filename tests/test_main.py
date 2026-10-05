@@ -5,7 +5,7 @@ import sys
 from unittest.mock import patch
 
 import pytest
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli.exceptions import APIError, AuthError
 from xdr_cli.main import app, run
@@ -104,7 +104,7 @@ def test_active_session_invocation_records(home, monkeypatch, capsys):
     assert invocations[0]["seq"] == 1
 
 
-def test_keyboard_interrupt_records_exit_130(home, monkeypatch):
+def test_keyboard_interrupt_records_exit_130(home, monkeypatch, capsys):
     """Ctrl-C mid-command must still produce a record with exit_code=130."""
     _seed_session(home)
     monkeypatch.setenv("XDR_SESSION", "jd-1")
@@ -118,6 +118,13 @@ def test_keyboard_interrupt_records_exit_130(home, monkeypatch):
         with pytest.raises(SystemExit) as exc_info:
             run()
         assert exc_info.value.code == 130
+
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 1
+    error = json.loads(lines[0])["error"]
+    assert error["code"] == "CLI_COMMAND_FAILED"
+    assert error["exit_code"] == 130
+    assert error["original"] == {"type": "LegacyCommandExit", "exit_code": 130}
 
     records = (home / "sessions" / "jd-1.jsonl").read_text().splitlines()
     invocations = [json.loads(r) for r in records if json.loads(r)["kind"] == "invocation"]
@@ -179,7 +186,7 @@ def test_metadata_session_id_null_outside_session(home, monkeypatch, capsys):
 def test_chain_capture_smoke(home, monkeypatch, capsys):
     """Canary: leaf-callback wrapping captures the full subcommand chain on
     every command path. Three distinct chains is enough to verify the registry
-    walk in ``_install_leaf_hook`` reaches every leaf — if a future Typer
+    walk in ``_install_leaf_hook`` reaches every leaf — if a future Click
     minor-version bump silently changes the registry shape, this test is the
     first thing to fail.
 
@@ -514,7 +521,7 @@ def test_valid_xdr_session_env_attaches(gate_home, monkeypatch):
     """A valid explicit XDR_SESSION wins during attachment.
 
     Uses ``run()`` directly so the recorder's finally-flush actually runs
-    (``runner.invoke`` invokes the Typer app but doesn't go through ``run()``).
+    (``runner.invoke`` invokes the Click app but doesn't go through ``run()``).
     """
     from unittest.mock import AsyncMock
 
@@ -885,7 +892,7 @@ def test_concurrent_sub_agents_independent_gates(gate_home):
 
 
 def test_ambiguity_runs_hunt_unattached_when_multiple_active_sessions(home, monkeypatch):
-    from typer.testing import CliRunner
+    from click.testing import CliRunner
     from xdr_cli.main import app
     from xdr_cli.sessions import set_current_session, write_session_start_record, Session
 
@@ -905,7 +912,7 @@ def test_ambiguity_runs_hunt_unattached_when_multiple_active_sessions(home, monk
 
 
 def test_ambiguity_does_not_block_non_hunt_with_multiple_active_sessions(home, monkeypatch):
-    from typer.testing import CliRunner
+    from click.testing import CliRunner
     from xdr_cli.main import app
     from xdr_cli.sessions import set_current_session, write_session_start_record, Session
 
@@ -925,7 +932,7 @@ def test_ambiguity_does_not_block_non_hunt_with_multiple_active_sessions(home, m
 
 def test_ambiguity_gate_passes_when_xdr_session_is_set(home, monkeypatch):
     """Explicit XDR_SESSION resolves the ambiguity."""
-    from typer.testing import CliRunner
+    from click.testing import CliRunner
     from xdr_cli.main import app
     from xdr_cli.sessions import set_current_session, write_session_start_record, Session
 
@@ -944,7 +951,7 @@ def test_ambiguity_gate_passes_when_xdr_session_is_set(home, monkeypatch):
 
 def test_ambiguity_gate_skips_help_invocations(home, monkeypatch):
     """--help on any command bypasses the ambiguity gate."""
-    from typer.testing import CliRunner
+    from click.testing import CliRunner
     from xdr_cli.main import app
     from xdr_cli.sessions import set_current_session, write_session_start_record, Session
 
@@ -962,7 +969,7 @@ def test_ambiguity_gate_skips_help_invocations(home, monkeypatch):
 
 def test_annotate_does_not_re_gate_actor(home, monkeypatch):
     """After annotating, actor can run the next non-bypass command without re-annotation."""
-    from typer.testing import CliRunner
+    from click.testing import CliRunner
     from xdr_cli.main import app
     from xdr_cli.sessions import (
         set_current_session, write_session_start_record, Session,

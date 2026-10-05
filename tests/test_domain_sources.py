@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 import respx
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli.config import Config
 from xdr_cli.official_backend import OfficialBackend

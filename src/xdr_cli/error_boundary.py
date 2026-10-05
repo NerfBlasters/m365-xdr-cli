@@ -9,7 +9,6 @@ from collections.abc import Sequence
 from typing import Any
 
 import click
-from typer.core import TyperGroup
 
 from xdr_cli.exceptions import UsageError, XDRError, format_error_json
 
@@ -68,8 +67,9 @@ def usage_error_from_click(
             allowed = [str(choice) for choice in param.type.choices]
         else:
             code = "CLI_INVALID_VALUE"
-    elif option_match:
-        value = option_match.group(1).rstrip(".")
+    elif isinstance(exc, click.NoSuchOption) or option_match:
+        value = (exc.option_name if isinstance(exc, click.NoSuchOption)
+                 else option_match.group(1).rstrip("."))
         invalid = {"kind": "option", "value": value}
         code = "CLI_UNKNOWN_OPTION"
         allowed = _option_names(exc.ctx)
@@ -82,8 +82,9 @@ def usage_error_from_click(
             }
             for candidate in close
         )
-    elif command_match:
-        value = command_match.group(1)
+    elif isinstance(exc, click.exceptions.NoSuchCommand) or command_match:
+        value = (exc.command_name if isinstance(exc, click.exceptions.NoSuchCommand)
+                 else command_match.group(1))
         invalid = {"kind": "command", "value": value}
         code = "CLI_UNKNOWN_COMMAND"
         command = exc.ctx.command if exc.ctx else None
@@ -117,7 +118,7 @@ def usage_error_from_click(
     return error
 
 
-class StructuredTyperGroup(TyperGroup):
+class StructuredGroup(click.Group):
     """Root Click group that makes parse and domain errors one-line JSON."""
 
     def main(
@@ -140,10 +141,11 @@ class StructuredTyperGroup(TyperGroup):
                 **extra,
             )
         except click.UsageError as exc:
-            # Typer has already rendered the requested group help for this
-            # sentinel. Treat it as successful discovery rather than a usage
+            # Render the requested group help for this sentinel on stdout.
+            # Treat it as successful discovery rather than a usage
             # failure (and, critically, do not append a JSON error line).
             if isinstance(exc, click.exceptions.NoArgsIsHelpError):
+                click.echo(exc.ctx.get_help())
                 if standalone_mode:
                     raise SystemExit(0) from None
                 return None
@@ -158,17 +160,23 @@ class StructuredTyperGroup(TyperGroup):
                 raise SystemExit(int(error.exit_code)) from None
             raise
         except Exception as exc:
-            error = XDRError(
-                "An unexpected internal error reached the CLI boundary.",
-                help_command="xdr --help",
-                original={"type": type(exc).__name__, "message": str(exc)},
-            )
-            click.echo(format_error_json(error), file=sys.stdout)
-            if standalone_mode:
-                raise SystemExit(int(error.exit_code)) from None
-            raise error from exc
+            # Click translates SIGINT into Abort before the outer recorder sees it.
+            if isinstance(exc, click.Abort) and isinstance(exc.__cause__, KeyboardInterrupt):
+                # Match the previous dispatcher: embedded calls return 130;
+                # standalone calls flow through the JSON/exit handling below.
+                result = 130
+            else:
+                error = XDRError(
+                    "An unexpected internal error reached the CLI boundary.",
+                    help_command="xdr --help",
+                    original={"type": type(exc).__name__, "message": str(exc)},
+                )
+                click.echo(format_error_json(error), file=sys.stdout)
+                if standalone_mode:
+                    raise SystemExit(int(error.exit_code)) from None
+                raise error from exc
 
-        # Click converts explicit ctx.exit()/typer.Exit into an integer when
+        # Click converts explicit ctx.exit()/click.exceptions.Exit into an integer when
         # standalone_mode=False. Restore normal standalone process semantics.
         if standalone_mode:
             exit_code = result if isinstance(result, int) else 0

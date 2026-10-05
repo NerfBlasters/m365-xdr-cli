@@ -30,7 +30,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import respx
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli.main import app, run
 from xdr_cli.portal_client import CookieAuth, RefreshTokenAuth
@@ -585,7 +585,7 @@ def test_failed_output_stream_leaves_no_partial_artifact(tmp_path):
     assert not list(tmp_path.glob(".timeline.jsonl.*.tmp"))
 
 
-@pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks unavailable")
+@pytest.mark.skipif(os.name != "posix", reason="requires unlinking an open file (POSIX)")
 def test_staging_path_substitution_cannot_redirect_writes(tmp_path, monkeypatch):
     from xdr_cli.commands import device_cmd
     from xdr_cli.exceptions import ArtifactError
