@@ -180,14 +180,16 @@ def test_pipeline_lock_prevents_duplicate_refresh(ctx, tmp_path):
 
 @pytest.mark.parametrize("blocked_stage", ["refresh", "validation", "exploration"])
 def test_deadline_stops_queries_saves_prior_receipts_and_skips_future_stages(ctx, blocked_stage):
-    ctx.config.schema_maintenance_timeout_seconds = 0.02
+    # Leave room for local artifact writes and scheduling on loaded CI hosts.
+    # The blocked operation still exceeds the complete shared budget.
+    ctx.config.schema_maintenance_timeout_seconds = 0.2
     results, events = [], []
 
     def stage(name):
         async def run(ctx, **kwargs):
             events.append(name)
             if name == blocked_stage:
-                await asyncio.sleep(0.08)
+                await asyncio.sleep(0.8)
             stage_result(kwargs["on_result"], f"schema {name}")
         return run
 
@@ -214,16 +216,18 @@ def test_deadline_stops_queries_saves_prior_receipts_and_skips_future_stages(ctx
     assert stages[blocked_stage]["status"] == "failed"
     assert all(stages[name]["status"] == "success" for name in names[:position])
     assert all(stages[name]["status"] == "skipped" for name in names[position + 1:])
-    assert context["maintenance_timeout_seconds"] == 0.02
+    assert context["maintenance_timeout_seconds"] == 0.2
     complete.assert_not_called()
 
 
 def test_deadline_is_shared_across_stages_not_reset_for_each_query(ctx):
-    ctx.config.schema_maintenance_timeout_seconds = 0.05
+    # Each stage fits individually; their combined delay exceeds the shared
+    # deadline. Avoid making correctness depend on sub-50 ms filesystem latency.
+    ctx.config.schema_maintenance_timeout_seconds = 0.5
     results = []
 
     async def consume_budget(ctx, **kwargs):
-        await asyncio.sleep(0.03)
+        await asyncio.sleep(0.3)
         stage_result(kwargs["on_result"], "schema refresh")
 
     with (

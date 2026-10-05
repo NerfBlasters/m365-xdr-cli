@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli.main import app
 

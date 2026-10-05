@@ -30,7 +30,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import respx
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli.main import app, run
 from xdr_cli.portal_client import CookieAuth, RefreshTokenAuth

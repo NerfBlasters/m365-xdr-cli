@@ -1,0 +1,6623 @@
+{
+  "bindings": {
+    "alerts list:required": {
+      "limit": null,
+      "service": null,
+      "severity": null,
+      "since": null
+    },
+    "alerts list:supplied": {
+      "limit": 7,
+      "service": "sample",
+      "severity": [
+        "sample",
+        "sample"
+      ],
+      "since": "sample"
+    },
+    "alerts show:required": {
+      "alert_id": "sample"
+    },
+    "alerts show:supplied": {
+      "alert_id": "sample"
+    },
+    "annotate:required": {
+      "refers_to": null,
+      "skip": "",
+      "text": ""
+    },
+    "annotate:supplied": {
+      "refers_to": 7,
+      "skip": "sample",
+      "text": "sample"
+    },
+    "auth login:required": {
+      "client_id": "",
+      "tenant_id": ""
+    },
+    "auth login:supplied": {
+      "client_id": "sample",
+      "tenant_id": "sample"
+    },
+    "auth logout:required": {},
+    "auth logout:supplied": {},
+    "auth portal-cookie:--keep-source": {
+      "keep_source": true,
+      "source": "sample",
+      "verify": true
+    },
+    "auth portal-cookie:--no-verify": {
+      "keep_source": false,
+      "source": "sample",
+      "verify": false
+    },
+    "auth portal-cookie:--verify": {
+      "keep_source": false,
+      "source": "sample",
+      "verify": true
+    },
+    "auth portal-cookie:required": {
+      "keep_source": false,
+      "source": "sample",
+      "verify": true
+    },
+    "auth portal-cookie:supplied": {
+      "keep_source": true,
+      "source": "sample",
+      "verify": true
+    },
+    "auth portal-logout:required": {},
+    "auth portal-logout:supplied": {},
+    "auth status:required": {},
+    "auth status:supplied": {},
+    "device action-status:required": {
+      "action_id": "sample",
+      "device_id": null
+    },
+    "device action-status:supplied": {
+      "action_id": "sample",
+      "device_id": "sample"
+    },
+    "device collect-package:--dry-run": {
+      "comment": "Forensic package requested via xdr-cli",
+      "device_id": "sample",
+      "dry_run": true,
+      "yes": false
+    },
+    "device collect-package:--yes": {
+      "comment": "Forensic package requested via xdr-cli",
+      "device_id": "sample",
+      "dry_run": false,
+      "yes": true
+    },
+    "device collect-package:required": {
+      "comment": "Forensic package requested via xdr-cli",
+      "device_id": "sample",
+      "dry_run": false,
+      "yes": false
+    },
+    "device collect-package:supplied": {
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": true,
+      "yes": true
+    },
+    "device download-package:--force": {
+      "action_id": "sample",
+      "device_id": "sample",
+      "force": true,
+      "max_bytes": 1073741824,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "device download-package:required": {
+      "action_id": "sample",
+      "device_id": "sample",
+      "force": false,
+      "max_bytes": 1073741824,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "device download-package:supplied": {
+      "action_id": "sample",
+      "device_id": "sample",
+      "force": true,
+      "max_bytes": 1,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "device isolate:--dry-run": {
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": true,
+      "isolation_type": {
+        "enum": "IsolationType",
+        "value": "Full"
+      },
+      "yes": false
+    },
+    "device isolate:--yes": {
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": false,
+      "isolation_type": {
+        "enum": "IsolationType",
+        "value": "Full"
+      },
+      "yes": true
+    },
+    "device isolate:required": {
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": false,
+      "isolation_type": {
+        "enum": "IsolationType",
+        "value": "Full"
+      },
+      "yes": false
+    },
+    "device isolate:supplied": {
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": true,
+      "isolation_type": {
+        "enum": "IsolationType",
+        "value": "Full"
+      },
+      "yes": true
+    },
+    "device restrict:--dry-run": {
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": true,
+      "yes": false
+    },
+    "device restrict:--yes": {
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": false,
+      "yes": true
+    },
+    "device restrict:required": {
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": false,
+      "yes": false
+    },
+    "device restrict:supplied": {
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": true,
+      "yes": true
+    },
+    "device scan:--dry-run": {
+      "comment": "Scan triggered via xdr-cli",
+      "device_id": "sample",
+      "dry_run": true,
+      "scan_type": {
+        "enum": "ScanType",
+        "value": "Quick"
+      },
+      "yes": false
+    },
+    "device scan:--yes": {
+      "comment": "Scan triggered via xdr-cli",
+      "device_id": "sample",
+      "dry_run": false,
+      "scan_type": {
+        "enum": "ScanType",
+        "value": "Quick"
+      },
+      "yes": true
+    },
+    "device scan:required": {
+      "comment": "Scan triggered via xdr-cli",
+      "device_id": "sample",
+      "dry_run": false,
+      "scan_type": {
+        "enum": "ScanType",
+        "value": "Quick"
+      },
+      "yes": false
+    },
+    "device scan:supplied": {
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": true,
+      "scan_type": {
+        "enum": "ScanType",
+        "value": "Quick"
+      },
+      "yes": true
+    },
+    "device show:required": {
+      "device": "sample"
+    },
+    "device show:supplied": {
+      "device": "sample"
+    },
+    "device timeline:--force": {
+      "days": null,
+      "device": "sample",
+      "force": true,
+      "from_date": null,
+      "gzip_out": false,
+      "hours": null,
+      "output": null,
+      "page_size": 1000,
+      "refresh_token": null,
+      "to_date": null
+    },
+    "device timeline:--gzip": {
+      "days": null,
+      "device": "sample",
+      "force": false,
+      "from_date": null,
+      "gzip_out": true,
+      "hours": null,
+      "output": null,
+      "page_size": 1000,
+      "refresh_token": null,
+      "to_date": null
+    },
+    "device timeline:required": {
+      "days": null,
+      "device": "sample",
+      "force": false,
+      "from_date": null,
+      "gzip_out": false,
+      "hours": null,
+      "output": null,
+      "page_size": 1000,
+      "refresh_token": null,
+      "to_date": null
+    },
+    "device timeline:supplied": {
+      "days": 1,
+      "device": "sample",
+      "force": true,
+      "from_date": {
+        "datetime": "2026-10-04T12:30:00"
+      },
+      "gzip_out": true,
+      "hours": 1,
+      "output": {
+        "path": "<output-path>"
+      },
+      "page_size": 1,
+      "refresh_token": "sample",
+      "to_date": {
+        "datetime": "2026-10-04T12:30:00"
+      }
+    },
+    "device unisolate:--yes": {
+      "comment": "sample",
+      "device_id": "sample",
+      "yes": true
+    },
+    "device unisolate:required": {
+      "comment": "sample",
+      "device_id": "sample",
+      "yes": false
+    },
+    "device unisolate:supplied": {
+      "comment": "sample",
+      "device_id": "sample",
+      "yes": true
+    },
+    "device unrestrict:--dry-run": {
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": true,
+      "yes": false
+    },
+    "device unrestrict:--yes": {
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": false,
+      "yes": true
+    },
+    "device unrestrict:required": {
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": false,
+      "yes": false
+    },
+    "device unrestrict:supplied": {
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": true,
+      "yes": true
+    },
+    "domains list:required": {
+      "source": {
+        "enum": "DomainSource",
+        "value": "all"
+      }
+    },
+    "domains list:supplied": {
+      "source": {
+        "enum": "DomainSource",
+        "value": "all"
+      }
+    },
+    "history stats:--by-actor": {
+      "by_actor": true,
+      "command": "",
+      "incident": "",
+      "operator": "",
+      "session": "",
+      "since": ""
+    },
+    "history stats:required": {
+      "by_actor": false,
+      "command": "",
+      "incident": "",
+      "operator": "",
+      "session": "",
+      "since": ""
+    },
+    "history stats:supplied": {
+      "by_actor": true,
+      "command": "sample",
+      "incident": "sample",
+      "operator": "sample",
+      "session": "sample",
+      "since": "sample"
+    },
+    "history:required": {
+      "command": "",
+      "incident": "",
+      "operator": "",
+      "session": "",
+      "since": ""
+    },
+    "history:supplied": {
+      "command": "sample",
+      "incident": "sample",
+      "operator": "sample",
+      "session": "sample",
+      "since": "sample"
+    },
+    "hunt library-show:required": {
+      "name": "sample",
+      "param": null
+    },
+    "hunt library-show:supplied": {
+      "name": "sample",
+      "param": [
+        "sample",
+        "sample"
+      ]
+    },
+    "hunt run:--from-stdin": {
+      "from_file": null,
+      "from_stdin": true,
+      "kql": null,
+      "raw": false,
+      "timeout": null
+    },
+    "hunt run:--raw": {
+      "from_file": null,
+      "from_stdin": false,
+      "kql": null,
+      "raw": true,
+      "timeout": null
+    },
+    "hunt run:required": {
+      "from_file": null,
+      "from_stdin": false,
+      "kql": null,
+      "raw": false,
+      "timeout": null
+    },
+    "hunt run:supplied": {
+      "from_file": {
+        "path": "<output-path>"
+      },
+      "from_stdin": true,
+      "kql": "sample",
+      "raw": true,
+      "timeout": 7
+    },
+    "incidents list:required": {
+      "assigned_to": null,
+      "limit": null,
+      "severity": null,
+      "since": null,
+      "status": null
+    },
+    "incidents list:supplied": {
+      "assigned_to": "sample",
+      "limit": 7,
+      "severity": [
+        "sample",
+        "sample"
+      ],
+      "since": "sample",
+      "status": [
+        "sample",
+        "sample"
+      ]
+    },
+    "incidents show:required": {
+      "expand": null,
+      "incident_id": "sample"
+    },
+    "incidents show:supplied": {
+      "expand": [
+        "sample",
+        "sample"
+      ],
+      "incident_id": "sample"
+    },
+    "incidents update:--dry-run": {
+      "classification": null,
+      "comment": null,
+      "determination": null,
+      "dry_run": true,
+      "incident_id": "sample",
+      "status": null,
+      "yes": false
+    },
+    "incidents update:--yes": {
+      "classification": null,
+      "comment": null,
+      "determination": null,
+      "dry_run": false,
+      "incident_id": "sample",
+      "status": null,
+      "yes": true
+    },
+    "incidents update:required": {
+      "classification": null,
+      "comment": null,
+      "determination": null,
+      "dry_run": false,
+      "incident_id": "sample",
+      "status": null,
+      "yes": false
+    },
+    "incidents update:supplied": {
+      "classification": "sample",
+      "comment": "sample",
+      "determination": "sample",
+      "dry_run": true,
+      "incident_id": "sample",
+      "status": "sample",
+      "yes": true
+    },
+    "investigate:--auto-enrich": {
+      "auto_enrich": true,
+      "incident_id": "sample"
+    },
+    "investigate:required": {
+      "auto_enrich": false,
+      "incident_id": "sample"
+    },
+    "investigate:supplied": {
+      "auto_enrich": true,
+      "incident_id": "sample"
+    },
+    "library list:required": {
+      "search": null,
+      "tier": null
+    },
+    "library list:supplied": {
+      "search": "sample",
+      "tier": "sample"
+    },
+    "library run:--raw": {
+      "name": "sample",
+      "param": null,
+      "raw": true,
+      "timeout": null
+    },
+    "library run:required": {
+      "name": "sample",
+      "param": null,
+      "raw": false,
+      "timeout": null
+    },
+    "library run:supplied": {
+      "name": "sample",
+      "param": [
+        "sample",
+        "sample"
+      ],
+      "raw": true,
+      "timeout": 7
+    },
+    "library show:required": {
+      "name": "sample"
+    },
+    "library show:supplied": {
+      "name": "sample"
+    },
+    "lists init:--force": {
+      "force": true,
+      "yes": false
+    },
+    "lists init:--yes": {
+      "force": false,
+      "yes": true
+    },
+    "lists init:required": {
+      "force": false,
+      "yes": false
+    },
+    "lists init:supplied": {
+      "force": true,
+      "yes": true
+    },
+    "results head:required": {
+      "limit": 20,
+      "run_id": "sample"
+    },
+    "results head:supplied": {
+      "limit": 1,
+      "run_id": "sample"
+    },
+    "results list:required": {
+      "limit": 100
+    },
+    "results list:supplied": {
+      "limit": 1
+    },
+    "results prune:--yes": {
+      "older_than": 1,
+      "yes": true
+    },
+    "results prune:required": {
+      "older_than": 1,
+      "yes": false
+    },
+    "results prune:supplied": {
+      "older_than": 1,
+      "yes": true
+    },
+    "results query:required": {
+      "run_id": "sample"
+    },
+    "results query:supplied": {
+      "run_id": "sample"
+    },
+    "results rows:required": {
+      "limit": 100,
+      "offset": 0,
+      "record_type": null,
+      "run_id": "sample"
+    },
+    "results rows:supplied": {
+      "limit": 1,
+      "offset": 1,
+      "record_type": "sample",
+      "run_id": "sample"
+    },
+    "results shape:required": {
+      "limit": 100,
+      "run_id": "sample",
+      "search": null
+    },
+    "results shape:supplied": {
+      "limit": 1,
+      "run_id": "sample",
+      "search": "sample"
+    },
+    "results show:required": {
+      "run_id": "sample"
+    },
+    "results show:supplied": {
+      "run_id": "sample"
+    },
+    "schema bundle export:--include-evidence": {
+      "include_evidence": true,
+      "include_sessions": false,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "schema bundle export:--include-sessions": {
+      "include_evidence": true,
+      "include_sessions": true,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "schema bundle export:--no-include-evidence": {
+      "include_evidence": false,
+      "include_sessions": false,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "schema bundle export:required": {
+      "include_evidence": true,
+      "include_sessions": false,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "schema bundle export:supplied": {
+      "include_evidence": true,
+      "include_sessions": true,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "schema bundle import:--yes": {
+      "archive": {
+        "path": "<output-path>"
+      },
+      "yes": true
+    },
+    "schema bundle import:required": {
+      "archive": {
+        "path": "<output-path>"
+      },
+      "yes": false
+    },
+    "schema bundle import:supplied": {
+      "archive": {
+        "path": "<output-path>"
+      },
+      "yes": true
+    },
+    "schema bundle inspect:required": {
+      "archive": {
+        "path": "<output-path>"
+      }
+    },
+    "schema bundle inspect:supplied": {
+      "archive": {
+        "path": "<output-path>"
+      }
+    },
+    "schema candidate-proposal:--acknowledge-independent-contract": {
+      "acknowledge_independent_contract": true,
+      "cardinality": {
+        "enum": "Cardinality",
+        "value": "one-to-one"
+      },
+      "confidence": {
+        "enum": "Confidence",
+        "value": "low"
+      },
+      "confirmed_interpretations": null,
+      "direction": {
+        "enum": "Direction",
+        "value": "forward"
+      },
+      "output": {
+        "path": "<output-path>"
+      },
+      "provenance": null,
+      "relationship": {
+        "enum": "RelationshipKind",
+        "value": "semantic-equivalent"
+      },
+      "relationship_id": "sample",
+      "temporal": "sample"
+    },
+    "schema candidate-proposal:required": {
+      "acknowledge_independent_contract": false,
+      "cardinality": {
+        "enum": "Cardinality",
+        "value": "one-to-one"
+      },
+      "confidence": {
+        "enum": "Confidence",
+        "value": "low"
+      },
+      "confirmed_interpretations": null,
+      "direction": {
+        "enum": "Direction",
+        "value": "forward"
+      },
+      "output": {
+        "path": "<output-path>"
+      },
+      "provenance": null,
+      "relationship": {
+        "enum": "RelationshipKind",
+        "value": "semantic-equivalent"
+      },
+      "relationship_id": "sample",
+      "temporal": "sample"
+    },
+    "schema candidate-proposal:supplied": {
+      "acknowledge_independent_contract": true,
+      "cardinality": {
+        "enum": "Cardinality",
+        "value": "one-to-one"
+      },
+      "confidence": {
+        "enum": "Confidence",
+        "value": "low"
+      },
+      "confirmed_interpretations": [
+        "sample",
+        "sample"
+      ],
+      "direction": {
+        "enum": "Direction",
+        "value": "forward"
+      },
+      "output": {
+        "path": "<output-path>"
+      },
+      "provenance": [
+        "sample",
+        "sample"
+      ],
+      "relationship": {
+        "enum": "RelationshipKind",
+        "value": "semantic-equivalent"
+      },
+      "relationship_id": "sample",
+      "temporal": "sample"
+    },
+    "schema candidate-review:required": {
+      "limit": 20,
+      "lookback": null,
+      "relationship_id": "sample",
+      "timeout": null
+    },
+    "schema candidate-review:supplied": {
+      "limit": 1,
+      "lookback": "sample",
+      "relationship_id": "sample",
+      "timeout": 1
+    },
+    "schema collect:--explore": {
+      "batch_size": 20,
+      "discovery_row_limit": 2000,
+      "explore": true,
+      "local_only": false,
+      "lookback": "30d",
+      "max_json_depth": 6,
+      "max_queries_per_page": 20,
+      "plan_only": false,
+      "samples": 5,
+      "seed_batch_size": 20,
+      "sources": null,
+      "timeout": 120
+    },
+    "schema collect:--local-only": {
+      "batch_size": 20,
+      "discovery_row_limit": 2000,
+      "explore": false,
+      "local_only": true,
+      "lookback": "30d",
+      "max_json_depth": 6,
+      "max_queries_per_page": 20,
+      "plan_only": false,
+      "samples": 5,
+      "seed_batch_size": 20,
+      "sources": null,
+      "timeout": 120
+    },
+    "schema collect:--plan-only": {
+      "batch_size": 20,
+      "discovery_row_limit": 2000,
+      "explore": false,
+      "local_only": false,
+      "lookback": "30d",
+      "max_json_depth": 6,
+      "max_queries_per_page": 20,
+      "plan_only": true,
+      "samples": 5,
+      "seed_batch_size": 20,
+      "sources": null,
+      "timeout": 120
+    },
+    "schema collect:required": {
+      "batch_size": 20,
+      "discovery_row_limit": 2000,
+      "explore": false,
+      "local_only": false,
+      "lookback": "30d",
+      "max_json_depth": 6,
+      "max_queries_per_page": 20,
+      "plan_only": false,
+      "samples": 5,
+      "seed_batch_size": 20,
+      "sources": null,
+      "timeout": 120
+    },
+    "schema collect:supplied": {
+      "batch_size": 1,
+      "discovery_row_limit": 1,
+      "explore": true,
+      "local_only": true,
+      "lookback": "sample",
+      "max_json_depth": 1,
+      "max_queries_per_page": 1,
+      "plan_only": true,
+      "samples": 1,
+      "seed_batch_size": 1,
+      "sources": [
+        "sample",
+        "sample"
+      ],
+      "timeout": 1
+    },
+    "schema correlate:--allow-tenant-mismatch": {
+      "allow_tenant_mismatch": true,
+      "include_contextual": false,
+      "inputs": [
+        "sample",
+        "sample"
+      ]
+    },
+    "schema correlate:--include-contextual": {
+      "allow_tenant_mismatch": false,
+      "include_contextual": true,
+      "inputs": [
+        "sample",
+        "sample"
+      ]
+    },
+    "schema correlate:required": {
+      "allow_tenant_mismatch": false,
+      "include_contextual": false,
+      "inputs": [
+        "sample",
+        "sample"
+      ]
+    },
+    "schema correlate:supplied": {
+      "allow_tenant_mismatch": true,
+      "include_contextual": true,
+      "inputs": [
+        "sample",
+        "sample"
+      ]
+    },
+    "schema diagnostics:required": {},
+    "schema diagnostics:supplied": {},
+    "schema discoveries:--include-evidence-refs": {
+      "include_evidence_refs": true
+    },
+    "schema discoveries:required": {
+      "include_evidence_refs": false
+    },
+    "schema discoveries:supplied": {
+      "include_evidence_refs": true
+    },
+    "schema export-opengraph:--force": {
+      "custom_nodes": null,
+      "force": true,
+      "include_candidates": false,
+      "include_tenant": false,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "schema export-opengraph:--include-candidates": {
+      "custom_nodes": null,
+      "force": false,
+      "include_candidates": true,
+      "include_tenant": false,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "schema export-opengraph:--include-tenant": {
+      "custom_nodes": null,
+      "force": false,
+      "include_candidates": false,
+      "include_tenant": true,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "schema export-opengraph:required": {
+      "custom_nodes": null,
+      "force": false,
+      "include_candidates": false,
+      "include_tenant": false,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "schema export-opengraph:supplied": {
+      "custom_nodes": {
+        "path": "<output-path>"
+      },
+      "force": true,
+      "include_candidates": true,
+      "include_tenant": true,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "schema migrate-cache:--yes": {
+      "yes": true
+    },
+    "schema migrate-cache:required": {
+      "yes": false
+    },
+    "schema migrate-cache:supplied": {
+      "yes": true
+    },
+    "schema observe:--exhaustive": {
+      "batch_size": 20,
+      "exclude_tables": null,
+      "exhaustive": true,
+      "from_file": null,
+      "from_run": null,
+      "from_stdin": false,
+      "locator": "sample",
+      "lookback": "30d",
+      "max_queries": null,
+      "max_targets": 100,
+      "plan_only": false,
+      "private_debug_output": null,
+      "samples": 5,
+      "schema_generation": null,
+      "start_query": 0,
+      "target_tables": null,
+      "timeout": null
+    },
+    "schema observe:--from-stdin": {
+      "batch_size": 20,
+      "exclude_tables": null,
+      "exhaustive": false,
+      "from_file": null,
+      "from_run": null,
+      "from_stdin": true,
+      "locator": "sample",
+      "lookback": "30d",
+      "max_queries": null,
+      "max_targets": 100,
+      "plan_only": false,
+      "private_debug_output": null,
+      "samples": 5,
+      "schema_generation": null,
+      "start_query": 0,
+      "target_tables": null,
+      "timeout": null
+    },
+    "schema observe:--plan-only": {
+      "batch_size": 20,
+      "exclude_tables": null,
+      "exhaustive": false,
+      "from_file": null,
+      "from_run": null,
+      "from_stdin": false,
+      "locator": "sample",
+      "lookback": "30d",
+      "max_queries": null,
+      "max_targets": 100,
+      "plan_only": true,
+      "private_debug_output": null,
+      "samples": 5,
+      "schema_generation": null,
+      "start_query": 0,
+      "target_tables": null,
+      "timeout": null
+    },
+    "schema observe:required": {
+      "batch_size": 20,
+      "exclude_tables": null,
+      "exhaustive": false,
+      "from_file": null,
+      "from_run": null,
+      "from_stdin": false,
+      "locator": "sample",
+      "lookback": "30d",
+      "max_queries": null,
+      "max_targets": 100,
+      "plan_only": false,
+      "private_debug_output": null,
+      "samples": 5,
+      "schema_generation": null,
+      "start_query": 0,
+      "target_tables": null,
+      "timeout": null
+    },
+    "schema observe:supplied": {
+      "batch_size": 1,
+      "exclude_tables": [
+        "sample",
+        "sample"
+      ],
+      "exhaustive": true,
+      "from_file": {
+        "path": "<existing-file>"
+      },
+      "from_run": "sample",
+      "from_stdin": true,
+      "locator": "sample",
+      "lookback": "sample",
+      "max_queries": 1,
+      "max_targets": 1,
+      "plan_only": true,
+      "private_debug_output": {
+        "path": "<output-path>"
+      },
+      "samples": 1,
+      "schema_generation": "sample",
+      "start_query": 1,
+      "target_tables": [
+        "sample",
+        "sample"
+      ],
+      "timeout": 1
+    },
+    "schema path:--include-candidates": {
+      "include_candidates": true,
+      "max_depth": 4,
+      "source_table": "sample",
+      "target_table": "sample"
+    },
+    "schema path:required": {
+      "include_candidates": false,
+      "max_depth": 4,
+      "source_table": "sample",
+      "target_table": "sample"
+    },
+    "schema path:supplied": {
+      "include_candidates": true,
+      "max_depth": 1,
+      "source_table": "sample",
+      "target_table": "sample"
+    },
+    "schema pivot:--include-candidates": {
+      "include_candidates": true,
+      "locator": "sample"
+    },
+    "schema pivot:required": {
+      "include_candidates": false,
+      "locator": "sample"
+    },
+    "schema pivot:supplied": {
+      "include_candidates": true,
+      "locator": "sample"
+    },
+    "schema prune-evidence:--include-legacy": {
+      "include_legacy": true,
+      "older_than": 1,
+      "yes": false
+    },
+    "schema prune-evidence:--yes": {
+      "include_legacy": false,
+      "older_than": 1,
+      "yes": true
+    },
+    "schema prune-evidence:required": {
+      "include_legacy": false,
+      "older_than": 1,
+      "yes": false
+    },
+    "schema prune-evidence:supplied": {
+      "include_legacy": true,
+      "older_than": 1,
+      "yes": true
+    },
+    "schema refresh:required": {},
+    "schema refresh:supplied": {},
+    "schema repair-overlay:--all-local": {
+      "all_local": true,
+      "reset_empty": false,
+      "yes": false
+    },
+    "schema repair-overlay:--reset-empty": {
+      "all_local": false,
+      "reset_empty": true,
+      "yes": false
+    },
+    "schema repair-overlay:--yes": {
+      "all_local": false,
+      "reset_empty": false,
+      "yes": true
+    },
+    "schema repair-overlay:required": {
+      "all_local": false,
+      "reset_empty": false,
+      "yes": false
+    },
+    "schema repair-overlay:supplied": {
+      "all_local": true,
+      "reset_empty": true,
+      "yes": true
+    },
+    "schema show:required": {
+      "search": null,
+      "table": "sample"
+    },
+    "schema show:supplied": {
+      "search": "sample",
+      "table": "sample"
+    },
+    "schema status:required": {},
+    "schema status:supplied": {},
+    "schema tables:required": {
+      "search": null
+    },
+    "schema tables:supplied": {
+      "search": "sample"
+    },
+    "schema validate-core:--update-document": {
+      "document": null,
+      "update_document": true
+    },
+    "schema validate-core:required": {
+      "document": null,
+      "update_document": false
+    },
+    "schema validate-core:supplied": {
+      "document": {
+        "path": "<output-path>"
+      },
+      "update_document": true
+    },
+    "session end:--force": {
+      "force": true,
+      "no_maintenance": false
+    },
+    "session end:--no-maintenance": {
+      "force": false,
+      "no_maintenance": true
+    },
+    "session end:required": {
+      "force": false,
+      "no_maintenance": false
+    },
+    "session end:supplied": {
+      "force": true,
+      "no_maintenance": true
+    },
+    "session feedback:required": {
+      "category": null,
+      "comment": null,
+      "outcome": "completed-smoothly",
+      "session_id": "sample",
+      "source": "agent"
+    },
+    "session feedback:supplied": {
+      "category": [
+        "sample",
+        "sample"
+      ],
+      "comment": "sample",
+      "outcome": "completed-smoothly",
+      "session_id": "sample",
+      "source": "agent"
+    },
+    "session list:required": {
+      "operator": ""
+    },
+    "session list:supplied": {
+      "operator": "sample"
+    },
+    "session resume:required": {
+      "session_id": "sample"
+    },
+    "session resume:supplied": {
+      "session_id": "sample"
+    },
+    "session show:required": {
+      "session_id": "sample"
+    },
+    "session show:supplied": {
+      "session_id": "sample"
+    },
+    "session start:--concurrent": {
+      "concurrent": true,
+      "label": "",
+      "learning_mode": false,
+      "quiet": false,
+      "timeout": 1800
+    },
+    "session start:--learning-mode": {
+      "concurrent": false,
+      "label": "",
+      "learning_mode": true,
+      "quiet": false,
+      "timeout": 1800
+    },
+    "session start:--quiet": {
+      "concurrent": false,
+      "label": "",
+      "learning_mode": false,
+      "quiet": true,
+      "timeout": 1800
+    },
+    "session start:required": {
+      "concurrent": false,
+      "label": "",
+      "learning_mode": false,
+      "quiet": false,
+      "timeout": 1800
+    },
+    "session start:supplied": {
+      "concurrent": true,
+      "label": "sample",
+      "learning_mode": true,
+      "quiet": true,
+      "timeout": 1
+    }
+  },
+  "surface": {
+    "": {
+      "help": "Microsoft 365 Defender XDR investigation CLI.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": [
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show version and exit.",
+          "hidden": false,
+          "is_eager": true,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "version",
+          "nargs": 1,
+          "opts": [
+            "--version",
+            "-v"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "API backend: auto (default), official, or portal-cookie.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "backend",
+          "nargs": 1,
+          "opts": [
+            "--backend"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": true,
+            "choices": [
+              "auto",
+              "official",
+              "portal-cookie"
+            ],
+            "name": "choice"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Disable all interactive prompts.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "no_interactive",
+          "nargs": 1,
+          "opts": [
+            "--no-interactive"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Enable debug output to stderr.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "debug",
+          "nargs": 1,
+          "opts": [
+            "--debug"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Suppress progress output. Auto-enabled when stdout is piped. Use --no-quiet to force progress on.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "quiet",
+          "nargs": 1,
+          "opts": [
+            "--quiet",
+            "-q"
+          ],
+          "required": false,
+          "secondary_opts": [
+            "--no-quiet"
+          ],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Pre-run intent. Captured on any invocation record when a session is active.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "rationale",
+          "nargs": 1,
+          "opts": [
+            "--rationale"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "alerts": {
+      "help": "View security alerts.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "alerts list": {
+      "help": "List security alerts.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Filter by severity. Repeatable, or comma-separated: --severity medium,high.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "severity",
+          "nargs": 1,
+          "opts": [
+            "--severity",
+            "-s"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Filter by service source.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "service",
+          "nargs": 1,
+          "opts": [
+            "--service"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Show alerts since (e.g., 24h, 7d).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "since",
+          "nargs": 1,
+          "opts": [
+            "--since"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Max results [default: default_limit in config.toml, 25].",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "integer"
+          }
+        }
+      ]
+    },
+    "alerts show": {
+      "help": "Show alert details with evidence.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Alert ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "alert_id",
+          "nargs": 1,
+          "opts": [
+            "alert_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "annotate": {
+      "help": "Annotate the calling actor's most-recent unannotated invocation. Or a specific seq via ``--refers-to``.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Annotation text. Required unless --skip is supplied.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "text",
+          "nargs": 1,
+          "opts": [
+            "text"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Skip the annotation with a reason. Mutually exclusive with text.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "skip",
+          "nargs": 1,
+          "opts": [
+            "--skip"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Seq of the invocation to annotate. Defaults to the calling actor's most-recent unannotated invocation.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "refers_to",
+          "nargs": 1,
+          "opts": [
+            "--refers-to"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "integer"
+          }
+        }
+      ]
+    },
+    "auth": {
+      "help": "Authentication management.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "auth login": {
+      "help": "Authenticate interactively (WAM on Windows) with device code fallback.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Azure AD tenant ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "tenant_id",
+          "nargs": 1,
+          "opts": [
+            "--tenant-id",
+            "-t"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "App registration client ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "client_id",
+          "nargs": 1,
+          "opts": [
+            "--client-id",
+            "-c"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "auth logout": {
+      "help": "Clear cached credentials for the selected backend.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": []
+    },
+    "auth portal-cookie": {
+      "help": "Configure portal auth from a logged-in security.microsoft.com session. Import cookies for the portal-cookie backend. Provide the WHOLE browser Cookie header: in Microsoft Edge (logged in to security.microsoft.com), open DevTools > Network, right-click the timeline apiproxy request > Copy > \"Copy as cURL (bash)\" (the cmd/PowerShell variants are untested), save it to a file, and pass that file (or pipe it in with `-`). xdr forwards every cookie \u2014 including the routing (`X-PortalEndpoint-RouteKey`) and session (`s.SessID`) cookies the apiproxy requires, and a chunked `sccauth` (`chunks:N` + `sccauthC1..N`) \u2014 verbatim. The sccauth-only form omits the routing/session cookies and the backend answers with an opaque 500, which is why the whole header is required. The XSRF token is auto-extracted from the header (you're prompted only if it carries no `XSRF-TOKEN` cookie). Stored in ~/.xdr-cli/portal_cookies.json (0600), bound to the configured tenant's non-reversible fingerprint \u2014 cookie values never reach argv. A store bound to a different tenant must be re-imported. On a successful import the exact regular source file is overwritten and deleted on a best-effort basis; pass `--keep-source` to keep it. Symlinks are rejected, and cleanup stops with a warning when an identity change is detected. A source without an `sccauth` cookie is never shredded.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "File holding the full browser Cookie header or a 'Copy as cURL (bash)' blob; use '-' to read it from stdin.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "source",
+          "nargs": 1,
+          "opts": [
+            "source"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": true,
+          "envvar": null,
+          "help": "After storing, make one lightweight apiproxy call to confirm the cookies work.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "verify",
+          "nargs": 1,
+          "opts": [
+            "--verify"
+          ],
+          "required": false,
+          "secondary_opts": [
+            "--no-verify"
+          ],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Keep the cookie source file after import (default: identity-bound best-effort overwrite and delete).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "keep_source",
+          "nargs": 1,
+          "opts": [
+            "--keep-source"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "auth portal-logout": {
+      "help": "Clear stored portal cookies, preserving official tokens.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": []
+    },
+    "auth status": {
+      "help": "Show current authentication status.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": []
+    },
+    "device": {
+      "help": "Device info and response actions.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "device action-status": {
+      "help": "Check the status of a machine action.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Machine action ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "action_id",
+          "nargs": 1,
+          "opts": [
+            "action_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "MachineId required when no local portal action association exists.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "device_id",
+          "nargs": 1,
+          "opts": [
+            "--device"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "device collect-package": {
+      "help": "Request a forensic investigation package.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Device ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "device_id",
+          "nargs": 1,
+          "opts": [
+            "device_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "Forensic package requested via xdr-cli",
+          "envvar": null,
+          "help": "Comment.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Skip confirmation.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "yes",
+          "nargs": 1,
+          "opts": [
+            "--yes",
+            "-y"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show what would happen.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device download-package": {
+      "help": "Download an existing investigation ZIP with portal-cookie auth, without extracting it. Read-only: this does not request collection or change device state. Needs the portal-cookie backend, which is selected automatically when a cookie is the only stored credential, or explicitly with --backend portal-cookie. Output is private and atomically published after transfer and ZIP-container validation. Signed URLs never appear in output.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Completed package-collection action ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "action_id",
+          "nargs": 1,
+          "opts": [
+            "action_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "MachineId associated with the action.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "device_id",
+          "nargs": 1,
+          "opts": [
+            "--device"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Destination ZIP path.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output",
+          "nargs": 1,
+          "opts": [
+            "--output",
+            "-o"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": true,
+            "exists": false,
+            "file_okay": true,
+            "name": "path",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Atomically replace an existing output path.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "force",
+          "nargs": 1,
+          "opts": [
+            "--force"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": 1073741824,
+          "envvar": null,
+          "help": "Maximum archive size (default 1 GiB).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_bytes",
+          "nargs": 1,
+          "opts": [
+            "--max-bytes"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        }
+      ]
+    },
+    "device isolate": {
+      "help": "Isolate a device from the network.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Device ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "device_id",
+          "nargs": 1,
+          "opts": [
+            "device_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "Full",
+          "envvar": null,
+          "help": "Isolation type: Full or Selective.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "isolation_type",
+          "nargs": 1,
+          "opts": [
+            "--type",
+            "-t"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": false,
+            "choices": [
+              "Full",
+              "Selective"
+            ],
+            "name": "choice"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reason for isolation.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Skip confirmation.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "yes",
+          "nargs": 1,
+          "opts": [
+            "--yes",
+            "-y"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show what would happen.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device restrict": {
+      "help": "Restrict app execution to Microsoft-signed binaries.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Device ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "device_id",
+          "nargs": 1,
+          "opts": [
+            "device_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reason for restriction.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Skip confirmation.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "yes",
+          "nargs": 1,
+          "opts": [
+            "--yes",
+            "-y"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show what would happen.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device scan": {
+      "help": "Run an antivirus scan on a device.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Device ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "device_id",
+          "nargs": 1,
+          "opts": [
+            "device_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "Quick",
+          "envvar": null,
+          "help": "Quick or Full.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "scan_type",
+          "nargs": 1,
+          "opts": [
+            "--scan-type"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": false,
+            "choices": [
+              "Quick",
+              "Full"
+            ],
+            "name": "choice"
+          }
+        },
+        {
+          "count": false,
+          "default": "Scan triggered via xdr-cli",
+          "envvar": null,
+          "help": "Comment.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Skip confirmation.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "yes",
+          "nargs": 1,
+          "opts": [
+            "--yes",
+            "-y"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show what would happen.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device show": {
+      "help": "Show device details.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Device ID or hostname.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "device",
+          "nargs": 1,
+          "opts": [
+            "device"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "device timeline": {
+      "help": "Stream a device's MDE timeline into a local JSONL artifact. By default, stdout contains a compact receipt plus at most two event previews; the full stream is written incrementally without buffering. Explicit ``--output`` is published atomically with owner-only permissions and refuses an existing path unless ``--force`` is supplied. Forced output replaces a symlink entry rather than writing through to its target. Non-sticky group/world-writable output directories are rejected. This is a READ-ONLY command: it does not modify device state. The official backend resolves devices through MDE before reading portal timeline events. With --backend portal-cookie, supply a MachineId or hostname: both tenant/device verification and timeline reads use portal cookies, without an app registration or MSAL. Hostname lookup requires an exact, unambiguous inventory match. Portal-cookie mode rejects --refresh-token. IDENTIFIERS. `device` is a DeviceName (hostname) or a 40-hex DeviceId (MachineId). The portal timeline's MachineId IS Advanced Hunting's `DeviceId`, and the hostname is `DeviceName` (verified against live data) \u2014 each event carries both under `Machine.MachineId` / `Machine.Name`. That same DeviceId + DeviceName pair keys every `Device*` Advanced Hunting table (DeviceInfo, DeviceEvents, DeviceProcessEvents, DeviceNetworkEvents, \u2026), so a timeline pivots cleanly into a hunt: DeviceProcessEvents | where DeviceId == '<40-hex MachineId>' and DeviceName =~ '<hostname>' See docs/device_timeline.md (\"Identifiers & Advanced Hunting cross-reference\") for the full table list.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Device hostname or MachineId (40 hex chars).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "device",
+          "nargs": 1,
+          "opts": [
+            "device"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "RFC3339, e.g. 2026-07-24T21:00:00Z; defaults to the lookback window.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "from_date",
+          "nargs": 1,
+          "opts": [
+            "--from"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "formats": [
+              "%Y-%m-%dT%H:%M:%S%z",
+              "%Y-%m-%dT%H:%M:%S.%f%z",
+              "%Y-%m-%dT%H:%M:%S",
+              "%Y-%m-%d %H:%M:%S",
+              "%Y-%m-%d"
+            ],
+            "name": "datetime"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "RFC3339, e.g. 2026-07-24T21:00:00Z; defaults to now.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "to_date",
+          "nargs": 1,
+          "opts": [
+            "--to"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "formats": [
+              "%Y-%m-%dT%H:%M:%S%z",
+              "%Y-%m-%dT%H:%M:%S.%f%z",
+              "%Y-%m-%dT%H:%M:%S",
+              "%Y-%m-%d %H:%M:%S",
+              "%Y-%m-%d"
+            ],
+            "name": "datetime"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Lookback days when --from is not given (max 180; default 7).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "days",
+          "nargs": 1,
+          "opts": [
+            "--days"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Lookback hours when --from is not given; mutually exclusive with --days.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "hours",
+          "nargs": 1,
+          "opts": [
+            "--hours"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Atomically write owner-only JSONL here; refuses existing paths and unsafe shared directories.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output",
+          "nargs": 1,
+          "opts": [
+            "--output",
+            "-o"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": true,
+            "exists": false,
+            "file_okay": true,
+            "name": "path",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Gzip the output file (.jsonl.gz).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "gzip_out",
+          "nargs": 1,
+          "opts": [
+            "--gzip",
+            "-z"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Replace an existing --output path; replaces a symlink entry, never its target.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "force",
+          "nargs": 1,
+          "opts": [
+            "--force"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": 1000,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "page_size",
+          "nargs": 1,
+          "opts": [
+            "--page-size"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 1000,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": "MDE_REFRESH_TOKEN",
+          "help": "CI/non-interactive: redeem this FOCI refresh token instead of stored portal auth.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "refresh_token",
+          "nargs": 1,
+          "opts": [
+            "--refresh-token"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "device unisolate": {
+      "help": "Release a device from network isolation.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Device ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "device_id",
+          "nargs": 1,
+          "opts": [
+            "device_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reason for releasing isolation.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Skip confirmation.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "yes",
+          "nargs": 1,
+          "opts": [
+            "--yes",
+            "-y"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device unrestrict": {
+      "help": "Remove the Defender app-execution restriction.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Device ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "device_id",
+          "nargs": 1,
+          "opts": [
+            "device_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reason for removing restriction.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Skip confirmation.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "yes",
+          "nargs": 1,
+          "opts": [
+            "--yes",
+            "-y"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show what would happen.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "domains": {
+      "help": "Entra tenant and observed Active Directory domains.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "domains list": {
+      "help": "Save domain records with source labels as private JSONL. Active Directory reads require portal-cookie and are capped at 100 records. Unavailable sources or incomplete results return durable data plus exit 14. Entra and AD records retain distinct identifiers even when DNS names match.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": "all",
+          "envvar": null,
+          "help": "Domain inventory source (default: both).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "source",
+          "nargs": 1,
+          "opts": [
+            "--source"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": true,
+            "choices": [
+              "all",
+              "entra",
+              "active-directory"
+            ],
+            "name": "choice"
+          }
+        }
+      ]
+    },
+    "history": {
+      "help": "Browse session records.",
+      "hidden": false,
+      "invoke_without_command": true,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Session ID. Defaults to the current session.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "session",
+          "nargs": 1,
+          "opts": [
+            "--session"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Operator initials -- aggregates across that operator's sessions. Ignored when --session is also passed.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "operator",
+          "nargs": 1,
+          "opts": [
+            "--operator"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Duration spec like 24h, 7d, 30d, 1w, 2y.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "since",
+          "nargs": 1,
+          "opts": [
+            "--since"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Substring match against the `command` field.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "command",
+          "nargs": 1,
+          "opts": [
+            "--command"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Filter records where anchor_incident == ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "incident",
+          "nargs": 1,
+          "opts": [
+            "--incident"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "history stats": {
+      "help": "Aggregate metrics over filtered invocation records.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Session ID. Defaults to the current session.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "session",
+          "nargs": 1,
+          "opts": [
+            "--session"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Operator initials -- aggregates across that operator's sessions. Ignored when --session is also passed. When set, session_duration_seconds is null because spanning multiple sessions makes a single duration meaningless.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "operator",
+          "nargs": 1,
+          "opts": [
+            "--operator"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Duration spec like 24h, 7d, 30d, 1w, 2y.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "since",
+          "nargs": 1,
+          "opts": [
+            "--since"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Substring match against the `command` field.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "command",
+          "nargs": 1,
+          "opts": [
+            "--command"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Filter records where anchor_incident == ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "incident",
+          "nargs": 1,
+          "opts": [
+            "--incident"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Add a nested by_actor breakdown to invocations / hunt_ratio / failure_rate, plus a sibling cpu_usage_total_by_actor key (cpu_usage_total itself stays a string). session_duration_seconds and table_coverage_gaps stay session-global because per-actor windows / library coverage are misleading at actor granularity.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "by_actor",
+          "nargs": 1,
+          "opts": [
+            "--by-actor"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "hunt": {
+      "help": "Advanced hunting with KQL queries.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "hunt library-show": {
+      "help": "Render a library query without executing it. Prints the fully-substituted KQL (params resolved, list-blocks prepended) to stdout. No API call, no auth required. Useful for debugging param substitution or pasting into the Defender Advanced Hunting GUI to compare behaviour against the CLI execution path.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Query name from the library.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "name",
+          "nargs": 1,
+          "opts": [
+            "name"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Parameter as key=value. Repeatable.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "param",
+          "nargs": 1,
+          "opts": [
+            "--param",
+            "-p"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "hunt run": {
+      "help": "Run a KQL advanced hunting query.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Inline KQL query string.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "kql",
+          "nargs": 1,
+          "opts": [
+            "kql"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Read KQL from a file.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "from_file",
+          "nargs": 1,
+          "opts": [
+            "--from-file"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": true,
+            "exists": false,
+            "file_okay": true,
+            "name": "path",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Read KQL from stdin.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "from_stdin",
+          "nargs": 1,
+          "opts": [
+            "--from-stdin"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Keep JSON-string columns (RawEventData, AdditionalFields, ResourceData) as raw strings instead of parsing them into objects. Use when piping verbatim to another tool.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "raw",
+          "nargs": 1,
+          "opts": [
+            "--raw"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Per-call HTTP timeout in seconds. Overrides config.api_timeout (default 120). Bump for hunts that aggregate or join across large tables \u2014 these can run 30-90s+ on Defender.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "timeout",
+          "nargs": 1,
+          "opts": [
+            "--timeout"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "integer"
+          }
+        }
+      ]
+    },
+    "incidents": {
+      "help": "Manage security incidents.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "incidents list": {
+      "help": "List incidents in the tenant (use --status to filter, e.g. --status active). Output schema (envelope at .data[]): id (str) \u2014 Microsoft Graph incident id, e.g. \"155278\" displayName (str) \u2014 analyst-facing title severity (str) \u2014 informational | low | medium | high status (str) \u2014 active | resolved | inProgress | redirected classification (str) \u2014 unknown | falsePositive | truePositive | informationalExpectedActivity determination (str) \u2014 unknown | apt | malware | securityPersonnel | other | unknownFutureValue | ... createdDateTime (str) \u2014 ISO-8601 UTC timestamp lastUpdateDateTime (str) \u2014 ISO-8601 UTC timestamp assignedTo (str|null) \u2014 UPN of assignee, null when unassigned alertCount (int) \u2014 number of alerts in the incident Full rows are saved as JSONL; use the receipt's data_path with rg/jq.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Filter by severity (high, medium, low, informational). Repeatable, or comma-separated: --severity medium,high.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "severity",
+          "nargs": 1,
+          "opts": [
+            "--severity",
+            "-s"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Filter by status (active, resolved, inProgress, redirected). Repeatable, or comma-separated: --status active,inProgress.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "status",
+          "nargs": 1,
+          "opts": [
+            "--status"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Filter by assignee.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "assigned_to",
+          "nargs": 1,
+          "opts": [
+            "--assigned-to"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Show incidents since (e.g., 7d, 24h, 30m).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "since",
+          "nargs": 1,
+          "opts": [
+            "--since"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Max results to return [default: default_limit in config.toml, 25].",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "integer"
+          }
+        }
+      ]
+    },
+    "incidents show": {
+      "help": "Show incident details.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Incident ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "incident_id",
+          "nargs": 1,
+          "opts": [
+            "incident_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Expand: alerts (each alert includes its evidence).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "expand",
+          "nargs": 1,
+          "opts": [
+            "--expand",
+            "-e"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "incidents update": {
+      "help": "Update an incident's status, classification, or determination.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Incident ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "incident_id",
+          "nargs": 1,
+          "opts": [
+            "incident_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "New status. One of: active, inProgress, redirected, resolved.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "status",
+          "nargs": 1,
+          "opts": [
+            "--status"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "One of: falsePositive, informationalExpectedActivity, truePositive, unknown.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "classification",
+          "nargs": 1,
+          "opts": [
+            "--classification"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "One of: apt, compromisedUser, lineOfBusinessApplication, maliciousUserActivity, malware, multiStagedAttack, notEnoughDataToValidate, notMalicious, other, phishing, securityPersonnel, securityTesting, unknown, unwantedSoftware.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "determination",
+          "nargs": 1,
+          "opts": [
+            "--determination"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Add a comment. Supports \\r\\n line breaks: the Defender portal squashes them in the Activity log list view but renders them correctly in the comment fly-out when clicked.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Skip confirmation prompt.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "yes",
+          "nargs": 1,
+          "opts": [
+            "--yes",
+            "-y"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show what would be updated without making changes.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "investigate": {
+      "help": "Guided incident investigation.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Incident ID to investigate.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "incident_id",
+          "nargs": 1,
+          "opts": [
+            "incident_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Auto-run all relevant enrichment queries.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "auto_enrich",
+          "nargs": 1,
+          "opts": [
+            "--auto-enrich"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "library": {
+      "help": "Discover and run the built-in KQL library.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "library list": {
+      "help": "List library descriptors without dumping KQL source.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "search",
+          "nargs": 1,
+          "opts": [
+            "--search"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "tier",
+          "nargs": 1,
+          "opts": [
+            "--tier"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "library run": {
+      "help": "Run a named KQL query through the artifact-first execution path.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Exact library entry name.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "name",
+          "nargs": 1,
+          "opts": [
+            "name"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "param",
+          "nargs": 1,
+          "opts": [
+            "--param",
+            "-p"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "raw",
+          "nargs": 1,
+          "opts": [
+            "--raw"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "timeout",
+          "nargs": 1,
+          "opts": [
+            "--timeout"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "integer"
+          }
+        }
+      ]
+    },
+    "library show": {
+      "help": "Show one typed library descriptor.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Exact library entry name.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "name",
+          "nargs": 1,
+          "opts": [
+            "name"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "lists": {
+      "help": "Manage tenant-data and IOC lists used by library queries.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "lists init": {
+      "help": "Seed ~/.xdr-cli/lists/ from the in-repo lists_seed/ directory.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Overwrite existing files (requires --yes in non-interactive mode).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "force",
+          "nargs": 1,
+          "opts": [
+            "--force"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Skip confirmation prompt when --force is used.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "yes",
+          "nargs": 1,
+          "opts": [
+            "--yes"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "results": {
+      "help": "Browse locally saved investigation result artifacts.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "results head": {
+      "help": "Print a bounded preview of private saved rows; never contacts the tenant. Example: `xdr results head 20260801T084128011506Z-a01d707cfd37 --limit 20` Output may contain investigation values. Do not paste it into public issues or documentation. Use `xdr results show RUN_ID` for value-free provenance.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Run ID or unambiguous prefix from `xdr results list`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "run_id",
+          "nargs": 1,
+          "opts": [
+            "run_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 20,
+          "envvar": null,
+          "help": "Maximum private rows to print (1-100; default 20).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 100,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        }
+      ]
+    },
+    "results list": {
+      "help": "List results, storage use, and copyable physical correlation inputs. Example: `xdr results list`. A non-null `correlate_input` can be passed to `xdr schema correlate --input TABLE=RUN_ID` alongside a second artifact.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": 100,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 1000,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        }
+      ]
+    },
+    "results prune": {
+      "help": "Delete old results; retire automatic evidence and preserve explicit pins. Example: `xdr results prune --older-than 90 --yes` Automatic discovery references are retired at the cutoff before deleting bytes. Explicit observations and extant candidate proposals retain their evidence. A proposal mismatch stops pruning. Retire explicit observations with schema prune-evidence and delete merged or abandoned proposal drafts before pruning their evidence.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Delete artifacts older than this many days.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "older_than",
+          "nargs": 1,
+          "opts": [
+            "--older-than"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Confirm deletion.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "yes",
+          "nargs": 1,
+          "opts": [
+            "--yes",
+            "-y"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "results query": {
+      "help": "Print the exact KQL stored with one result.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "run_id",
+          "nargs": 1,
+          "opts": [
+            "run_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "results rows": {
+      "help": "Inspect filtered or paginated private result rows; cache-only. Example: `xdr results rows RUN_ID --type relationship-path-match --limit 100` Output may contain investigation values. The entire bundle is still verified before filtered rows are returned. Use `--offset N` when `metadata.has_more` is true.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Run ID or unambiguous prefix from `xdr results list`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "run_id",
+          "nargs": 1,
+          "opts": [
+            "run_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Exact `record_type` filter, for example `relationship-path-match`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "record_type",
+          "nargs": 1,
+          "opts": [
+            "--type"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 0,
+          "envvar": null,
+          "help": "Skip this many matching rows before printing (default 0).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "offset",
+          "nargs": 1,
+          "opts": [
+            "--offset"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 100,
+          "envvar": null,
+          "help": "Maximum private matching rows to print (1-1000; default 100).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 1000,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        }
+      ]
+    },
+    "results shape": {
+      "help": "Show observed JSON paths, types, and field presence counts.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "run_id",
+          "nargs": 1,
+          "opts": [
+            "run_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "search",
+          "nargs": 1,
+          "opts": [
+            "--search"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 100,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 1000,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        }
+      ]
+    },
+    "results show": {
+      "help": "Show bounded provenance and correlation input for one result. Example: `xdr results show RUN_ID`. For physically attributed artifacts, copy `correlate_input` into `xdr schema correlate --input TABLE=RUN_ID`.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "run_id",
+          "nargs": 1,
+          "opts": [
+            "run_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "schema": {
+      "help": "Maintain the tenant physical-schema cache and semantic graph, inspect reviewed or empirical identifier routes, and move content-bound local state. Start with `xdr schema status` and run its `next_command`. Use `xdr schema collect --plan-only` before collection; inspect routes with `xdr schema pivot DeviceNetworkEvents.DeviceId` or `xdr schema path DeviceNetworkEvents CloudAppEvents`. Use `xdr schema refresh` only when you explicitly need to replace the physical cache. Multi-row receipts preview two rows; follow `context.results_command` for the complete local result.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "schema bundle": {
+      "help": "Inspect, export, and import portable content-bound schema state. Start with `xdr schema bundle export FILE.tar.gz`, integrity-check it with `xdr schema bundle inspect FILE.tar.gz`, then import only into a collision-free same-tenant home with `xdr schema bundle import FILE.tar.gz --yes`.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "schema bundle export": {
+      "help": "Export current same-tenant schema state as a portable tar.gz bundle. Examples: `xdr schema bundle export /mnt/transfer/schema-state.tar.gz`; `xdr schema bundle export schema-state.tar.gz --include-sessions` Includes current and retained physical/semantic generations, manifests, maintenance state, and referenced evidence by default. Optional session history excludes active markers. Configuration, credentials, cookies, locks, and audit logs are never exported. OUTPUT must not already exist.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "output",
+          "nargs": 1,
+          "opts": [
+            "output"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": true,
+            "exists": false,
+            "file_okay": true,
+            "name": "path",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": true,
+          "envvar": null,
+          "help": "Include result pairs, candidate reviews, and proposals referenced by active semantic evidence (default: enabled and required when present).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_evidence",
+          "nargs": 1,
+          "opts": [
+            "--include-evidence"
+          ],
+          "required": false,
+          "secondary_opts": [
+            "--no-include-evidence"
+          ],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Include session JSONL and sequence sidecars, but never active markers.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_sessions",
+          "nargs": 1,
+          "opts": [
+            "--include-sessions"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "schema bundle import": {
+      "help": "Import a trusted, integrity-checked same-tenant bundle; cache-only. Example: `xdr schema bundle import /mnt/transfer/schema-state.tar.gz --yes` The configured tenant fingerprint must exactly match. Import allowlists portable paths, refuses every destination collision, relocates and verifies evidence/proposal bindings, permits only candidate tenant relationships, validates inactive sessions, and rolls back files created by an interrupted attempt. Manifest hashes prove integrity, not archive authorship: run `xdr schema bundle inspect ARCHIVE` and trust the source. No authentication or tenant call occurs.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "archive",
+          "nargs": 1,
+          "opts": [
+            "archive"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": true,
+            "exists": false,
+            "file_okay": true,
+            "name": "path",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Confirm import of an integrity-checked same-tenant bundle from a trusted source.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "yes",
+          "nargs": 1,
+          "opts": [
+            "--yes",
+            "-y"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "schema bundle inspect": {
+      "help": "Integrity-check and summarize a bundle without activation or auth. Example: `xdr schema bundle inspect /mnt/transfer/schema-state.tar.gz` Streams and validates the exact portable-member allowlist, 256 MiB per-member and aggregate uncompressed limits, SHA-256 bindings, source-build metadata, and tenant identity. This proves integrity, not who authored the unsigned archive. Foreign-tenant bundles remain inspectable but are never activation-eligible.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "archive",
+          "nargs": 1,
+          "opts": [
+            "archive"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": true,
+            "exists": false,
+            "file_okay": true,
+            "name": "path",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        }
+      ]
+    },
+    "schema candidate-proposal": {
+      "help": "Draft reviewed core JSONL without modifying or promoting the graph. Start with `xdr schema discoveries`, run the row's optional `ReviewCommand`, and inspect the private context. Then copy the exact interpretation IDs and supply every semantic decision explicitly. Example: `xdr schema candidate-proposal rel:0123456789abcdef01234567 --output proposal.jsonl --relationship semantic-equivalent --direction both --cardinality unknown --temporal same-retention-window --confidence medium --provenance contract:microsoft-identifier` The output contains only value-free missing field/interpretation records plus one reviewed relationship. It is a proposal for ordinary human code review, never an automatic edit to the packaged graph. Its private receipt binds the exact evidence generation and proposal bytes, and protects referenced bundles while the proposal file exists. It refuses to replace reviewed/deprecated core semantics.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Evidence-ready ID from `xdr schema discoveries`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "relationship_id",
+          "nargs": 1,
+          "opts": [
+            "relationship_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "New review-only JSONL file; an existing path is never overwritten.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output",
+          "nargs": 1,
+          "opts": [
+            "--output"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": false,
+            "exists": false,
+            "file_okay": true,
+            "name": "file",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Human-reviewed relationship claim; never inferred from matches.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "relationship",
+          "nargs": 1,
+          "opts": [
+            "--relationship"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": true,
+            "choices": [
+              "semantic-equivalent",
+              "join-compatible",
+              "transform-required",
+              "bridge",
+              "correlation-only"
+            ],
+            "name": "choice"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Human-reviewed direction relative to the reported source and target.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "direction",
+          "nargs": 1,
+          "opts": [
+            "--direction"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": true,
+            "choices": [
+              "forward",
+              "reverse",
+              "both"
+            ],
+            "name": "choice"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Human-reviewed cardinality; joins cannot use `unknown`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "cardinality",
+          "nargs": 1,
+          "opts": [
+            "--cardinality"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": true,
+            "choices": [
+              "one-to-one",
+              "one-to-many",
+              "many-to-one",
+              "many-to-many",
+              "unknown"
+            ],
+            "name": "choice"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reviewed time guidance as a repository-safe slug/phrase.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "temporal",
+          "nargs": 1,
+          "opts": [
+            "--temporal"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Human-reviewed confidence; empirical counts do not choose it.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "confidence",
+          "nargs": 1,
+          "opts": [
+            "--confidence"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": true,
+            "choices": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "name": "choice"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Repository-safe review/contract citation; repeatable, for example `contract:microsoft-device-id`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "provenance",
+          "nargs": 1,
+          "opts": [
+            "--provenance"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Exact candidate interpretation ID being added to core; repeat for every non-core endpoint shown by `schema discoveries`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "confirmed_interpretations",
+          "nargs": 1,
+          "opts": [
+            "--confirm-interpretation"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Required with contract:/documentation: provenance for join-compatible or bridge claims.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "acknowledge_independent_contract",
+          "nargs": 1,
+          "opts": [
+            "--acknowledge-independent-contract"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "schema candidate-review": {
+      "help": "Optionally collect bounded private context for one empirical pivot. Example: `xdr schema candidate-review rel:0123456789abcdef01234567` Get a real relationship ID with `xdr schema discoveries --include-evidence-refs`. This selects the newest fully verified retained source/target evidence pair, falling back past corrupt newer bundles, runs one bounded target query, saves rows privately with no stdout preview, and returns an `xdr results head RUN_ID` inspection command. This is optional analyst context: automatic observed/validated decisions do not depend on it, and it never changes join safety or core graph status.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Discovery ID from `xdr schema discoveries --include-evidence-refs`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "relationship_id",
+          "nargs": 1,
+          "opts": [
+            "relationship_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Override the observation window, for example `7d` or `30d`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "lookback",
+          "nargs": 1,
+          "opts": [
+            "--lookback"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 20,
+          "envvar": null,
+          "help": "Maximum private target rows to retain (1-100; default 20).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 100,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "HTTP timeout in seconds; overrides config.api_timeout.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "timeout",
+          "nargs": 1,
+          "opts": [
+            "--timeout"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        }
+      ]
+    },
+    "schema collect": {
+      "help": "Mine saved results, or actively discover new locations of their identifiers. xdr schema collect --plan-only previews local-overlap validation. xdr schema collect --explore --plan-only previews identifier-led discovery. xdr schema collect --explore --source DeviceNetworkEvents.DeviceId --lookback 7d narrows discovery to values from that saved field. Use xdr schema tables and xdr schema show DeviceNetworkEvents to inspect the cached physical schema. No six-field matrix or catalog target sweep is used by new collections.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Mine saved results and publish local evidence without any tenant query. Cannot be combined with --explore.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "local_only",
+          "nargs": 1,
+          "opts": [
+            "--local-only"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Find saved identifiers in unknown fields and nested paths.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "explore",
+          "nargs": 1,
+          "opts": [
+            "--explore"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Optionally restrict saved source locators; no starter matrix.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "sources",
+          "nargs": 1,
+          "opts": [
+            "--source"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "30d",
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "lookback",
+          "nargs": 1,
+          "opts": [
+            "--lookback"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 5,
+          "envvar": null,
+          "help": "Samples per local-overlap validation; does not cap active discovery.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "samples",
+          "nargs": 1,
+          "opts": [
+            "--samples"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 100,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 20,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "batch_size",
+          "nargs": 1,
+          "opts": [
+            "--batch-size"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 50,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 20,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "seed_batch_size",
+          "nargs": 1,
+          "opts": [
+            "--seed-batch-size"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 100,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 6,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_json_depth",
+          "nargs": 1,
+          "opts": [
+            "--max-json-depth"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 12,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 2000,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "discovery_row_limit",
+          "nargs": 1,
+          "opts": [
+            "--discovery-row-limit"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 10000,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 20,
+          "envvar": null,
+          "help": "Total query budget for this invocation; rerun to continue.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_queries_per_page",
+          "nargs": 1,
+          "opts": [
+            "--max-queries-per-page"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 1000,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 120,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "timeout",
+          "nargs": 1,
+          "opts": [
+            "--timeout"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 3600,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "plan_only",
+          "nargs": 1,
+          "opts": [
+            "--plan-only"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "schema correlate": {
+      "help": "Correlate saved query artifacts offline; never executes KQL. Example: `xdr schema correlate --input EntraIdSignInEvents=RUN_ID_1 --input CloudAppEvents=RUN_ID_2 --include-contextual` Find run IDs with `xdr results list`. Each input must declare its physical source table, and its sidecar must independently prove lineage, data digest, and the active tenant binding. Contextual matches are excluded by default because IPs, UPNs, hostnames, and hashes need the returned temporal or surrounding-event checks.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Explicit source table and private run ID as Table=run-id. Repeatable.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "inputs",
+          "nargs": 1,
+          "opts": [
+            "--input"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Include weak/mutable relationships such as IP, UPN, hostname, and hash matches; these require the returned temporal/context checks.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_contextual",
+          "nargs": 1,
+          "opts": [
+            "--include-contextual"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Explicitly allow unbound or differently tenant-bound legacy artifacts; use only for intentional cross-tenant analysis.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "allow_tenant_mismatch",
+          "nargs": 1,
+          "opts": [
+            "--allow-tenant-mismatch"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "schema diagnostics": {
+      "help": "Show build identity, capabilities, and cache-only automation state. Example: `xdr schema diagnostics` Reports the package version, source commit when detectable, registered schema capabilities, and the same maintenance summary as `xdr schema status`. It never authenticates or runs KQL.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": []
+    },
+    "schema discoveries": {
+      "help": "Explain observed and validated tenant pivots with value-free evidence. Example: `xdr schema discoveries` A completed positive probe is an observed investigation pivot, not merely a possible relationship. Repeated independent evidence can advance it to a validated pivot. Neither state claims a raw equality join is safe.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Include private result run IDs needed for local evidence inspection.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_evidence_refs",
+          "nargs": 1,
+          "opts": [
+            "--include-evidence-refs"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "schema export-opengraph": {
+      "help": "Export value-free schema structure as BloodHound OpenGraph JSON. Examples: `xdr schema export-opengraph schema-graph.opengraph.json`; `xdr schema export-opengraph current-schema.opengraph.json --include-tenant --include-candidates` The public graph is exported by default. Add `--include-tenant` for the local value-free overlay, including observed/validated pivots, and add `--include-candidates` only for unverified hypotheses. Upload the resulting generic graph with BloodHound Quick Upload, then run a custom query under Explore -> Cypher. Generic imports are merged into the graph database and do not create a named graph or saved query in Explore. Node IDs lead with their readable schema name because BloodHound may use Object ID as the canvas label. No concrete identifier values are exported. Usable schema routes carry `traversable=true` for graph exploration, but they do not assert an attack-path privilege. Tables are also linked directly with `Join`, `NormalizeJoin`, `SameEntity`, `Correlate`, and `Bridge` edges for a table-level pivot map. Add `--custom-nodes schema.custom-nodes.json` to write node icons and colors, then send that file to BloodHound's `/api/v2/custom-nodes` endpoint. xdr-cli never contacts BloodHound itself.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Destination `.json` file, for example `schema-graph.opengraph.json`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "output",
+          "nargs": 1,
+          "opts": [
+            "output"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": true,
+            "exists": false,
+            "file_okay": true,
+            "name": "path",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Include this tenant's value-free provisional fields and observed/validated pivots.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_tenant",
+          "nargs": 1,
+          "opts": [
+            "--include-tenant"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Include unreviewed candidate relationships in the visualization.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_candidates",
+          "nargs": 1,
+          "opts": [
+            "--include-candidates"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Also write BloodHound node styling (icons and colors) to this `.json` file, as the request body for BloodHound's `POST /api/v2/custom-nodes`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "custom_nodes",
+          "nargs": 1,
+          "opts": [
+            "--custom-nodes"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": true,
+            "exists": false,
+            "file_okay": true,
+            "name": "path",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Replace existing destination files.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "force",
+          "nargs": 1,
+          "opts": [
+            "--force"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "schema migrate-cache": {
+      "help": "Content-bind a valid pre-digest physical schema cache; cache-only. Example: `xdr schema migrate-cache --yes` Run `xdr schema status` first. The command validates generation and tenant identity, JSON-object rows, and row count; copies the old metadata to the reported private quarantine directory; and records SHA-256 and byte count over the exact existing JSONL. It never authenticates, runs KQL, or changes cached row bytes. Partial or incorrect digest metadata is corruption and requires `xdr schema refresh` instead.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Confirm locally binding the exact bytes of a validated legacy cache.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "yes",
+          "nargs": 1,
+          "opts": [
+            "--yes",
+            "-y"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "schema observe": {
+      "help": "Probe where sampled identifiers recur and save only value-free observations. Inspect the deterministic scope without tenant access: `xdr schema observe DeviceNetworkEvents.DeviceId --plan-only` Run a bounded smoke test: `xdr schema observe DeviceNetworkEvents.DeviceId --lookback 30d --samples 5 --max-targets 40` Targets come from eligible string/dynamic locators across every cached tenant table, not only the source table. Routine runs stop at 100 prioritized targets. Use `--plan-only --exhaustive` to inspect full scope, then `--exhaustive` to run it. Use repeatable `--target-table TABLE` for a narrow retry or `--exclude-table TABLE` for a visible coverage exclusion. Completed positive observations are investigation pivots even when another target table fails. Inspect evidence state with `xdr schema discoveries`. `Timestamp` or `TimeGenerated` only bounds each table's independent lookback; normalized identifier values are the match key. `--from-file seeds.txt` and `--from-stdin` retain normalized seeds in a zero-preview private result artifact so later candidate review can verify them. Discovery reports flag their operator-supplied origin; those values can establish an observed pivot but do not satisfy automatic validation.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reviewed source locator, such as `DeviceNetworkEvents.DeviceId`; discover fields with `xdr schema show TABLE`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "locator",
+          "nargs": 1,
+          "opts": [
+            "locator"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "30d",
+          "envvar": null,
+          "help": "Source/target time window, for example `7d`, `24h`, or `30d`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "lookback",
+          "nargs": 1,
+          "opts": [
+            "--lookback"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 5,
+          "envvar": null,
+          "help": "Maximum distinct valid source values to test (1-100).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "samples",
+          "nargs": 1,
+          "opts": [
+            "--samples"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 100,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 20,
+          "envvar": null,
+          "help": "Target locators per Advanced Hunting batch (1-50).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "batch_size",
+          "nargs": 1,
+          "opts": [
+            "--batch-size"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 50,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 100,
+          "envvar": null,
+          "help": "Total target cap for a safe routine run (1-10000; default 100).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_targets",
+          "nargs": 1,
+          "opts": [
+            "--max-targets"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 10000,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Probe every eligible locator; review `--plan-only` first.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "exhaustive",
+          "nargs": 1,
+          "opts": [
+            "--exhaustive"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Probe only this cached target table; repeat for more tables.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "target_tables",
+          "nargs": 1,
+          "opts": [
+            "--target-table"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Exclude this cached target table and report the coverage gap; repeatable.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "exclude_tables",
+          "nargs": 1,
+          "opts": [
+            "--exclude-table"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Per-call HTTP timeout in seconds (1-3600); overrides config.api_timeout.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "timeout",
+          "nargs": 1,
+          "opts": [
+            "--timeout"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 3600,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Write sensitive seed/query diagnostics; never commit or share publicly.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "private_debug_output",
+          "nargs": 1,
+          "opts": [
+            "--private-debug-output"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": false,
+            "exists": false,
+            "file_okay": true,
+            "name": "file",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show the deterministic target plan without authentication or KQL execution.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "plan_only",
+          "nargs": 1,
+          "opts": [
+            "--plan-only"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Read explicit seed values, one per line; save them in a private, tenant-bound evidence artifact instead of sampling the source.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "from_file",
+          "nargs": 1,
+          "opts": [
+            "--from-file"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": false,
+            "exists": true,
+            "file_okay": true,
+            "name": "file",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Read explicit seed values from stdin and save them as private, tenant-bound source evidence.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "from_stdin",
+          "nargs": 1,
+          "opts": [
+            "--from-stdin"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reuse the exact tenant-bound source-sample artifact from a prior page.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "from_run",
+          "nargs": 1,
+          "opts": [
+            "--from-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 0,
+          "envvar": null,
+          "help": "Zero-based table-query cursor from a prior receipt (default 0).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "start_query",
+          "nargs": 1,
+          "opts": [
+            "--start-query"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Maximum target table queries to execute in this invocation (1-1000).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_queries",
+          "nargs": 1,
+          "opts": [
+            "--max-queries"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 1000,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Require the pinned physical-cache generation from a prior page.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "schema_generation",
+          "nargs": 1,
+          "opts": [
+            "--schema-generation"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "schema path": {
+      "help": "Find reviewed or empirical investigation routes between tables; cache-only. Example: `xdr schema path EntraIdSignInEvents CloudAppEvents` Discover valid table names with `xdr schema tables`. Observed and validated pivots are included by default; `--include-candidates` adds unverified hypotheses. Read `RouteKind`, `EvidenceLevel`, and `AllStepsJoinCompatible`: a sequential pivot is useful for investigation but is not a raw multi-table join recipe.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Source table from `xdr schema tables`, for example `DeviceNetworkEvents`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "source_table",
+          "nargs": 1,
+          "opts": [
+            "source_table"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Target table from `xdr schema tables`, for example `CloudAppEvents`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "target_table",
+          "nargs": 1,
+          "opts": [
+            "target_table"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 4,
+          "envvar": null,
+          "help": "Maximum relationship hops to search (1-12).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_depth",
+          "nargs": 1,
+          "opts": [
+            "--max-depth"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 12,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Also include paths containing unverified candidate hypotheses.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_candidates",
+          "nargs": 1,
+          "opts": [
+            "--include-candidates"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "schema pivot": {
+      "help": "Find fields that can carry the same semantic identifier; cache-only. Example: `xdr schema pivot EntraIdSignInEvents.AccountUpn` Discover valid fields first: `xdr schema show EntraIdSignInEvents` Reviewed, validated, and observed routes are returned by default. Add `--include-candidates` only for unverified hypotheses. A returned pivot is a search route; check `EvidenceLevel`, `JoinSafe`, `Relationship`, `Workflow`, and `Transform` before deciding whether raw equality or a KQL join is safe.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Semantic locator (`Table.Column` or nested `Table.Column#/path`); discover columns with `xdr schema show TABLE`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "locator",
+          "nargs": 1,
+          "opts": [
+            "locator"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Also include unverified candidate hypotheses after usable routes.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_candidates",
+          "nargs": 1,
+          "opts": [
+            "--include-candidates"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "schema prune-evidence": {
+      "help": "Prune stale value-free observations so referenced results can be deleted. Example: `xdr schema prune-evidence --older-than 90 --yes` This rewrites only the private tenant overlay. It preserves discovered fields and interpretations and never deletes result artifacts; run `xdr results prune --older-than 90 --yes` afterwards to remove now-unreferenced bundles. Legacy timestamp-free evidence is retained unless `--include-legacy` is explicit.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Remove tenant observations older than this many days.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "older_than",
+          "nargs": 1,
+          "opts": [
+            "--older-than"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Also remove legacy observations that have no observation timestamp.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_legacy",
+          "nargs": 1,
+          "opts": [
+            "--include-legacy"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Confirm the overlay rewrite; required when non-interactive.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "yes",
+          "nargs": 1,
+          "opts": [
+            "--yes",
+            "-y"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "schema refresh": {
+      "help": "Refresh the tenant's table/column cache with one Advanced Hunting call. Run this first on a new workstation or tenant, and again when schema output reports a stale cache. Next: `xdr schema tables`. Example: `xdr schema refresh`",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": []
+    },
+    "schema repair-overlay": {
+      "help": "Repair integrity and migrate compatible legacy semantic-overlay state. Examples: `xdr schema repair-overlay --yes`; `xdr schema repair-overlay --all-local --yes`; `xdr schema repair-overlay --reset-empty --yes` Inspect first with `xdr schema status`. This command never contacts the tenant or reads result-row values. It selects the newest structurally valid retained generation. A compatible pre-digest generation receives an exact byte binding. Contract drift causes the exact prior overlay files to be quarantined before a new generation is atomically published: compatible records are retained, obsolete provisional interpretations and dependent observations are inactivated, and unsafe legacy nested fields are excluded. Reviewed contract conflicts fail closed without changing the active state. Use `--reset-empty` only when every retained generation is invalid.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Confirm selecting a valid generation and, when required, publishing a compatible migrated replacement.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "yes",
+          "nargs": 1,
+          "opts": [
+            "--yes",
+            "-y"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Repair every local tenant overlay, including orphaned generations.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "all_local",
+          "nargs": 1,
+          "opts": [
+            "--all-local"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "If no generation is valid, preserve all files in quarantine and activate an empty verified overlay.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "reset_empty",
+          "nargs": 1,
+          "opts": [
+            "--reset-empty"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "schema show": {
+      "help": "List valid columns for one cached tenant table; never calls the tenant. Examples: `xdr schema show DeviceNetworkEvents`; `xdr schema show EntraIdSignInEvents --search Account` Form a field locator as `Table.Column`. Nested JSON locators use an RFC 6901 pointer, for example `CloudAppEvents.RawEventData#/UserId`.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Exact table from `xdr schema tables`, for example `DeviceNetworkEvents`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "table",
+          "nargs": 1,
+          "opts": [
+            "table"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Case-insensitive column-name filter, for example `Account`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "search",
+          "nargs": 1,
+          "opts": [
+            "--search"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "schema status": {
+      "help": "Inspect physical cache, overlay compatibility, and collection state locally. Example: `xdr schema status` This never authenticates or runs KQL. It reports physical-cache state, overlay integrity and compatibility separately, observation eligibility, passive-ingestion outcomes, 90-day observation-horizon counts, and the collection marker. Run its exact `next_command`; recovery may require `xdr schema repair-overlay --yes` or `xdr schema migrate-cache --yes` before collection.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": []
+    },
+    "schema tables": {
+      "help": "List valid tenant table names from the local cache; never calls the tenant. Examples: `xdr schema tables`; `xdr schema tables --search sign` Use a returned table with `xdr schema show TABLE` or as either argument to `xdr schema path SOURCE_TABLE TARGET_TABLE`.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Case-insensitive table-name filter, for example `Device`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "search",
+          "nargs": 1,
+          "opts": [
+            "--search"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "schema validate-core": {
+      "help": "Validate the packaged graph/profile and optionally its generated docs. Examples: `xdr schema validate-core`; `xdr schema validate-core --document docs/schema_pivots.md`; `xdr schema validate-core --document docs/schema_pivots.md --update-document` Use this after a human-reviewed edit to the core JSONL. It never contacts a tenant and never promotes a candidate automatically.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Also check a generated reference, normally `docs/schema_pivots.md`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "document",
+          "nargs": 1,
+          "opts": [
+            "--document"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": true,
+            "exists": false,
+            "file_okay": true,
+            "name": "path",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Atomically refresh the generated block in `--document`.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "update_document",
+          "nargs": 1,
+          "opts": [
+            "--update-document"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "session": {
+      "help": "Per-hunt session lifecycle: start, end, resume, list, show.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "session end": {
+      "help": "End the current session. Idempotent: if a session_ended marker already exists in the JSONL, refuses with a clear error (defends against double-end races between sub-agents). Actor-restricted: refuses when XDR_ACTOR is set to anything other than 'operator' unless --force is passed. Only the orchestrator should end a session -- a sub-agent ending the session cuts off siblings' ability to write records and clear gates.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Override actor restriction. Required when XDR_ACTOR != 'operator'.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "force",
+          "nargs": 1,
+          "opts": [
+            "--force"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Skip schema upkeep for this session end only.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "no_maintenance",
+          "nargs": 1,
+          "opts": [
+            "--no-maintenance"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "session feedback": {
+      "help": "Append immutable feedback; prior feedback is never overwritten.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Ended or active session ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "source",
+          "nargs": 1,
+          "opts": [
+            "--source"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": true,
+            "choices": [
+              "agent",
+              "analyst"
+            ],
+            "name": "choice"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "outcome",
+          "nargs": 1,
+          "opts": [
+            "--outcome"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": true,
+            "choices": [
+              "completed-smoothly",
+              "completed-with-friction",
+              "incomplete-blocked"
+            ],
+            "name": "choice"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "category",
+          "nargs": 1,
+          "opts": [
+            "--category"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "session list": {
+      "help": "List all sessions found under ~/.xdr-cli/sessions/.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Filter by operator initials (e.g., 'jd').",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "operator",
+          "nargs": 1,
+          "opts": [
+            "--operator"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "session resume": {
+      "help": "Resume a prior session as current.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Session ID to resume.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "session show": {
+      "help": "Print the raw JSONL records for a session.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Session ID to show.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "session start": {
+      "help": "Start a new session. Prints the session ID to stdout and writes a marker at ~/.xdr-cli/active_sessions/<id> so subsequent `xdr` invocations in any process can resolve the session without an environment variable. Two terminals running concurrent investigations each write their own marker \u2014 no shared pointer file to race on.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Short label for this session.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "label",
+          "nargs": 1,
+          "opts": [
+            "--label"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Require xdr annotate after each command in this session.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "learning_mode",
+          "nargs": 1,
+          "opts": [
+            "--learning-mode"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Reserved for banner suppression (no banner currently exists; the bare ID on stdout is suitable for $(xdr session start --quiet) capture as-is).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "quiet",
+          "nargs": 1,
+          "opts": [
+            "--quiet"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": 1800,
+          "envvar": null,
+          "help": "Inactivity timeout in seconds (default 1800 / 30 minutes).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "timeout",
+          "nargs": 1,
+          "opts": [
+            "--timeout"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Preserve active sessions and deliberately create another.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "concurrent",
+          "nargs": 1,
+          "opts": [
+            "--concurrent"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    }
+  }
+}

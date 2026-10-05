@@ -8,8 +8,9 @@ import os
 import sys
 from typing import Literal
 
-import typer
+import click
 
+from xdr_cli.cli_params import optional_multiple
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import (
     AuthError,
@@ -38,7 +39,7 @@ from xdr_cli.sessions import (
     write_session_end_record,
 )
 
-session_app = typer.Typer(
+session_app = click.Group(
     name="session",
     help="Per-hunt session lifecycle: start, end, resume, list, show.",
     no_args_is_help=True,
@@ -46,34 +47,37 @@ session_app = typer.Typer(
 
 
 @session_app.command("start")
+@click.option("--label", default="", help="Short label for this session.")
+@click.option(
+    "--learning-mode", is_flag=True, help="Require xdr annotate after each command in this session."
+)
+@click.option(
+    "--quiet",
+    is_flag=True,
+    help=(
+        "Reserved for banner suppression (no banner currently exists; the bare "
+        "ID on stdout is suitable for $(xdr session start --quiet) capture "
+        "as-is)."
+    ),
+)
+@click.option(
+    "--timeout",
+    type=click.IntRange(min=1, max=None),
+    default=1800,
+    show_default=True,
+    help="Inactivity timeout in seconds (default 1800 / 30 minutes).",
+)
+@click.option(
+    "--concurrent", is_flag=True, help="Preserve active sessions and deliberately create another."
+)
+@click.pass_context
 def session_start(
-    ctx: typer.Context,
-    label: str = typer.Option("", "--label", help="Short label for this session."),
-    learning_mode: bool = typer.Option(
-        False,
-        "--learning-mode",
-        help="Require xdr annotate after each command in this session.",
-    ),
-    quiet: bool = typer.Option(
-        False,
-        "--quiet",
-        help=(
-            "Reserved for banner suppression (no banner currently exists; "
-            "the bare ID on stdout is suitable for "
-            "$(xdr session start --quiet) capture as-is)."
-        ),
-    ),
-    timeout: int = typer.Option(
-        1800,
-        "--timeout",
-        min=1,
-        help="Inactivity timeout in seconds (default 1800 / 30 minutes).",
-    ),
-    concurrent: bool = typer.Option(
-        False,
-        "--concurrent",
-        help="Preserve active sessions and deliberately create another.",
-    ),
+    ctx: click.Context,
+    label: str,
+    learning_mode: bool,
+    quiet: bool,
+    timeout: int,
+    concurrent: bool,
 ) -> None:
     """Start a new session.
 
@@ -117,9 +121,9 @@ def session_start(
         timeout_seconds=timeout,
         automatic=False,
     )
-    typer.echo(s.id)
+    click.echo(s.id)
     if concurrent:
-        typer.echo(
+        click.echo(
             f"Attach POSIX: XDR_SESSION={s.id} xdr ...\n"
             f'Attach PowerShell: $env:XDR_SESSION = "{s.id}"',
             err=True,
@@ -149,7 +153,7 @@ def _collect_after_explicit_end(app_ctx: AppContext) -> dict:
         quiet=app_ctx.quiet, debug=app_ctx.debug, invoked_command="schema collect",
     )
     if not app_ctx.effective_quiet:
-        typer.echo("Session ended. Collecting schema evidence…", err=True)
+        click.echo("Session ended. Collecting schema evidence…", err=True)
     try:
         from xdr_cli.schema_graph.session_maintenance import collect_session_schema
 
@@ -182,7 +186,7 @@ def _collect_after_explicit_end(app_ctx: AppContext) -> dict:
         maintenance.update(status="failed", exit_code=1, error_type=type(exc).__name__)
     if maintenance["status"] != "success":
         maintenance["next_command"] = maintenance.get("help_command") or "xdr schema collect"
-        typer.echo(
+        click.echo(
             "Session remains ended; schema collection " + maintenance["status"]
             + ". See maintenance in the receipt for recovery details.", err=True,
         )
@@ -190,16 +194,19 @@ def _collect_after_explicit_end(app_ctx: AppContext) -> dict:
 
 
 @session_app.command("end")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Override actor restriction. Required when XDR_ACTOR != 'operator'.",
+)
+@click.option(
+    "--no-maintenance", is_flag=True, help="Skip schema upkeep for this session end only."
+)
+@click.pass_context
 def session_end(
-    ctx: typer.Context,
-    force: bool = typer.Option(
-        False,
-        "--force",
-        help="Override actor restriction. Required when XDR_ACTOR != 'operator'.",
-    ),
-    no_maintenance: bool = typer.Option(
-        False, "--no-maintenance", help="Skip schema upkeep for this session end only.",
-    ),
+    ctx: click.Context,
+    force: bool,
+    no_maintenance: bool,
 ) -> None:
     """End the current session.
 
@@ -216,7 +223,7 @@ def session_end(
         env_id = os.environ.get("XDR_SESSION", "").strip()
         if env_id and session_already_ended(env_id):
             raise ConflictError(f"Session {env_id} is already ended.")
-        typer.echo(
+        click.echo(
             '{"status":"success","session_id":null,"ended":false,'
             '"reason":"no active session"}'
         )
@@ -269,7 +276,7 @@ def session_end(
             ),
         },
     }
-    typer.echo(json.dumps(receipt, separators=(",", ":")))
+    click.echo(json.dumps(receipt, separators=(",", ":")))
     sys.stdout.flush()
     maintenance = (
         {"status": "skipped", "reason": "requested"}
@@ -294,7 +301,7 @@ def session_end(
             failure.exit_code = 130
             failure.error_code = "SESSION_SCHEMA_MAINTENANCE_CANCELLED"
         terminal["error"] = json.loads(format_error_json(failure))["error"]
-    typer.echo(json.dumps(terminal, separators=(",", ":")))
+    click.echo(json.dumps(terminal, separators=(",", ":")))
     sys.stdout.flush()
     if incomplete:
         # The terminal record already contains the structured error. A Click
@@ -303,17 +310,27 @@ def session_end(
 
 
 @session_app.command("feedback")
+@click.argument("session_id", type=str, required=True, help="Ended or active session ID.")
+@click.option(
+    "--source", type=click.Choice(["agent", "analyst"], case_sensitive=True), required=True
+)
+@click.option(
+    "--outcome",
+    type=click.Choice(
+        ["completed-smoothly", "completed-with-friction", "incomplete-blocked"], case_sensitive=True
+    ),
+    required=True,
+)
+@click.option("--category", default=None, multiple=True, callback=optional_multiple)
+@click.option("--comment", default=None)
+@click.pass_context
 def session_feedback(
-    ctx: typer.Context,
-    session_id: str = typer.Argument(help="Ended or active session ID."),
-    source: Literal["agent", "analyst"] = typer.Option(..., "--source"),
-    outcome: Literal[
-        "completed-smoothly",
-        "completed-with-friction",
-        "incomplete-blocked",
-    ] = typer.Option(..., "--outcome"),
-    category: list[str] | None = typer.Option(None, "--category"),
-    comment: str | None = typer.Option(None, "--comment"),
+    ctx: click.Context,
+    session_id: str,
+    source: Literal["agent", "analyst"],
+    outcome: Literal["completed-smoothly", "completed-with-friction", "incomplete-blocked"],
+    category: list[str] | None,
+    comment: str | None,
 ) -> None:
     """Append immutable feedback; prior feedback is never overwritten."""
     del ctx
@@ -327,13 +344,15 @@ def session_feedback(
         )
     except FileNotFoundError:
         raise LocalNotFoundError("session", session_id) from None
-    typer.echo(json.dumps({"status": "success", "feedback": record}, separators=(",", ":")))
+    click.echo(json.dumps({"status": "success", "feedback": record}, separators=(",", ":")))
 
 
 @session_app.command("resume")
+@click.argument("session_id", type=str, required=True, help="Session ID to resume.")
+@click.pass_context
 def session_resume(
-    ctx: typer.Context,
-    session_id: str = typer.Argument(help="Session ID to resume."),
+    ctx: click.Context,
+    session_id: str,
 ) -> None:
     """Resume a prior session as current."""
     s = load_session_metadata(session_id)
@@ -346,15 +365,15 @@ def session_resume(
             help_command="xdr session feedback --help",
         )
     set_current_session(s)
-    typer.echo(s.id)
+    click.echo(s.id)
 
 
 @session_app.command("list")
+@click.option("--operator", default="", help="Filter by operator initials (e.g., 'jd').")
+@click.pass_context
 def session_list(
-    ctx: typer.Context,
-    operator: str = typer.Option(
-        "", "--operator", help="Filter by operator initials (e.g., 'jd')."
-    ),
+    ctx: click.Context,
+    operator: str,
 ) -> None:
     """List all sessions found under ~/.xdr-cli/sessions/."""
     app_ctx: AppContext = ctx.obj
@@ -363,17 +382,19 @@ def session_list(
         session_id=app_ctx.session_id,
         session_label=app_ctx.session_label,
     )
-    typer.echo(fmt.format_output(rows))
+    click.echo(fmt.format_output(rows))
 
 
 @session_app.command("show")
+@click.argument("session_id", type=str, required=True, help="Session ID to show.")
+@click.pass_context
 def session_show(
-    ctx: typer.Context,
-    session_id: str = typer.Argument(help="Session ID to show."),
+    ctx: click.Context,
+    session_id: str,
 ) -> None:
     """Print the raw JSONL records for a session."""
     records = load_session_records(session_id)
     if records is None:
         raise LocalNotFoundError("session", session_id)
     for r in records:
-        typer.echo(r)
+        click.echo(r)

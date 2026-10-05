@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli.main import app
 

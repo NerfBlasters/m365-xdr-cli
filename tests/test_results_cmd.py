@@ -7,7 +7,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli.main import app
 from xdr_cli.results import write_result

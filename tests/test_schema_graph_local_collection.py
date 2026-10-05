@@ -2,7 +2,7 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli.api.hunting import HuntingResult
 from xdr_cli.commands.schema_cmd import _compose_effective

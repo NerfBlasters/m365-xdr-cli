@@ -18,7 +18,7 @@ from unittest.mock import patch
 import pytest
 from click import unstyle
 from filelock import Timeout as FileLockTimeout
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli.api.hunting import HuntingResult
 from xdr_cli.config import Config

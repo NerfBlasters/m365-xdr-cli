@@ -90,6 +90,25 @@ pipx upgrade xdr-cli        # or: pipx reinstall xdr-cli
 
 Developers: see [Development](#development) for an editable install.
 
+### Shell completion
+
+`xdr` uses Click's shell completion. To enable it for the current Bash session:
+
+```bash
+eval "$(_XDR_COMPLETE=bash_source xdr)"
+```
+
+For Zsh use `eval "$(_XDR_COMPLETE=zsh_source xdr)"`; for Fish use
+`_XDR_COMPLETE=fish_source xdr | source`. To avoid generating the script on
+every shell startup, save that shell's generated output and source the saved
+file from your shell configuration. PowerShell users can generate its script
+with `$env:_XDR_COMPLETE = 'powershell_source'; xdr`, then clear the variable
+with `Remove-Item Env:_XDR_COMPLETE` and load the saved script.
+
+The former `--install-completion` and `--show-completion` options were removed
+in 0.15.0. Help now uses plain Click formatting; command examples and parameter
+help remain available through `--help`.
+
 ## Two ways to sign in
 
 | | **Portal cookie** (quick start) | **Entra app registration** |

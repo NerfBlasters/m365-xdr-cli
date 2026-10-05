@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 # Import the ROOT app, not lists_app directly, so the JSON envelope, audit-log
 # integration, --no-interactive plumbing, and OutputFormatter are exercised.
@@ -86,7 +86,7 @@ def test_init_atomic_on_error(config_dir, monkeypatch):
     monkeypatch.setattr("os.replace", flaky_replace)
     result = _invoke(["lists", "init"])
     out_dir = Path(config_dir) / "lists"
-    # The OSError propagates; CLI exits 1 (unhandled exception → Typer default).
+    # The OSError propagates; CLI exits 1 (unhandled exception → Click default).
     assert result.exit_code == 1
     # The first file (alphabetically: AiTMInfrastructure.txt) was written before the failure.
     assert (out_dir / "AiTMInfrastructure.txt").exists()

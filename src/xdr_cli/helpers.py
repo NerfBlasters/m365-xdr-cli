@@ -31,7 +31,7 @@ def split_csv(values: list[str] | None) -> list[str] | None:
     """Flatten a list that may contain comma-separated values into individual entries.
 
     Agents and humans type `--severity medium,high` expecting multi-value
-    behavior. Typer only collects repeated flags, so the input arrives as
+    behavior. Click only collects repeated flags, so the input arrives as
     `["medium,high"]`. This helper splits on commas and strips whitespace,
     so `["medium,high", "low"]` becomes `["medium", "high", "low"]`.
     """

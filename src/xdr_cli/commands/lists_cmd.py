@@ -18,14 +18,14 @@ import sys
 import tempfile
 from pathlib import Path
 
-import typer
+import click
 
 from xdr_cli.config import get_config_home
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import ConfigError, ConflictError, UsageError
 from xdr_cli.output import OutputFormatter
 
-lists_app = typer.Typer(
+lists_app = click.Group(
     name="lists",
     help="Manage tenant-data and IOC lists used by library queries.",
     no_args_is_help=True,
@@ -53,18 +53,17 @@ def _atomic_write(target: Path, content: bytes) -> None:
 
 
 @lists_app.command("init")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Overwrite existing files (requires --yes in non-interactive mode).",
+)
+@click.option("--yes", is_flag=True, help="Skip confirmation prompt when --force is used.")
+@click.pass_context
 def lists_init(
-    ctx: typer.Context,
-    force: bool = typer.Option(
-        False,
-        "--force",
-        help="Overwrite existing files (requires --yes in non-interactive mode).",
-    ),
-    yes: bool = typer.Option(
-        False,
-        "--yes",
-        help="Skip confirmation prompt when --force is used.",
-    ),
+    ctx: click.Context,
+    force: bool,
+    yes: bool,
 ) -> None:
     """Seed ~/.xdr-cli/lists/ from the in-repo lists_seed/ directory."""
     app_ctx: AppContext = ctx.obj
@@ -104,7 +103,7 @@ def lists_init(
                 corrected_argv=["xdr", "lists", "init", "--force", "--yes"],
                 help_command="xdr lists init --help",
             )
-        confirm = typer.confirm(
+        confirm = click.confirm(
             f"--force will overwrite {len(seed_files)} files in {out_dir}. Continue?"
         )
         if not confirm:
@@ -139,4 +138,4 @@ def lists_init(
         {"key": "action", "header": "Action"},
         {"key": "target_path", "header": "Path", "style": "dim"},
     ]
-    typer.echo(fmt.format_output(rows, columns=columns, title="xdr lists init"))
+    click.echo(fmt.format_output(rows, columns=columns, title="xdr lists init"))

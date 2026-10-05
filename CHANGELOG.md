@@ -10,6 +10,26 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.15.0] - 2026-10-04
+
+### Changed
+
+- Replace Typer with Click, using public command callbacks for dispatch
+  recording and backend checks. Preserve parameter bindings, JSON errors,
+  exit codes, and session recording.
+- Render help with Click's plain formatter and positional-argument descriptions.
+  Preserve tables, examples, accepted enum defaults, and full group summaries.
+  Rich remains a direct dependency for styled stderr messages.
+- Remove duplicate typo-hint wording formerly added by Typer; structured
+  suggestions and error codes remain unchanged.
+
+### Removed
+
+- Root `--install-completion` and `--show-completion` flags. Generate shell
+  completion through Click's `_XDR_COMPLETE` environment variable instead.
+- Typer, Shellingham, and annotated-doc dependencies, eliminating the deprecated
+  stream-helper imports during startup and tests.
+
 ## [0.14.0] - 2026-10-04
 
 Second documentation pass for a reader arriving fresh at the public

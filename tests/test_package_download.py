@@ -8,7 +8,7 @@ import zipfile
 import httpx
 import pytest
 import respx
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli.config import Config, save_config
 from xdr_cli.exceptions import APIError, ConflictError, NetworkError, RateLimitError

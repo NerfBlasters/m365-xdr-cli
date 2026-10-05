@@ -19,13 +19,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import typer
+import click
 from filelock import Timeout as FileLockTimeout
 
 from xdr_cli._lock import exclusive_lock
 from xdr_cli.api.hunting import run_query
 from xdr_cli.auth import AuthManager
 from xdr_cli.backends import create_client
+from xdr_cli.cli_params import EnumValueChoice, optional_multiple
 from xdr_cli.client import XDRClient
 from xdr_cli.config import get_config_home
 from xdr_cli.context import AppContext
@@ -107,7 +108,7 @@ from xdr_cli.schema_graph.probe import (
 )
 from xdr_cli.schema_graph.traversal import GraphStep, pivot, table_paths
 
-schema_app = typer.Typer(
+schema_app = click.Group(
     name="schema",
     help=(
         "Maintain the tenant physical-schema cache and semantic graph, inspect "
@@ -122,7 +123,7 @@ schema_app = typer.Typer(
     ),
     no_args_is_help=True,
 )
-bundle_app = typer.Typer(
+bundle_app = click.Group(
     name="bundle",
     help=(
         "Inspect, export, and import portable content-bound schema state. Start "
@@ -132,7 +133,7 @@ bundle_app = typer.Typer(
     ),
     no_args_is_help=True,
 )
-schema_app.add_typer(bundle_app)
+schema_app.add_command(bundle_app)
 
 _CANDIDATE_EVIDENCE_DAYS = 90
 
@@ -245,12 +246,16 @@ def _temporal_column_missing(table: str, *, operation: str) -> ConflictError:
 
 
 @schema_app.command("refresh")
-def schema_refresh(ctx: typer.Context) -> None:
+@click.pass_context
+def schema_refresh(
+    ctx: click.Context,
+) -> None:
     """Refresh the tenant's table/column cache with one Advanced Hunting call.
 
     Run this first on a new workstation or tenant, and again when schema output
     reports a stale cache. Next: `xdr schema tables`.
 
+    \b
     Example: `xdr schema refresh`
     """
     asyncio.run(_schema_refresh(ctx.obj))
@@ -259,8 +264,10 @@ def schema_refresh(ctx: typer.Context) -> None:
 async def _schema_refresh(ctx: AppContext, *, on_result=None) -> None:
     query = load_query("sys_schema_probe")
     client = create_client(
-        ctx.config, timeout=ctx.config.api_timeout,
-        auth_factory=AuthManager, client_factory=XDRClient,
+        ctx.config,
+        timeout=ctx.config.api_timeout,
+        auth_factory=AuthManager,
+        client_factory=XDRClient,
     )
     try:
         result = await run_query(client, query)
@@ -363,16 +370,17 @@ async def _schema_refresh(ctx: AppContext, *, on_result=None) -> None:
 
 
 @schema_app.command("tables")
+@click.option(
+    "--search", default=None, help="Case-insensitive table-name filter, for example `Device`."
+)
+@click.pass_context
 def schema_tables(
-    ctx: typer.Context,
-    search: str | None = typer.Option(
-        None,
-        "--search",
-        help="Case-insensitive table-name filter, for example `Device`.",
-    ),
+    ctx: click.Context,
+    search: str | None,
 ) -> None:
     """List valid tenant table names from the local cache; never calls the tenant.
 
+    \b
     Examples: `xdr schema tables`; `xdr schema tables --search sign`
 
     Use a returned table with `xdr schema show TABLE` or as either argument to
@@ -408,19 +416,24 @@ def schema_tables(
 
 
 @schema_app.command("show")
+@click.argument(
+    "table",
+    type=str,
+    required=True,
+    help="Exact table from `xdr schema tables`, for example `DeviceNetworkEvents`.",
+)
+@click.option(
+    "--search", default=None, help="Case-insensitive column-name filter, for example `Account`."
+)
+@click.pass_context
 def schema_show(
-    ctx: typer.Context,
-    table: str = typer.Argument(
-        help="Exact table from `xdr schema tables`, for example `DeviceNetworkEvents`."
-    ),
-    search: str | None = typer.Option(
-        None,
-        "--search",
-        help="Case-insensitive column-name filter, for example `Account`.",
-    ),
+    ctx: click.Context,
+    table: str,
+    search: str | None,
 ) -> None:
     """List valid columns for one cached tenant table; never calls the tenant.
 
+    \b
     Examples: `xdr schema show DeviceNetworkEvents`; `xdr schema show
     EntraIdSignInEvents --search Account`
 
@@ -567,19 +580,23 @@ def _compose_effective(
             # Find a qualifying pair, rather than greedily letting a new
             # overlapping superset displace existing independent evidence.
             eligible = sorted(
-                ((item, cohort) for item, cohort in items
-                 if len(cohort) >= 3 and item.matched_seeds >= 2),
+                (
+                    (item, cohort)
+                    for item, cohort in items
+                    if len(cohort) >= 3 and item.matched_seeds >= 2
+                ),
                 key=lambda pair: pair[0].observation_id,
             )
             found = False
             for index, (left, left_cohort) in enumerate(eligible):
-                for right, right_cohort in eligible[index + 1:]:
+                for right, right_cohort in eligible[index + 1 :]:
                     if (
                         not left_cohort.isdisjoint(right_cohort)
                         or left.source_artifact_run_id == right.source_artifact_run_id
                         or left.target_artifact_run_id == right.target_artifact_run_id
                         or (left.matched_seeds + right.matched_seeds)
-                        / (left.distinct_seeds + right.distinct_seeds) < 0.8
+                        / (left.distinct_seeds + right.distinct_seeds)
+                        < 0.8
                     ):
                         continue
                     digests = {
@@ -669,21 +686,35 @@ def _rendered_schema_document(document: str, graph: Graph, *, allow_initialize: 
 
 
 @schema_app.command("validate-core")
+@click.option(
+    "--document",
+    type=click.Path(
+        path_type=Path,
+        exists=False,
+        file_okay=True,
+        dir_okay=True,
+        writable=False,
+        readable=True,
+        resolve_path=False,
+        allow_dash=False,
+    ),
+    default=None,
+    help="Also check a generated reference, normally `docs/schema_pivots.md`.",
+)
+@click.option(
+    "--update-document",
+    is_flag=True,
+    help="Atomically refresh the generated block in `--document`.",
+)
+@click.pass_context
 def schema_validate_core(
-    ctx: typer.Context,
-    document: Path | None = typer.Option(
-        None,
-        "--document",
-        help="Also check a generated reference, normally `docs/schema_pivots.md`.",
-    ),
-    update_document: bool = typer.Option(
-        False,
-        "--update-document",
-        help="Atomically refresh the generated block in `--document`.",
-    ),
+    ctx: click.Context,
+    document: Path | None,
+    update_document: bool,
 ) -> None:
     """Validate the packaged graph/profile and optionally its generated docs.
 
+    \b
     Examples: `xdr schema validate-core`; `xdr schema validate-core --document
     docs/schema_pivots.md`; `xdr schema validate-core --document
     docs/schema_pivots.md --update-document`
@@ -817,9 +848,13 @@ def schema_validate_core(
 
 
 @schema_app.command("status")
-def schema_status(ctx: typer.Context) -> None:
+@click.pass_context
+def schema_status(
+    ctx: click.Context,
+) -> None:
     """Inspect physical cache, overlay compatibility, and collection state locally.
 
+    \b
     Example: `xdr schema status`
 
     This never authenticates or runs KQL. It reports physical-cache state,
@@ -856,9 +891,13 @@ def schema_status(ctx: typer.Context) -> None:
 
 
 @schema_app.command("diagnostics")
-def schema_diagnostics(ctx: typer.Context) -> None:
+@click.pass_context
+def schema_diagnostics(
+    ctx: click.Context,
+) -> None:
     """Show build identity, capabilities, and cache-only automation state.
 
+    \b
     Example: `xdr schema diagnostics`
 
     Reports the package version, source commit when detectable, registered
@@ -894,33 +933,38 @@ def schema_diagnostics(ctx: typer.Context) -> None:
 
 
 @schema_app.command("repair-overlay")
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help=(
+        "Confirm selecting a valid generation and, when required, publishing a "
+        "compatible migrated replacement."
+    ),
+)
+@click.option(
+    "--all-local",
+    is_flag=True,
+    help="Repair every local tenant overlay, including orphaned generations.",
+)
+@click.option(
+    "--reset-empty",
+    is_flag=True,
+    help=(
+        "If no generation is valid, preserve all files in quarantine and "
+        "activate an empty verified overlay."
+    ),
+)
+@click.pass_context
 def schema_repair_overlay(
-    ctx: typer.Context,
-    yes: bool = typer.Option(
-        False,
-        "--yes",
-        "-y",
-        help=(
-            "Confirm selecting a valid generation and, when required, publishing "
-            "a compatible migrated replacement."
-        ),
-    ),
-    all_local: bool = typer.Option(
-        False,
-        "--all-local",
-        help="Repair every local tenant overlay, including orphaned generations.",
-    ),
-    reset_empty: bool = typer.Option(
-        False,
-        "--reset-empty",
-        help=(
-            "If no generation is valid, preserve all files in quarantine and "
-            "activate an empty verified overlay."
-        ),
-    ),
+    ctx: click.Context,
+    yes: bool,
+    all_local: bool,
+    reset_empty: bool,
 ) -> None:
     """Repair integrity and migrate compatible legacy semantic-overlay state.
 
+    \b
     Examples: `xdr schema repair-overlay --yes`; `xdr schema repair-overlay
     --all-local --yes`; `xdr schema repair-overlay --reset-empty --yes`
 
@@ -987,17 +1031,20 @@ def schema_repair_overlay(
 
 
 @schema_app.command("migrate-cache")
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Confirm locally binding the exact bytes of a validated legacy cache.",
+)
+@click.pass_context
 def schema_migrate_cache(
-    ctx: typer.Context,
-    yes: bool = typer.Option(
-        False,
-        "--yes",
-        "-y",
-        help="Confirm locally binding the exact bytes of a validated legacy cache.",
-    ),
+    ctx: click.Context,
+    yes: bool,
 ) -> None:
     """Content-bind a valid pre-digest physical schema cache; cache-only.
 
+    \b
     Example: `xdr schema migrate-cache --yes`
 
     Run `xdr schema status` first. The command validates generation and tenant
@@ -1089,9 +1136,28 @@ def _emit_bundle_result(app_ctx: AppContext, row: dict[str, Any], command: str) 
 
 
 @bundle_app.command("inspect")
-def schema_bundle_inspect(ctx: typer.Context, archive: Path) -> None:
+@click.argument(
+    "archive",
+    type=click.Path(
+        path_type=Path,
+        exists=False,
+        file_okay=True,
+        dir_okay=True,
+        writable=False,
+        readable=True,
+        resolve_path=False,
+        allow_dash=False,
+    ),
+    required=True,
+)
+@click.pass_context
+def schema_bundle_inspect(
+    ctx: click.Context,
+    archive: Path,
+) -> None:
     """Integrity-check and summarize a bundle without activation or auth.
 
+    \b
     Example: `xdr schema bundle inspect /mnt/transfer/schema-state.tar.gz`
 
     Streams and validates the exact portable-member allowlist, 256 MiB
@@ -1129,25 +1195,45 @@ def schema_bundle_inspect(ctx: typer.Context, archive: Path) -> None:
 
 
 @bundle_app.command("export")
+@click.argument(
+    "output",
+    type=click.Path(
+        path_type=Path,
+        exists=False,
+        file_okay=True,
+        dir_okay=True,
+        writable=False,
+        readable=True,
+        resolve_path=False,
+        allow_dash=False,
+    ),
+    required=True,
+)
+@click.option(
+    "--include-evidence/--no-include-evidence",
+    default=True,
+    is_flag=True,
+    show_default=True,
+    help=(
+        "Include result pairs, candidate reviews, and proposals referenced by "
+        "active semantic evidence (default: enabled and required when present)."
+    ),
+)
+@click.option(
+    "--include-sessions",
+    is_flag=True,
+    help="Include session JSONL and sequence sidecars, but never active markers.",
+)
+@click.pass_context
 def schema_bundle_export(
-    ctx: typer.Context,
+    ctx: click.Context,
     output: Path,
-    include_evidence: bool = typer.Option(
-        True,
-        "--include-evidence/--no-include-evidence",
-        help=(
-            "Include result pairs, candidate reviews, and proposals referenced by "
-            "active semantic evidence (default: enabled and required when present)."
-        ),
-    ),
-    include_sessions: bool = typer.Option(
-        False,
-        "--include-sessions",
-        help="Include session JSONL and sequence sidecars, but never active markers.",
-    ),
+    include_evidence: bool,
+    include_sessions: bool,
 ) -> None:
     """Export current same-tenant schema state as a portable tar.gz bundle.
 
+    \b
     Examples: `xdr schema bundle export /mnt/transfer/schema-state.tar.gz`;
     `xdr schema bundle export schema-state.tar.gz --include-sessions`
 
@@ -1198,18 +1284,35 @@ def schema_bundle_export(
 
 
 @bundle_app.command("import")
-def schema_bundle_import(
-    ctx: typer.Context,
-    archive: Path,
-    yes: bool = typer.Option(
-        False,
-        "--yes",
-        "-y",
-        help=("Confirm import of an integrity-checked same-tenant bundle from a trusted source."),
+@click.argument(
+    "archive",
+    type=click.Path(
+        path_type=Path,
+        exists=False,
+        file_okay=True,
+        dir_okay=True,
+        writable=False,
+        readable=True,
+        resolve_path=False,
+        allow_dash=False,
     ),
+    required=True,
+)
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help=("Confirm import of an integrity-checked same-tenant bundle from a trusted source."),
+)
+@click.pass_context
+def schema_bundle_import(
+    ctx: click.Context,
+    archive: Path,
+    yes: bool,
 ) -> None:
     """Import a trusted, integrity-checked same-tenant bundle; cache-only.
 
+    \b
     Example: `xdr schema bundle import /mnt/transfer/schema-state.tar.gz --yes`
 
     The configured tenant fingerprint must exactly match. Import allowlists
@@ -1261,9 +1364,16 @@ def schema_bundle_import(
 
 
 def collect_saved_results(
-    app_ctx: AppContext, *, plan_only=False, local_only=False,
-    lookback="30d", samples=5, max_queries=20, batch_size=20,
-    timeout=120, on_result=None,
+    app_ctx: AppContext,
+    *,
+    plan_only=False,
+    local_only=False,
+    lookback="30d",
+    samples=5,
+    max_queries=20,
+    batch_size=20,
+    timeout=120,
+    on_result=None,
 ) -> None:
     """Shared foreground collection for the CLI and explicit session end."""
     from xdr_cli.schema_graph.local_collection import collect_local
@@ -1277,55 +1387,87 @@ def collect_saved_results(
         schema_rows, _metadata = _load_cache(app_ctx)
     except LocalNotFoundError:
         schema_rows = []
-    asyncio.run(collect_local(
-        app_ctx, plan_only=plan_only, local_only=local_only,
-        lookback=lookback, samples=samples, max_queries=max_queries,
-        batch_size=batch_size,
-        timeout=timeout, schema_rows=schema_rows, canonical=_semantic_graph(), on_result=on_result,
-    ))
+    asyncio.run(
+        collect_local(
+            app_ctx,
+            plan_only=plan_only,
+            local_only=local_only,
+            lookback=lookback,
+            samples=samples,
+            max_queries=max_queries,
+            batch_size=batch_size,
+            timeout=timeout,
+            schema_rows=schema_rows,
+            canonical=_semantic_graph(),
+            on_result=on_result,
+        )
+    )
 
 
 @schema_app.command("collect")
+@click.option(
+    "--local-only",
+    is_flag=True,
+    help=(
+        "Mine saved results and publish local evidence without any tenant "
+        "query. Cannot be combined with --explore."
+    ),
+)
+@click.option(
+    "--explore", is_flag=True, help="Find saved identifiers in unknown fields and nested paths."
+)
+@click.option(
+    "--source",
+    "sources",
+    default=None,
+    multiple=True,
+    callback=optional_multiple,
+    help="Optionally restrict saved source locators; no starter matrix.",
+)
+@click.option("--lookback", default="30d", show_default=True)
+@click.option(
+    "--samples",
+    type=click.IntRange(min=1, max=100),
+    default=5,
+    show_default=True,
+    help="Samples per local-overlap validation; does not cap active discovery.",
+)
+@click.option("--batch-size", type=click.IntRange(min=1, max=50), default=20, show_default=True)
+@click.option(
+    "--seed-batch-size", type=click.IntRange(min=1, max=100), default=20, show_default=True
+)
+@click.option("--max-json-depth", type=click.IntRange(min=0, max=12), default=6, show_default=True)
+@click.option(
+    "--discovery-row-limit", type=click.IntRange(min=1, max=10000), default=2000, show_default=True
+)
+@click.option(
+    "--max-queries-per-page",
+    type=click.IntRange(min=1, max=1000),
+    default=20,
+    show_default=True,
+    help="Total query budget for this invocation; rerun to continue.",
+)
+@click.option("--timeout", type=click.IntRange(min=1, max=3600), default=120, show_default=True)
+@click.option("--plan-only", is_flag=True)
+@click.pass_context
 def schema_collect(
-    ctx: typer.Context,
-    local_only: bool = typer.Option(
-        False,
-        "--local-only",
-        help=(
-            "Mine saved results and publish local evidence without any tenant "
-            "query. Cannot be combined with --explore."
-        ),
-    ),
-    explore: bool = typer.Option(
-        False, "--explore", help="Find saved identifiers in unknown fields and nested paths."
-    ),
-    sources: list[str] | None = typer.Option(
-        None, "--source", help="Optionally restrict saved source locators; no starter matrix."
-    ),
-    lookback: str = typer.Option("30d", "--lookback"),
-    samples: int = typer.Option(
-        5,
-        "--samples",
-        min=1,
-        max=100,
-        help="Samples per local-overlap validation; does not cap active discovery.",
-    ),
-    batch_size: int = typer.Option(20, "--batch-size", min=1, max=50),
-    seed_batch_size: int = typer.Option(20, "--seed-batch-size", min=1, max=100),
-    max_json_depth: int = typer.Option(6, "--max-json-depth", min=0, max=12),
-    discovery_row_limit: int = typer.Option(2000, "--discovery-row-limit", min=1, max=10000),
-    max_queries_per_page: int = typer.Option(
-        20,
-        "--max-queries-per-page",
-        min=1,
-        max=1000,
-        help="Total query budget for this invocation; rerun to continue.",
-    ),
-    timeout: int = typer.Option(120, "--timeout", min=1, max=3600),
-    plan_only: bool = typer.Option(False, "--plan-only"),
+    ctx: click.Context,
+    local_only: bool,
+    explore: bool,
+    sources: list[str] | None,
+    lookback: str,
+    samples: int,
+    batch_size: int,
+    seed_batch_size: int,
+    max_json_depth: int,
+    discovery_row_limit: int,
+    max_queries_per_page: int,
+    timeout: int,
+    plan_only: bool,
 ) -> None:
     """Mine saved results, or actively discover new locations of their identifiers.
 
+    \b
     xdr schema collect --plan-only previews local-overlap validation.
     xdr schema collect --explore --plan-only previews identifier-led discovery.
     xdr schema collect --explore --source DeviceNetworkEvents.DeviceId --lookback 7d
@@ -1381,40 +1523,63 @@ def schema_collect(
 
 
 @schema_app.command("export-opengraph")
+@click.argument(
+    "output",
+    type=click.Path(
+        path_type=Path,
+        exists=False,
+        file_okay=True,
+        dir_okay=True,
+        writable=False,
+        readable=True,
+        resolve_path=False,
+        allow_dash=False,
+    ),
+    required=True,
+    help="Destination `.json` file, for example `schema-graph.opengraph.json`.",
+)
+@click.option(
+    "--include-tenant",
+    is_flag=True,
+    help=("Include this tenant's value-free provisional fields and observed/validated pivots."),
+)
+@click.option(
+    "--include-candidates",
+    is_flag=True,
+    help="Include unreviewed candidate relationships in the visualization.",
+)
+@click.option(
+    "--custom-nodes",
+    type=click.Path(
+        path_type=Path,
+        exists=False,
+        file_okay=True,
+        dir_okay=True,
+        writable=False,
+        readable=True,
+        resolve_path=False,
+        allow_dash=False,
+    ),
+    default=None,
+    help=(
+        "Also write BloodHound node styling (icons and colors) to this `.json` "
+        "file, as the request body for BloodHound's `POST "
+        "/api/v2/custom-nodes`."
+    ),
+)
+@click.option("--force", is_flag=True, help="Replace existing destination files.")
+@click.pass_context
 def schema_export_opengraph(
-    ctx: typer.Context,
-    output: Path = typer.Argument(
-        help="Destination `.json` file, for example `schema-graph.opengraph.json`."
-    ),
-    include_tenant: bool = typer.Option(
-        False,
-        "--include-tenant",
-        help=(
-            "Include this tenant's value-free provisional fields and "
-            "observed/validated pivots."
-        ),
-    ),
-    include_candidates: bool = typer.Option(
-        False,
-        "--include-candidates",
-        help="Include unreviewed candidate relationships in the visualization.",
-    ),
-    custom_nodes: Path | None = typer.Option(
-        None,
-        "--custom-nodes",
-        help=(
-            "Also write BloodHound node styling (icons and colors) to this `.json` "
-            "file, as the request body for BloodHound's `POST /api/v2/custom-nodes`."
-        ),
-    ),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        help="Replace existing destination files.",
-    ),
+    ctx: click.Context,
+    output: Path,
+    include_tenant: bool,
+    include_candidates: bool,
+    custom_nodes: Path | None,
+    force: bool,
 ) -> None:
     """Export value-free schema structure as BloodHound OpenGraph JSON.
 
+    \b
     Examples: `xdr schema export-opengraph schema-graph.opengraph.json`; `xdr
     schema export-opengraph current-schema.opengraph.json --include-tenant
     --include-candidates`
@@ -1703,7 +1868,8 @@ def _verified_schema_artifact(
     run_id: str | None, *, tenant_id: str | None = None
 ) -> tuple[dict, list[dict]] | None:
     return cached_evidence(
-        "schema-artifact", (str(get_config_home()), run_id, tenant_id),
+        "schema-artifact",
+        (str(get_config_home()), run_id, tenant_id),
         lambda: _read_verified_schema_artifact(run_id, tenant_id=tenant_id),
     )
 
@@ -1779,8 +1945,10 @@ def _observation_artifacts_match(
 
     if observation.extra.get("evidence_stage") == "identifier-search":
         from xdr_cli.schema_graph.discovery import verify_search_observation
+
         if graph is None:
             from xdr_cli.schema_graph.effective import merge_graphs
+
             graph = merge_graphs(_semantic_graph(), load_tenant_overlay(tenant_id).graph)
         return verify_search_observation(graph, observation, tenant_id) is not None
 
@@ -1812,16 +1980,15 @@ def _observation_artifacts_match(
         (
             source_stage == "source-sample"
             and any(
-                predicate in str(source_meta.get("query", ""))
-                for predicate in bounded_predicates
+                predicate in str(source_meta.get("query", "")) for predicate in bounded_predicates
             )
         )
-            or (
-                source_stage == "source-explicit"
-                and source_meta.get("lookback") == observation.lookback
-                and source_meta.get("seed_source") in {"file", "stdin"}
-            )
+        or (
+            source_stage == "source-explicit"
+            and source_meta.get("lookback") == observation.lookback
+            and source_meta.get("seed_source") in {"file", "stdin"}
         )
+    )
     if (
         source_stage not in {"source-sample", "source-explicit"}
         or source_meta.get("locator") != str(source_locator)
@@ -1838,8 +2005,7 @@ def _observation_artifacts_match(
         or not bounded_predicates
         or not source_window_bound
         or not any(
-            predicate in str(target_meta.get("query", ""))
-            for predicate in bounded_predicates
+            predicate in str(target_meta.get("query", "")) for predicate in bounded_predicates
         )
     ):
         return False
@@ -1897,6 +2063,7 @@ def _eligible_observation_evidence(
 
     if observation.extra.get("evidence_stage") == "identifier-search":
         from xdr_cli.schema_graph.discovery import verify_search_observation
+
         return verify_search_observation(graph, observation, tenant_id)
 
     if observation.extra.get("evidence_stage") in {"local-overlap", "local-validation"}:
@@ -1906,8 +2073,12 @@ def _eligible_observation_evidence(
 
     observed_at = _observation_timestamp(observation.observed_at)
     cutoff = datetime.now(UTC) - timedelta(days=_CANDIDATE_EVIDENCE_DAYS)
-    if (observed_at is None or observed_at < cutoff or observed_at > datetime.now(UTC)
-            or observation.lookback is None):
+    if (
+        observed_at is None
+        or observed_at < cutoff
+        or observed_at > datetime.now(UTC)
+        or observation.lookback is None
+    ):
         return None
     try:
         source = graph.interpretations[observation.source_interpretation]
@@ -2015,8 +2186,7 @@ def _candidate_review_artifacts(
             or not isinstance(target_locator, str)
             or not bounded_predicates
             or not any(
-                predicate in str(metadata.get("query", ""))
-                for predicate in bounded_predicates
+                predicate in str(metadata.get("query", "")) for predicate in bounded_predicates
             )
         ):
             continue
@@ -2114,120 +2284,163 @@ def _narrow_probe_retry_command(
 
 
 @schema_app.command("observe")
-def schema_observe(
-    ctx: typer.Context,
-    locator: str = typer.Argument(
-        help=(
-            "Reviewed source locator, such as `DeviceNetworkEvents.DeviceId`; "
-            "discover fields with `xdr schema show TABLE`."
-        )
+@click.argument(
+    "locator",
+    type=str,
+    required=True,
+    help=(
+        "Reviewed source locator, such as `DeviceNetworkEvents.DeviceId`; discover "
+        "fields with `xdr schema show TABLE`."
     ),
-    lookback: str = typer.Option(
-        "30d",
-        "--lookback",
-        help="Source/target time window, for example `7d`, `24h`, or `30d`.",
-    ),
-    samples: int = typer.Option(
-        5,
-        "--samples",
-        min=1,
-        max=100,
-        help="Maximum distinct valid source values to test (1-100).",
-    ),
-    batch_size: int = typer.Option(
-        20,
-        "--batch-size",
-        min=1,
-        max=50,
-        help="Target locators per Advanced Hunting batch (1-50).",
-    ),
-    max_targets: int = typer.Option(
-        100,
-        "--max-targets",
-        min=1,
-        max=10_000,
-        help="Total target cap for a safe routine run (1-10000; default 100).",
-    ),
-    exhaustive: bool = typer.Option(
-        False,
-        "--exhaustive",
-        help="Probe every eligible locator; review `--plan-only` first.",
-    ),
-    target_tables: list[str] | None = typer.Option(
-        None,
-        "--target-table",
-        help="Probe only this cached target table; repeat for more tables.",
-    ),
-    exclude_tables: list[str] | None = typer.Option(
-        None,
-        "--exclude-table",
-        help="Exclude this cached target table and report the coverage gap; repeatable.",
-    ),
-    timeout: int | None = typer.Option(
-        None,
-        "--timeout",
-        min=1,
-        max=3_600,
-        help="Per-call HTTP timeout in seconds (1-3600); overrides config.api_timeout.",
-    ),
-    private_debug_output: Path | None = typer.Option(
-        None,
-        "--private-debug-output",
+)
+@click.option(
+    "--lookback",
+    default="30d",
+    show_default=True,
+    help="Source/target time window, for example `7d`, `24h`, or `30d`.",
+)
+@click.option(
+    "--samples",
+    type=click.IntRange(min=1, max=100),
+    default=5,
+    show_default=True,
+    help="Maximum distinct valid source values to test (1-100).",
+)
+@click.option(
+    "--batch-size",
+    type=click.IntRange(min=1, max=50),
+    default=20,
+    show_default=True,
+    help="Target locators per Advanced Hunting batch (1-50).",
+)
+@click.option(
+    "--max-targets",
+    type=click.IntRange(min=1, max=10000),
+    default=100,
+    show_default=True,
+    help="Total target cap for a safe routine run (1-10000; default 100).",
+)
+@click.option(
+    "--exhaustive", is_flag=True, help="Probe every eligible locator; review `--plan-only` first."
+)
+@click.option(
+    "--target-table",
+    "target_tables",
+    default=None,
+    multiple=True,
+    callback=optional_multiple,
+    help="Probe only this cached target table; repeat for more tables.",
+)
+@click.option(
+    "--exclude-table",
+    "exclude_tables",
+    default=None,
+    multiple=True,
+    callback=optional_multiple,
+    help=("Exclude this cached target table and report the coverage gap; repeatable."),
+)
+@click.option(
+    "--timeout",
+    type=click.IntRange(min=1, max=3600),
+    default=None,
+    help=("Per-call HTTP timeout in seconds (1-3600); overrides config.api_timeout."),
+)
+@click.option(
+    "--private-debug-output",
+    type=click.Path(
+        path_type=Path,
+        exists=False,
+        file_okay=True,
         dir_okay=False,
-        help="Write sensitive seed/query diagnostics; never commit or share publicly.",
+        writable=False,
+        readable=True,
+        resolve_path=False,
+        allow_dash=False,
     ),
-    plan_only: bool = typer.Option(
-        False,
-        "--plan-only",
-        help="Show the deterministic target plan without authentication or KQL execution.",
-    ),
-    from_file: Path | None = typer.Option(
-        None,
-        "--from-file",
+    default=None,
+    help=("Write sensitive seed/query diagnostics; never commit or share publicly."),
+)
+@click.option(
+    "--plan-only",
+    is_flag=True,
+    help=("Show the deterministic target plan without authentication or KQL execution."),
+)
+@click.option(
+    "--from-file",
+    type=click.Path(
+        path_type=Path,
         exists=True,
+        file_okay=True,
         dir_okay=False,
-        help=(
-            "Read explicit seed values, one per line; save them in a private, "
-            "tenant-bound evidence artifact instead of sampling the source."
-        ),
+        writable=False,
+        readable=True,
+        resolve_path=False,
+        allow_dash=False,
     ),
-    from_stdin: bool = typer.Option(
-        False,
-        "--from-stdin",
-        help=(
-            "Read explicit seed values from stdin and save them as private, "
-            "tenant-bound source evidence."
-        ),
+    default=None,
+    help=(
+        "Read explicit seed values, one per line; save them in a private, "
+        "tenant-bound evidence artifact instead of sampling the source."
     ),
-    from_run: str | None = typer.Option(
-        None,
-        "--from-run",
-        help="Reuse the exact tenant-bound source-sample artifact from a prior page.",
+)
+@click.option(
+    "--from-stdin",
+    is_flag=True,
+    help=(
+        "Read explicit seed values from stdin and save them as private, "
+        "tenant-bound source evidence."
     ),
-    start_query: int = typer.Option(
-        0,
-        "--start-query",
-        min=0,
-        help="Zero-based table-query cursor from a prior receipt (default 0).",
-    ),
-    max_queries: int | None = typer.Option(
-        None,
-        "--max-queries",
-        min=1,
-        max=1_000,
-        help="Maximum target table queries to execute in this invocation (1-1000).",
-    ),
-    schema_generation: str | None = typer.Option(
-        None,
-        "--schema-generation",
-        help="Require the pinned physical-cache generation from a prior page.",
-    ),
+)
+@click.option(
+    "--from-run",
+    default=None,
+    help="Reuse the exact tenant-bound source-sample artifact from a prior page.",
+)
+@click.option(
+    "--start-query",
+    type=click.IntRange(min=0, max=None),
+    default=0,
+    help="Zero-based table-query cursor from a prior receipt (default 0).",
+)
+@click.option(
+    "--max-queries",
+    type=click.IntRange(min=1, max=1000),
+    default=None,
+    help="Maximum target table queries to execute in this invocation (1-1000).",
+)
+@click.option(
+    "--schema-generation",
+    default=None,
+    help="Require the pinned physical-cache generation from a prior page.",
+)
+@click.pass_context
+def schema_observe(
+    ctx: click.Context,
+    locator: str,
+    lookback: str,
+    samples: int,
+    batch_size: int,
+    max_targets: int,
+    exhaustive: bool,
+    target_tables: list[str] | None,
+    exclude_tables: list[str] | None,
+    timeout: int | None,
+    private_debug_output: Path | None,
+    plan_only: bool,
+    from_file: Path | None,
+    from_stdin: bool,
+    from_run: str | None,
+    start_query: int,
+    max_queries: int | None,
+    schema_generation: str | None,
 ) -> None:
     """Probe where sampled identifiers recur and save only value-free observations.
 
+    \b
     Inspect the deterministic scope without tenant access:
     `xdr schema observe DeviceNetworkEvents.DeviceId --plan-only`
 
+    \b
     Run a bounded smoke test:
     `xdr schema observe DeviceNetworkEvents.DeviceId --lookback 30d --samples 5
     --max-targets 40`
@@ -2249,7 +2462,7 @@ def schema_observe(
     can establish an observed pivot but do not satisfy automatic validation.
     """
     if sum((from_file is not None, from_stdin, from_run is not None)) > 1:
-        raise typer.BadParameter("choose only one of --from-file, --from-stdin, or --from-run")
+        raise click.BadParameter("choose only one of --from-file, --from-stdin, or --from-run")
     try:
         validate_lookback(lookback)
     except GraphValidationError as exc:
@@ -2487,8 +2700,10 @@ async def _schema_observe(
         return
     _initialize_private_probe_debug(private_debug_output)
     client = create_client(
-        ctx.config, timeout=timeout if timeout is not None else ctx.config.api_timeout,
-        auth_factory=AuthManager, client_factory=XDRClient,
+        ctx.config,
+        timeout=timeout if timeout is not None else ctx.config.api_timeout,
+        auth_factory=AuthManager,
+        client_factory=XDRClient,
     )
     stage_run_ids: list[str] = []
     source_artifact_run_id: str | None = None
@@ -3051,34 +3266,42 @@ async def _schema_observe(
 
 
 @schema_app.command("candidate-review")
+@click.argument(
+    "relationship_id",
+    type=str,
+    required=True,
+    help="Discovery ID from `xdr schema discoveries --include-evidence-refs`.",
+)
+@click.option(
+    "--lookback", default=None, help="Override the observation window, for example `7d` or `30d`."
+)
+@click.option(
+    "--limit",
+    type=click.IntRange(min=1, max=100),
+    default=20,
+    show_default=True,
+    help="Maximum private target rows to retain (1-100; default 20).",
+)
+@click.option(
+    "--timeout",
+    type=click.IntRange(min=1, max=None),
+    default=None,
+    help="HTTP timeout in seconds; overrides config.api_timeout.",
+)
+@click.pass_context
 def schema_candidate_review(
-    ctx: typer.Context,
-    relationship_id: str = typer.Argument(
-        help="Discovery ID from `xdr schema discoveries --include-evidence-refs`."
-    ),
-    lookback: str | None = typer.Option(
-        None,
-        "--lookback",
-        help="Override the observation window, for example `7d` or `30d`.",
-    ),
-    limit: int = typer.Option(
-        20,
-        "--limit",
-        min=1,
-        max=100,
-        help="Maximum private target rows to retain (1-100; default 20).",
-    ),
-    timeout: int | None = typer.Option(
-        None,
-        "--timeout",
-        min=1,
-        help="HTTP timeout in seconds; overrides config.api_timeout.",
-    ),
+    ctx: click.Context,
+    relationship_id: str,
+    lookback: str | None,
+    limit: int,
+    timeout: int | None,
 ) -> None:
     """Optionally collect bounded private context for one empirical pivot.
 
+    \b
     Example: `xdr schema candidate-review rel:0123456789abcdef01234567`
 
+    \b
     Get a real relationship ID with `xdr schema discoveries
     --include-evidence-refs`. This selects the newest fully verified retained
     source/target evidence pair, falling back past corrupt newer bundles, runs
@@ -3186,10 +3409,12 @@ async def _schema_candidate_review(
     source_locator = effective.graph.fields[source.field_id].locator
     target_locator = effective.graph.fields[target.field_id].locator
     local_evidence = observation.extra.get("evidence_stage") in {
-        "local-overlap", "local-validation"
+        "local-overlap",
+        "local-validation",
     }
     if observation.extra.get("evidence_stage") == "identifier-search":
         from xdr_cli.schema_graph.discovery import verify_search_observation
+
         evidence = verify_search_observation(effective.graph, observation, ctx.config.tenant_id)
         if evidence is None:
             raise ArtifactError("Discovery source evidence is no longer valid.")
@@ -3200,8 +3425,9 @@ async def _schema_candidate_review(
 
         seeds = pair_values(
             LocalPair(**observation.extra["local_pair"]),
-            get_config_home() / "results", ctx.config.tenant_id,
-        )[:observation.distinct_seeds]
+            get_config_home() / "results",
+            ctx.config.tenant_id,
+        )[: observation.distinct_seeds]
         rejected_seed_count = 0
     else:
         source_artifact = load_artifact_input(
@@ -3228,8 +3454,11 @@ async def _schema_candidate_review(
                 help_command="xdr schema observe --help",
             )
         seeds, rejected_seed_count = _ordered_normalized_values(
-            [row.get("Value") for row in source_artifact.rows
-             if row.get("Value") not in (None, "")],
+            [
+                row.get("Value")
+                for row in source_artifact.rows
+                if row.get("Value") not in (None, "")
+            ],
             target.normalizer,
             limit=observation.distinct_seeds,
         )
@@ -3277,8 +3506,10 @@ async def _schema_candidate_review(
             help_command="xdr schema candidate-review --help",
         ) from exc
     client = create_client(
-        ctx.config, timeout=timeout if timeout is not None else ctx.config.api_timeout,
-        auth_factory=AuthManager, client_factory=XDRClient,
+        ctx.config,
+        timeout=timeout if timeout is not None else ctx.config.api_timeout,
+        auth_factory=AuthManager,
+        client_factory=XDRClient,
     )
     try:
         result = await run_query(client, compiled.kql)
@@ -3315,9 +3546,7 @@ async def _schema_candidate_review(
             "seed_count": len(seeds),
             "rejected_retained_seed_count": rejected_seed_count,
             "next_command": "RESULTS_HEAD_COMMAND_IN_METADATA",
-            "warning": (
-                "optional context does not change automatic evidence state or join safety"
-            ),
+            "warning": ("optional context does not change automatic evidence state or join safety"),
         },
         preview_rows=0,
         tenant_id=ctx.config.tenant_id,
@@ -3376,9 +3605,7 @@ def _candidate_report(
     for relationship_id in sorted(grouped):
         observations = grouped[relationship_id]
         positive_observations = [
-            item
-            for item in observations
-            if item.outcome == "matched" and item.matched_seeds > 0
+            item for item in observations if item.outcome == "matched" and item.matched_seeds > 0
         ]
         if not positive_observations:
             # Negative evidence is retained for future comparisons, but by
@@ -3391,9 +3618,7 @@ def _candidate_report(
             RelationshipStatus.VALIDATED,
         }
         if relationship is None:
-            relationship = empirical_relationship_from_observations(
-                tuple(positive_observations)
-            )
+            relationship = empirical_relationship_from_observations(tuple(positive_observations))
         source = effective.graph.interpretations[relationship.source]
         target = effective.graph.interpretations[relationship.target]
         source_locator = effective.graph.fields[source.field_id].locator
@@ -3483,15 +3708,13 @@ def _candidate_report(
         if len(evidence_pairs) < 2:
             blocking_reasons.append("needs-at-least-two-independent-evidence-bundles")
         distinct_cohorts = set(validation_cohorts)
-        distinct_identifiers = {
-            value for cohort in distinct_cohorts for value in cohort
-        }
+        distinct_identifiers = {value for cohort in distinct_cohorts for value in cohort}
         if len(distinct_cohorts) < 2:
             blocking_reasons.append("needs-at-least-two-distinct-sampled-seed-cohorts")
         if len(distinct_cohorts) >= 2 and not any(
             left.isdisjoint(right)
             for index, left in enumerate(validation_cohorts)
-            for right in validation_cohorts[index + 1:]
+            for right in validation_cohorts[index + 1 :]
         ):
             blocking_reasons.append("sampled-seed-cohorts-overlap")
         if len(distinct_identifiers) < 6:
@@ -3706,16 +3929,19 @@ def _emit_schema_discoveries(app_ctx: AppContext, *, include_evidence_refs: bool
 
 
 @schema_app.command("discoveries")
+@click.option(
+    "--include-evidence-refs",
+    is_flag=True,
+    help="Include private result run IDs needed for local evidence inspection.",
+)
+@click.pass_context
 def schema_discoveries(
-    ctx: typer.Context,
-    include_evidence_refs: bool = typer.Option(
-        False,
-        "--include-evidence-refs",
-        help="Include private result run IDs needed for local evidence inspection.",
-    ),
+    ctx: click.Context,
+    include_evidence_refs: bool,
 ) -> None:
     """Explain observed and validated tenant pivots with value-free evidence.
 
+    \b
     Example: `xdr schema discoveries`
 
     A completed positive probe is an observed investigation pivot, not merely
@@ -3727,67 +3953,96 @@ def schema_discoveries(
 
 
 @schema_app.command("candidate-proposal")
-def schema_candidate_proposal(
-    ctx: typer.Context,
-    relationship_id: str = typer.Argument(
-        metavar="RELATIONSHIP_ID",
-        help="Evidence-ready ID from `xdr schema discoveries`.",
-    ),
-    output: Path = typer.Option(
-        ...,
-        "--output",
+@click.argument(
+    "relationship_id",
+    type=str,
+    required=True,
+    metavar="RELATIONSHIP_ID",
+    help="Evidence-ready ID from `xdr schema discoveries`.",
+)
+@click.option(
+    "--output",
+    type=click.Path(
+        path_type=Path,
+        exists=False,
+        file_okay=True,
         dir_okay=False,
-        help="New review-only JSONL file; an existing path is never overwritten.",
+        writable=False,
+        readable=True,
+        resolve_path=False,
+        allow_dash=False,
     ),
-    relationship: RelationshipKind = typer.Option(
-        ...,
-        "--relationship",
-        help="Human-reviewed relationship claim; never inferred from matches.",
+    required=True,
+    help="New review-only JSONL file; an existing path is never overwritten.",
+)
+@click.option(
+    "--relationship",
+    type=EnumValueChoice(RelationshipKind, case_sensitive=True),
+    required=True,
+    help="Human-reviewed relationship claim; never inferred from matches.",
+)
+@click.option(
+    "--direction",
+    type=EnumValueChoice(Direction, case_sensitive=True),
+    required=True,
+    help="Human-reviewed direction relative to the reported source and target.",
+)
+@click.option(
+    "--cardinality",
+    type=EnumValueChoice(Cardinality, case_sensitive=True),
+    required=True,
+    help="Human-reviewed cardinality; joins cannot use `unknown`.",
+)
+@click.option(
+    "--temporal", required=True, help="Reviewed time guidance as a repository-safe slug/phrase."
+)
+@click.option(
+    "--confidence",
+    type=EnumValueChoice(Confidence, case_sensitive=True),
+    required=True,
+    help="Human-reviewed confidence; empirical counts do not choose it.",
+)
+@click.option(
+    "--provenance",
+    default=None,
+    multiple=True,
+    callback=optional_multiple,
+    help=(
+        "Repository-safe review/contract citation; repeatable, for example "
+        "`contract:microsoft-device-id`."
     ),
-    direction: Direction = typer.Option(
-        ...,
-        "--direction",
-        help="Human-reviewed direction relative to the reported source and target.",
+)
+@click.option(
+    "--confirm-interpretation",
+    "confirmed_interpretations",
+    default=None,
+    multiple=True,
+    callback=optional_multiple,
+    help=(
+        "Exact candidate interpretation ID being added to core; repeat for "
+        "every non-core endpoint shown by `schema discoveries`."
     ),
-    cardinality: Cardinality = typer.Option(
-        ...,
-        "--cardinality",
-        help="Human-reviewed cardinality; joins cannot use `unknown`.",
+)
+@click.option(
+    "--acknowledge-independent-contract",
+    is_flag=True,
+    help=(
+        "Required with contract:/documentation: provenance for join-compatible or bridge claims."
     ),
-    temporal: str = typer.Option(
-        ...,
-        "--temporal",
-        help="Reviewed time guidance as a repository-safe slug/phrase.",
-    ),
-    confidence: Confidence = typer.Option(
-        ...,
-        "--confidence",
-        help="Human-reviewed confidence; empirical counts do not choose it.",
-    ),
-    provenance: list[str] | None = typer.Option(
-        None,
-        "--provenance",
-        help=(
-            "Repository-safe review/contract citation; repeatable, for example "
-            "`contract:microsoft-device-id`."
-        ),
-    ),
-    confirmed_interpretations: list[str] | None = typer.Option(
-        None,
-        "--confirm-interpretation",
-        help=(
-            "Exact candidate interpretation ID being added to core; repeat for "
-            "every non-core endpoint shown by `schema discoveries`."
-        ),
-    ),
-    acknowledge_independent_contract: bool = typer.Option(
-        False,
-        "--acknowledge-independent-contract",
-        help=(
-            "Required with contract:/documentation: provenance for join-compatible "
-            "or bridge claims."
-        ),
-    ),
+)
+@click.pass_context
+def schema_candidate_proposal(
+    ctx: click.Context,
+    relationship_id: str,
+    output: Path,
+    relationship: RelationshipKind,
+    direction: Direction,
+    cardinality: Cardinality,
+    temporal: str,
+    confidence: Confidence,
+    provenance: list[str] | None,
+    confirmed_interpretations: list[str] | None,
+    acknowledge_independent_contract: bool,
 ) -> None:
     """Draft reviewed core JSONL without modifying or promoting the graph.
 
@@ -3795,6 +4050,7 @@ def schema_candidate_proposal(
     inspect the private context. Then copy the exact interpretation IDs and
     supply every semantic decision explicitly.
 
+    \b
     Example: `xdr schema candidate-proposal
     rel:0123456789abcdef01234567 --output proposal.jsonl --relationship
     semantic-equivalent --direction both --cardinality unknown --temporal
@@ -3827,7 +4083,7 @@ def schema_candidate_proposal(
 
 def _schema_candidate_proposal_locked(
     *,
-    ctx: typer.Context,
+    ctx: click.Context,
     relationship_id: str,
     output: Path,
     relationship: RelationshipKind,
@@ -4138,28 +4394,30 @@ def _schema_candidate_proposal_locked(
 
 
 @schema_app.command("prune-evidence")
+@click.option(
+    "--older-than",
+    type=click.IntRange(min=1, max=None),
+    required=True,
+    help="Remove tenant observations older than this many days.",
+)
+@click.option(
+    "--include-legacy",
+    is_flag=True,
+    help="Also remove legacy observations that have no observation timestamp.",
+)
+@click.option(
+    "--yes", "-y", is_flag=True, help="Confirm the overlay rewrite; required when non-interactive."
+)
+@click.pass_context
 def schema_prune_evidence(
-    ctx: typer.Context,
-    older_than: int = typer.Option(
-        ...,
-        "--older-than",
-        min=1,
-        help="Remove tenant observations older than this many days.",
-    ),
-    include_legacy: bool = typer.Option(
-        False,
-        "--include-legacy",
-        help="Also remove legacy observations that have no observation timestamp.",
-    ),
-    yes: bool = typer.Option(
-        False,
-        "--yes",
-        "-y",
-        help="Confirm the overlay rewrite; required when non-interactive.",
-    ),
+    ctx: click.Context,
+    older_than: int,
+    include_legacy: bool,
+    yes: bool,
 ) -> None:
     """Prune stale value-free observations so referenced results can be deleted.
 
+    \b
     Example: `xdr schema prune-evidence --older-than 90 --yes`
 
     This rewrites only the private tenant overlay. It preserves discovered
@@ -4179,10 +4437,12 @@ def schema_prune_evidence(
     metadata_paths = index_result_metadata(get_config_home() / "results")
     for observation in overlay.observations:
         observed = _observation_timestamp(observation.observed_at)
-        should_remove = (observed is not None and observed < cutoff) or (
-            observed is None and include_legacy
-        ) or retired_observation(
-            observation, cutoff, get_config_home() / "results", metadata_paths=metadata_paths
+        should_remove = (
+            (observed is not None and observed < cutoff)
+            or (observed is None and include_legacy)
+            or retired_observation(
+                observation, cutoff, get_config_home() / "results", metadata_paths=metadata_paths
+            )
         )
         (removed if should_remove else retained).append(observation)
     if not yes:
@@ -4199,7 +4459,7 @@ def schema_prune_evidence(
                 ],
                 help_command="xdr schema prune-evidence --help",
             )
-        if not typer.confirm(
+        if not click.confirm(
             f"Remove {len(removed)} tenant observation(s) and retire automatic "
             f"discovery evidence older than {older_than} days?"
         ):
@@ -4239,32 +4499,40 @@ def schema_prune_evidence(
 
 
 @schema_app.command("correlate")
+@click.option(
+    "--input",
+    "inputs",
+    required=True,
+    multiple=True,
+    callback=optional_multiple,
+    help="Explicit source table and private run ID as Table=run-id. Repeatable.",
+)
+@click.option(
+    "--include-contextual",
+    is_flag=True,
+    help=(
+        "Include weak/mutable relationships such as IP, UPN, hostname, and hash"
+        " matches; these require the returned temporal/context checks."
+    ),
+)
+@click.option(
+    "--allow-tenant-mismatch",
+    is_flag=True,
+    help=(
+        "Explicitly allow unbound or differently tenant-bound legacy artifacts;"
+        " use only for intentional cross-tenant analysis."
+    ),
+)
+@click.pass_context
 def schema_correlate(
-    ctx: typer.Context,
-    inputs: list[str] = typer.Option(
-        ...,
-        "--input",
-        help="Explicit source table and private run ID as Table=run-id. Repeatable.",
-    ),
-    include_contextual: bool = typer.Option(
-        False,
-        "--include-contextual",
-        help=(
-            "Include weak/mutable relationships such as IP, UPN, hostname, and hash "
-            "matches; these require the returned temporal/context checks."
-        ),
-    ),
-    allow_tenant_mismatch: bool = typer.Option(
-        False,
-        "--allow-tenant-mismatch",
-        help=(
-            "Explicitly allow unbound or differently tenant-bound legacy artifacts; "
-            "use only for intentional cross-tenant analysis."
-        ),
-    ),
+    ctx: click.Context,
+    inputs: list[str],
+    include_contextual: bool,
+    allow_tenant_mismatch: bool,
 ) -> None:
     """Correlate saved query artifacts offline; never executes KQL.
 
+    \b
     Example: `xdr schema correlate --input EntraIdSignInEvents=RUN_ID_1 --input
     CloudAppEvents=RUN_ID_2 --include-contextual`
 
@@ -4275,15 +4543,15 @@ def schema_correlate(
     and hashes need the returned temporal or surrounding-event checks.
     """
     if len(inputs) < 2:
-        raise typer.BadParameter("provide at least two --input Table=run-id values")
+        raise click.BadParameter("provide at least two --input Table=run-id values")
     parsed = []
     for value in inputs:
         table, separator, run_id = value.partition("=")
         if not separator or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", table):
-            raise typer.BadParameter("each --input must be Table=run-id")
+            raise click.BadParameter("each --input must be Table=run-id")
         parsed.append(load_artifact_input(table, run_id))
     if len({item.run_id for item in parsed}) != len(parsed):
-        raise typer.BadParameter("each input run ID must be unique")
+        raise click.BadParameter("each input run ID must be unique")
     active_tenant = tenant_fingerprint(ctx.obj.config.tenant_id)
     input_tenants = {item.tenant_fingerprint for item in parsed}
     tenant_mismatch = (
@@ -4357,22 +4625,29 @@ def schema_correlate(
 
 
 @schema_app.command("pivot")
+@click.argument(
+    "locator",
+    type=str,
+    required=True,
+    help=(
+        "Semantic locator (`Table.Column` or nested `Table.Column#/path`); discover "
+        "columns with `xdr schema show TABLE`."
+    ),
+)
+@click.option(
+    "--include-candidates",
+    is_flag=True,
+    help="Also include unverified candidate hypotheses after usable routes.",
+)
+@click.pass_context
 def schema_pivot(
-    ctx: typer.Context,
-    locator: str = typer.Argument(
-        help=(
-            "Semantic locator (`Table.Column` or nested `Table.Column#/path`); "
-            "discover columns with `xdr schema show TABLE`."
-        )
-    ),
-    include_candidates: bool = typer.Option(
-        False,
-        "--include-candidates",
-        help="Also include unverified candidate hypotheses after usable routes.",
-    ),
+    ctx: click.Context,
+    locator: str,
+    include_candidates: bool,
 ) -> None:
     """Find fields that can carry the same semantic identifier; cache-only.
 
+    \b
     Example: `xdr schema pivot EntraIdSignInEvents.AccountUpn`
 
     Discover valid fields first: `xdr schema show EntraIdSignInEvents`
@@ -4465,29 +4740,41 @@ def schema_pivot(
 
 
 @schema_app.command("path")
+@click.argument(
+    "source_table",
+    type=str,
+    required=True,
+    help="Source table from `xdr schema tables`, for example `DeviceNetworkEvents`.",
+)
+@click.argument(
+    "target_table",
+    type=str,
+    required=True,
+    help="Target table from `xdr schema tables`, for example `CloudAppEvents`.",
+)
+@click.option(
+    "--max-depth",
+    type=click.IntRange(min=1, max=12),
+    default=4,
+    show_default=True,
+    help="Maximum relationship hops to search (1-12).",
+)
+@click.option(
+    "--include-candidates",
+    is_flag=True,
+    help="Also include paths containing unverified candidate hypotheses.",
+)
+@click.pass_context
 def schema_path(
-    ctx: typer.Context,
-    source_table: str = typer.Argument(
-        help="Source table from `xdr schema tables`, for example `DeviceNetworkEvents`."
-    ),
-    target_table: str = typer.Argument(
-        help="Target table from `xdr schema tables`, for example `CloudAppEvents`."
-    ),
-    max_depth: int = typer.Option(
-        4,
-        "--max-depth",
-        min=1,
-        max=12,
-        help="Maximum relationship hops to search (1-12).",
-    ),
-    include_candidates: bool = typer.Option(
-        False,
-        "--include-candidates",
-        help="Also include paths containing unverified candidate hypotheses.",
-    ),
+    ctx: click.Context,
+    source_table: str,
+    target_table: str,
+    max_depth: int,
+    include_candidates: bool,
 ) -> None:
     """Find reviewed or empirical investigation routes between tables; cache-only.
 
+    \b
     Example: `xdr schema path EntraIdSignInEvents CloudAppEvents`
 
     Discover valid table names with `xdr schema tables`. Observed and validated

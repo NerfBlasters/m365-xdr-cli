@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli._recording import _parse_execution_time_ms
 from xdr_cli.main import app, run

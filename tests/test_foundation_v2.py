@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli.api.hunting import HuntingResult
 from xdr_cli.auth import _missing_scope_error
@@ -644,9 +644,9 @@ def test_every_top_level_surface_has_one_line_parse_errors(
     assert error["exit_code"] == 6
 
 
-def test_no_scattered_numeric_typer_exits_remain():
+def test_no_scattered_numeric_click_exits_remain():
     source_root = Path(__file__).parents[1] / "src" / "xdr_cli"
-    pattern = re.compile(r"raise\s+typer\.Exit\s*\(\s*code\s*=")
+    pattern = re.compile(r"raise\s+click\.exceptions\.Exit\s*\(\s*code\s*=")
     offenders = [
         str(path.relative_to(source_root))
         for path in source_root.rglob("*.py")

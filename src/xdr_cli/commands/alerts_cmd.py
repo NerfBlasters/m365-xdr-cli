@@ -5,19 +5,20 @@ from __future__ import annotations
 import asyncio
 from time import monotonic
 
-import typer
+import click
 
 from xdr_cli.api.alerts import get_alert, list_alerts
 from xdr_cli.artifact_records import alert_records
 from xdr_cli.auth import AuthManager
 from xdr_cli.backends import create_client
+from xdr_cli.cli_params import optional_multiple
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
 from xdr_cli.helpers import build_odata_filter, split_csv, validate_filter_choices
 from xdr_cli.results import emit_result, write_result
 from xdr_cli.sessions import resolve_session_for_invocation, set_session_anchor_incident
 
-alerts_app = typer.Typer(
+alerts_app = click.Group(
     name="alerts",
     help="View security alerts.",
     no_args_is_help=True,
@@ -26,22 +27,30 @@ alerts_app = typer.Typer(
 _VALID_SEVERITY = frozenset({"high", "medium", "low", "informational", "unknown"})
 
 @alerts_app.command("list")
+@click.option(
+    "--severity",
+    "-s",
+    default=None,
+    multiple=True,
+    callback=optional_multiple,
+    help=("Filter by severity. Repeatable, or comma-separated: --severity medium,high."),
+)
+@click.option("--service", default=None, help="Filter by service source.")
+@click.option("--since", default=None, help="Show alerts since (e.g., 24h, 7d).")
+@click.option(
+    "--limit",
+    "-l",
+    type=int,
+    default=None,
+    help="Max results [default: default_limit in config.toml, 25].",
+)
+@click.pass_context
 def alerts_list(
-    ctx: typer.Context,
-    severity: list[str] | None = typer.Option(
-        None, "--severity", "-s",
-        help="Filter by severity. Repeatable, or comma-separated: --severity medium,high.",
-    ),
-    service: str | None = typer.Option(
-        None, "--service", help="Filter by service source.",
-    ),
-    since: str | None = typer.Option(
-        None, "--since", help="Show alerts since (e.g., 24h, 7d).",
-    ),
-    limit: int | None = typer.Option(
-        None, "--limit", "-l",
-        help="Max results [default: default_limit in config.toml, 25].",
-    ),
+    ctx: click.Context,
+    severity: list[str] | None,
+    service: str | None,
+    since: str | None,
+    limit: int | None,
 ) -> None:
     """List security alerts."""
     app_ctx: AppContext = ctx.obj
@@ -108,9 +117,11 @@ async def _alerts_list(
 
 
 @alerts_app.command("show")
+@click.argument("alert_id", type=str, required=True, help="Alert ID.")
+@click.pass_context
 def alerts_show(
-    ctx: typer.Context,
-    alert_id: str = typer.Argument(help="Alert ID."),
+    ctx: click.Context,
+    alert_id: str,
 ) -> None:
     """Show alert details with evidence."""
     app_ctx: AppContext = ctx.obj

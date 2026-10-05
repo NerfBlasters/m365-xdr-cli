@@ -1,0 +1,944 @@
+[
+  {
+    "argv": [
+      "nonesuch"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [
+          "alerts",
+          "annotate",
+          "auth",
+          "device",
+          "domains",
+          "history",
+          "hunt",
+          "incidents",
+          "investigate",
+          "library",
+          "lists",
+          "results",
+          "schema",
+          "session"
+        ],
+        "code": "CLI_UNKNOWN_COMMAND",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr --help",
+        "invalid": {
+          "kind": "command",
+          "value": "nonesuch"
+        },
+        "message": "No such command 'nonesuch'.",
+        "original": {
+          "message": "No such command 'nonesuch'.",
+          "type": "NoSuchCommand"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "incidents",
+      "list",
+      "--severty",
+      "high"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [
+          "--assigned-to",
+          "--help",
+          "--limit",
+          "--severity",
+          "--since",
+          "--status",
+          "-l",
+          "-s"
+        ],
+        "code": "CLI_UNKNOWN_OPTION",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr incidents list --help",
+        "invalid": {
+          "kind": "option",
+          "value": "--severty"
+        },
+        "message": "No such option '--severty'. Did you mean '--severity'?",
+        "original": {
+          "message": "No such option '--severty'. Did you mean '--severity'?",
+          "type": "NoSuchOption"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [
+          {
+            "confidence": "heuristic",
+            "message": "--severity",
+            "reason": "nearest_option"
+          },
+          {
+            "confidence": "heuristic",
+            "message": "--since",
+            "reason": "nearest_option"
+          }
+        ],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "domains",
+      "list",
+      "--source",
+      "invalid"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [
+          "all",
+          "entra",
+          "active-directory"
+        ],
+        "code": "CLI_INVALID_ENUM",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr domains list --help",
+        "invalid": {
+          "kind": "option",
+          "value": "--source"
+        },
+        "message": "Invalid value for '--source': 'invalid' is not one of 'all', 'entra', 'active-directory'.",
+        "original": {
+          "message": "Invalid value for '--source': 'invalid' is not one of 'all', 'entra', 'active-directory'.",
+          "type": "BadParameter"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "device",
+      "timeline",
+      "sample",
+      "--hours",
+      "0"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [],
+        "code": "CLI_INVALID_VALUE",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr device timeline --help",
+        "invalid": {
+          "kind": "option",
+          "value": "--hours"
+        },
+        "message": "Invalid value for '--hours': 0 is not in the range x>=1.",
+        "original": {
+          "message": "Invalid value for '--hours': 0 is not in the range x>=1.",
+          "type": "BadParameter"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "incidents",
+      "show"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [],
+        "code": "CLI_INVALID_VALUE",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr incidents show --help",
+        "invalid": {
+          "kind": "argument",
+          "value": "INCIDENT_ID"
+        },
+        "message": "Missing argument 'INCIDENT_ID'.",
+        "original": {
+          "message": "Missing argument 'INCIDENT_ID'.",
+          "type": "MissingParameter"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "incidents",
+      "list",
+      "--fields",
+      "id"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [
+          "--assigned-to",
+          "--help",
+          "--limit",
+          "--severity",
+          "--since",
+          "--status",
+          "-l",
+          "-s"
+        ],
+        "code": "CLI_UNKNOWN_OPTION",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr incidents list --help",
+        "invalid": {
+          "kind": "option",
+          "value": "--fields"
+        },
+        "message": "No such option '--fields'.",
+        "original": {
+          "message": "No such option '--fields'.",
+          "type": "NoSuchOption"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [
+          {
+            "confidence": "heuristic",
+            "message": "--help",
+            "reason": "nearest_option"
+          }
+        ],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "incidents",
+      "show",
+      "--help"
+    ],
+    "exit": 0,
+    "help": true
+  },
+  {
+    "argv": [
+      "incidents"
+    ],
+    "exit": 0,
+    "help": true
+  },
+  {
+    "argv": [
+      "incidnets"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [
+          "alerts",
+          "annotate",
+          "auth",
+          "device",
+          "domains",
+          "history",
+          "hunt",
+          "incidents",
+          "investigate",
+          "library",
+          "lists",
+          "results",
+          "schema",
+          "session"
+        ],
+        "code": "CLI_UNKNOWN_COMMAND",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr --help",
+        "invalid": {
+          "kind": "command",
+          "value": "incidnets"
+        },
+        "message": "No such command 'incidnets'. Did you mean 'incidents'? Did you mean 'incidents'?",
+        "original": {
+          "message": "No such command 'incidnets'. Did you mean 'incidents'? Did you mean 'incidents'?",
+          "type": "NoSuchCommand"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [
+          {
+            "confidence": "heuristic",
+            "message": "incidents",
+            "reason": "nearest_command"
+          }
+        ],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "schema",
+      "obesrve"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [
+          "bundle",
+          "candidate-proposal",
+          "candidate-review",
+          "collect",
+          "correlate",
+          "diagnostics",
+          "discoveries",
+          "export-opengraph",
+          "migrate-cache",
+          "observe",
+          "path",
+          "pivot",
+          "prune-evidence",
+          "refresh",
+          "repair-overlay",
+          "show",
+          "status",
+          "tables",
+          "validate-core"
+        ],
+        "code": "CLI_UNKNOWN_COMMAND",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr schema --help",
+        "invalid": {
+          "kind": "command",
+          "value": "obesrve"
+        },
+        "message": "No such command 'obesrve'. Did you mean 'observe'? Did you mean 'observe'?",
+        "original": {
+          "message": "No such command 'obesrve'. Did you mean 'observe'? Did you mean 'observe'?",
+          "type": "NoSuchCommand"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [
+          {
+            "confidence": "heuristic",
+            "message": "observe",
+            "reason": "nearest_command"
+          }
+        ],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "--backend",
+      "PORTAL_COOKIE",
+      "domains",
+      "list"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [
+          "auto",
+          "official",
+          "portal-cookie"
+        ],
+        "code": "CLI_INVALID_ENUM",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr --help",
+        "invalid": {
+          "kind": "option",
+          "value": "--backend"
+        },
+        "message": "Invalid value for '--backend': 'PORTAL_COOKIE' is not one of 'auto', 'official', 'portal-cookie'.",
+        "original": {
+          "message": "Invalid value for '--backend': 'PORTAL_COOKIE' is not one of 'auto', 'official', 'portal-cookie'.",
+          "type": "BadParameter"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "--backend",
+      "Entra",
+      "domains",
+      "list"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [
+          "auto",
+          "official",
+          "portal-cookie"
+        ],
+        "code": "CLI_INVALID_ENUM",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr --help",
+        "invalid": {
+          "kind": "option",
+          "value": "--backend"
+        },
+        "message": "Invalid value for '--backend': 'Entra' is not one of 'auto', 'official', 'portal-cookie'.",
+        "original": {
+          "message": "Invalid value for '--backend': 'Entra' is not one of 'auto', 'official', 'portal-cookie'.",
+          "type": "BadParameter"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "domains",
+      "list",
+      "--source",
+      "ALL"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [
+          "all",
+          "entra",
+          "active-directory"
+        ],
+        "code": "CLI_INVALID_ENUM",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr domains list --help",
+        "invalid": {
+          "kind": "option",
+          "value": "--source"
+        },
+        "message": "Invalid value for '--source': 'ALL' is not one of 'all', 'entra', 'active-directory'.",
+        "original": {
+          "message": "Invalid value for '--source': 'ALL' is not one of 'all', 'entra', 'active-directory'.",
+          "type": "BadParameter"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "domains",
+      "list",
+      "--source",
+      "Entra"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [
+          "all",
+          "entra",
+          "active-directory"
+        ],
+        "code": "CLI_INVALID_ENUM",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr domains list --help",
+        "invalid": {
+          "kind": "option",
+          "value": "--source"
+        },
+        "message": "Invalid value for '--source': 'Entra' is not one of 'all', 'entra', 'active-directory'.",
+        "original": {
+          "message": "Invalid value for '--source': 'Entra' is not one of 'all', 'entra', 'active-directory'.",
+          "type": "BadParameter"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "device",
+      "scan",
+      "sample",
+      "--scan-type",
+      "invalid"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [
+          "Quick",
+          "Full"
+        ],
+        "code": "CLI_INVALID_ENUM",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr device scan --help",
+        "invalid": {
+          "kind": "option",
+          "value": "--scan-type"
+        },
+        "message": "Invalid value for '--scan-type': 'invalid' is not one of 'quick', 'full'.",
+        "original": {
+          "message": "Invalid value for '--scan-type': 'invalid' is not one of 'quick', 'full'.",
+          "type": "BadParameter"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "device",
+      "timeline",
+      "sample",
+      "--hours",
+      "abc"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [],
+        "code": "CLI_INVALID_VALUE",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr device timeline --help",
+        "invalid": {
+          "kind": "option",
+          "value": "--hours"
+        },
+        "message": "Invalid value for '--hours': 'abc' is not a valid integer range.",
+        "original": {
+          "message": "Invalid value for '--hours': 'abc' is not a valid integer range.",
+          "type": "BadParameter"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "device",
+      "timeline",
+      "sample",
+      "--hours"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [],
+        "code": "CLI_USAGE_ERROR",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr --help",
+        "invalid": null,
+        "message": "Option '--hours' requires an argument.",
+        "original": {
+          "message": "Option '--hours' requires an argument.",
+          "type": "BadOptionUsage"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "device",
+      "timeline",
+      "sample",
+      "--days",
+      "0"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [],
+        "code": "CLI_INVALID_VALUE",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr device timeline --help",
+        "invalid": {
+          "kind": "option",
+          "value": "--days"
+        },
+        "message": "Invalid value for '--days': 0 is not in the range x>=1.",
+        "original": {
+          "message": "Invalid value for '--days': 0 is not in the range x>=1.",
+          "type": "BadParameter"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "incidents",
+      "list",
+      "--limit",
+      "abc"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [],
+        "code": "CLI_INVALID_VALUE",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr incidents list --help",
+        "invalid": {
+          "kind": "option",
+          "value": "--limit"
+        },
+        "message": "Invalid value for '--limit' / '-l': 'abc' is not a valid integer.",
+        "original": {
+          "message": "Invalid value for '--limit' / '-l': 'abc' is not a valid integer.",
+          "type": "BadParameter"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "incidents",
+      "show",
+      "sample",
+      "extra"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [],
+        "code": "CLI_USAGE_ERROR",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr incidents show --help",
+        "invalid": null,
+        "message": "Got unexpected extra argument (extra)",
+        "original": {
+          "message": "Got unexpected extra argument (extra)",
+          "type": "UsageError"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "schema",
+      "observe"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [],
+        "code": "CLI_INVALID_VALUE",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr schema observe --help",
+        "invalid": {
+          "kind": "argument",
+          "value": "LOCATOR"
+        },
+        "message": "Missing argument 'LOCATOR'.",
+        "original": {
+          "message": "Missing argument 'LOCATOR'.",
+          "type": "MissingParameter"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "schema",
+      "observe",
+      "sample",
+      "--samples",
+      "0"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [],
+        "code": "CLI_INVALID_VALUE",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr schema observe --help",
+        "invalid": {
+          "kind": "option",
+          "value": "--samples"
+        },
+        "message": "Invalid value for '--samples': 0 is not in the range 1<=x<=100.",
+        "original": {
+          "message": "Invalid value for '--samples': 0 is not in the range 1<=x<=100.",
+          "type": "BadParameter"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "schema",
+      "observe",
+      "sample",
+      "--samples"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [],
+        "code": "CLI_USAGE_ERROR",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr --help",
+        "invalid": null,
+        "message": "Option '--samples' requires an argument.",
+        "original": {
+          "message": "Option '--samples' requires an argument.",
+          "type": "BadOptionUsage"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "history",
+      "--limit",
+      "abc"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [
+          "--command",
+          "--help",
+          "--incident",
+          "--operator",
+          "--session",
+          "--since"
+        ],
+        "code": "CLI_UNKNOWN_OPTION",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr history --help",
+        "invalid": {
+          "kind": "option",
+          "value": "--limit"
+        },
+        "message": "No such option '--limit'.",
+        "original": {
+          "message": "No such option '--limit'.",
+          "type": "NoSuchOption"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [
+          {
+            "confidence": "heuristic",
+            "message": "--incident",
+            "reason": "nearest_option"
+          }
+        ],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
+      "auth",
+      "login",
+      "--unknown"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [
+          "--client-id",
+          "--help",
+          "--tenant-id",
+          "-c",
+          "-t"
+        ],
+        "code": "CLI_UNKNOWN_OPTION",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr auth login --help",
+        "invalid": {
+          "kind": "option",
+          "value": "--unknown"
+        },
+        "message": "No such option '--unknown'.",
+        "original": {
+          "message": "No such option '--unknown'.",
+          "type": "NoSuchOption"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  }
+]

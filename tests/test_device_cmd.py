@@ -3,7 +3,7 @@
 import json
 from unittest.mock import AsyncMock, patch
 
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli.main import app
 from xdr_cli.official_backend import OfficialBackend

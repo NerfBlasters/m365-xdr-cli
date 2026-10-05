@@ -191,7 +191,7 @@ def test_api_error_message_is_recorded(home):
 def test_timeout_child_recorder_exit_code_is_3(home):
     """For child_recorder=True, flush must use exit_code=3 and the JSONL
     record must carry the error message; the re-raise is the original
-    httpx exception (NOT typer.Exit) so the caller can call str(e).
+    httpx exception (NOT click.exceptions.Exit) so the caller can call str(e).
     """
     s = Session(id="jd-3", upn="j@c", label=None, learning_mode=False)
     set_current_session(s)
@@ -215,7 +215,7 @@ def test_timeout_child_recorder_exit_code_is_3(home):
             child_recorder=True,
         )
 
-    # child_recorder path re-raises the ORIGINAL exception (not typer.Exit)
+    # child_recorder path re-raises the ORIGINAL exception (not click.exceptions.Exit)
     # so investigate_cmd.py's wrapper can call str(e) for the JSON envelope.
     with pytest.raises(TimeoutError):
         asyncio.run(go())
@@ -236,7 +236,7 @@ def test_timeout_child_recorder_exit_code_is_3(home):
 
 def test_child_recorder_path_re_raises_original_exception(home):
     """When child_recorder=True, run_kql_with_recording must re-raise the
-    original httpx exception (not convert to typer.Exit), so investigate's
+    original httpx exception (not convert to click.exceptions.Exit), so investigate's
     JSON envelope can call str(e) and get a useful error message.
     """
     s = Session(id="jd-1", upn="j@c", label=None, learning_mode=False)
@@ -257,7 +257,7 @@ def test_child_recorder_path_re_raises_original_exception(home):
             expand_json=False, display_limit=10, child_recorder=True,
         )
 
-    # Child path must re-raise the ORIGINAL exception (not typer.Exit).
+    # Child path must re-raise the ORIGINAL exception (not click.exceptions.Exit).
     with pytest.raises(TimeoutError) as excinfo:
         asyncio.run(go())
     assert "didn't respond" in str(excinfo.value)

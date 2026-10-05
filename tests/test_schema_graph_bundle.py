@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli._lock import exclusive_lock
 from xdr_cli.main import app

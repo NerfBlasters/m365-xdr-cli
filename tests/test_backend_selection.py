@@ -3,7 +3,7 @@ import json
 from unittest.mock import Mock
 
 import pytest
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from xdr_cli.backend_selection import select_backend
 from xdr_cli.backends import PortalBackend, create_client
