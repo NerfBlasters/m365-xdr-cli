@@ -10,6 +10,17 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.15.1] - 2026-10-04
+
+### Added
+
+- xdr-cli.com landing page and searchable documentation built from the existing
+  README, guides, and playbooks, with responsive light/dark themes and a
+  user-controlled investigation demo.
+- GitHub Pages build and deployment workflow, with content publication checks,
+  internal-link validation, browser accessibility checks, and website dependency
+  updates. Publication follows a successful main-branch CI run.
+
 ## [0.15.0] - 2026-10-04
 
 ### Changed

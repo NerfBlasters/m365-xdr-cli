@@ -13,6 +13,7 @@ in the main branch ruleset; the PR-only version check may skip on other events.
 | Bandit | Medium/high-severity, high-confidence Python security patterns |
 | actionlint and zizmor | Workflow correctness and GitHub Actions security |
 | Distribution checks | Build, metadata validation, private-artifact rejection, clean wheel install |
+| Website | Locked Node dependencies, npm audit, content/build/link checks, browser and accessibility tests |
 
 Existing regression tests cover token/cookie output suppression, secret-file
 permissions, and KQL parameter escaping. CI helper tests cover malformed or
@@ -23,8 +24,9 @@ mock services; no live tenant secrets belong in CI.
 
 Use uv 0.12.18. Commit `uv.lock`; run `uv lock` when requirements change. CI uses
 `uv sync --locked` and exports all locked runtime/dev/build package versions,
-including platform-specific versions, for scanning. Dependabot updates uv and
-GitHub Actions weekly, with a seven-day cooldown for ordinary version updates.
+including platform-specific versions, for scanning. Dependabot updates uv,
+GitHub Actions, and the website's npm dependencies weekly, with a seven-day
+cooldown for ordinary version updates.
 Scanner versions and action/container digests are pinned separately; review
 those pins when updating the scanners.
 
@@ -82,11 +84,21 @@ they do not certify the entire dependency as safe.
 ## Workflow trust and repository settings
 
 Actions use full commit SHAs, checkout does not retain credentials, and the
-default token is read-only. Only the dependency job requests security-events
-write permission for SARIF. There is no `pull_request_target`, publishing job,
-or tenant credential. Keep fork workflows unprivileged and require approval
+default token is read-only. The dependency job requests security-events write
+permission for SARIF. A separate GitHub Pages deployment job requests only
+pages and OIDC write permissions, runs after the full CI gate, and publishes
+only on a main-branch push or manual main run. There is no
+`pull_request_target` or tenant credential. Keep fork workflows unprivileged and require approval
 for external contributors' workflow runs. Do not add privileged self-hosted
 runners for public PRs.
+
+The website job builds the same checkout as the rest of CI. PRs
+build and test without deploying. Only `website/dist/` becomes the Pages
+artifact; documentation publication uses an explicit tracked-source manifest.
+Cloudflare credentials are unnecessary in CI. Website builds use the committed
+Node version and npm lockfile, disable dependency install scripts, and fail on
+high/critical npm audit findings. Browser evidence is retained for seven days.
+See [website maintenance](../website/README.md) for local commands and domain setup.
 
 Before publishing, configure and verify these GitHub settings:
 
