@@ -329,7 +329,8 @@ jobs:
 
   deploy-website:
     name: Publish website
-    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    # Override implicit success(): the PR-only version job is skipped on main.
+    if: ${{ !cancelled() && needs.gate.result == 'success' && needs.website.result == 'success' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs: [gate, website]
     runs-on: ubuntu-latest
     timeout-minutes: 10
