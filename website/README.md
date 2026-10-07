@@ -38,6 +38,14 @@ The suite starts a production preview if needed. On systems with an existing
 Chromium installation, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to its absolute
 path. Screenshots and failure traces are written to ignored `test-results/`.
 
+`package.json` scopes a `postcss-selector-parser` override to `postcss-nested`,
+pinning the parser to 7.1.6 for GHSA-rj75-hqrm-r3gf. Expressive Code still requests
+PostCSS Nested 6.x, whose parser constraint excludes the patched 7.x release.
+The override preserves the current Starlight version. Compatibility checks found
+identical generated website CSS and inline styles, identical output for ten
+nested-selector fixtures, and passing browser/accessibility checks. Remove the
+override when the upstream dependency chain admits a patched parser normally.
+
 ## Updating content
 
 Edit the original `README.md`, `docs/`, `playbooks/`, or root policy document.

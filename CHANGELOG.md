@@ -14,6 +14,8 @@ for the current checks.
 
 ### Fixed
 
+- Pin the website's nested CSS selector parser to 7.1.6 to address a CPU
+  exhaustion advisory without downgrading Starlight.
 - Fix `ttp_ad_recon_queries` referencing the nonexistent `IdentityQueryEvents.SourceDeviceName`
   column. Detail rows now include `IPAddress`, and `DistinctSources` counts
   distinct endpoint IP addresses.
