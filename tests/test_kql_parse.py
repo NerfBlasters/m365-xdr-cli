@@ -7,6 +7,29 @@ recorder annotation must never crash a hunt.
 """
 
 from xdr_cli.kql_parse import extract_tables
+from xdr_cli.queries import list_queries
+
+
+def test_materialized_source_table():
+    assert extract_tables(
+        "let Hits = materialize(DeviceProcessEvents | take 1); Hits"
+    ) == ["DeviceProcessEvents"]
+    assert extract_tables(
+        "materialize(\n /* cache */ DeviceEvents | take 1)"
+    ) == ["DeviceEvents"]
+
+
+def test_materialize_looking_string_does_not_add_table():
+    assert extract_tables(
+        "DeviceEvents | extend Note = 'materialize(DeviceProcessEvents)'"
+    ) == ["DeviceEvents"]
+
+
+def test_discovery_catalog_retains_both_source_tables():
+    query = next(q for q in list_queries() if q.name == "ttp_discovery_recon")
+    assert set(extract_tables(query.raw_kql)) == {
+        "DeviceProcessEvents", "IdentityQueryEvents",
+    }
 
 
 def test_single_table():

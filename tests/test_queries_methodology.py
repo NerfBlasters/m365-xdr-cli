@@ -29,7 +29,7 @@ import re
 
 import pytest
 
-from xdr_cli.queries import list_queries
+from xdr_cli.queries import list_queries, load_query
 
 
 # Tiers that REQUIRE a Severity = case(...) band (finding queries).
@@ -49,6 +49,54 @@ def _strip_kql_comments(body: str) -> str:
     body = re.sub(r"/\*.*?\*/", "", body, flags=re.DOTALL)
     body = re.sub(r"//[^\n]*", "", body)
     return body
+
+
+@pytest.mark.parametrize(
+    "name,fields",
+    [
+        ("ttp_lateral_targets", {"TargetDeviceName", "ActionType"}),
+        ("qry_email_url_blast_radius", {"RecipientEmailAddress", "Url", "NetworkMessageId"}),
+    ],
+)
+def test_summary_retains_event_columns(name, fields):
+    """The summary must receive events, not groups that lost its input fields."""
+    body = _strip_kql_comments(next(q.raw_kql for q in list_queries() if q.name == name))
+    bindings = dict(re.findall(r"let\s+(\w+)\s*=\s*(.*?);", body, re.DOTALL))
+    source = re.match(r"\s*(\w+)", bindings["SummaryRow"])
+    assert source is not None
+    events = bindings[source.group(1)]
+    # A joined recipient mapping may deduplicate its own records. The final
+    # source pipeline must still contain the raw event fields for the summary.
+    if name == "qry_email_url_blast_radius":
+        assert "| summarize Recipients=" not in events
+        assert "MessageUrlRows=count()" in bindings["DetailRows"]
+        assert "Clicks=" not in body
+        for field in fields:
+            assert re.search(rf"\b{field}\b", events)
+        return
+    assert not re.search(r"\|\s*summarize\b", events)
+    projected = re.search(r"\|\s*project\s+([^|]+)$", events)
+    assert projected is not None
+    assert fields <= {
+        field.strip() for field in projected.group(1).split(",")
+    }
+
+
+@pytest.mark.parametrize("mode", ["summary", "detail"])
+def test_entire_catalog_renders_with_typed_parameters(mode):
+    """Exercise the real loader, including numeric literal placement."""
+    values = {
+        "start": "2026-10-06T00:00:00Z", "end": "2026-10-06T01:00:00Z",
+        "ip": "192.0.2.1", "source_ip": "192.0.2.1", "sha256": "1" * 64,
+    }
+    for query in list_queries():
+        params = {
+            param.name: values.get(param.name, "verification.invalid")
+            for param in query.params if param.default is None
+        }
+        if any(param.name == "mode" for param in query.params):
+            params["mode"] = mode
+        assert load_query(query.name, **params)
 
 
 def test_every_query_declares_tier():

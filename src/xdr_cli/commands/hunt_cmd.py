@@ -149,13 +149,10 @@ async def _hunt_run(
         recorded = await run_kql_with_recording(
             ctx,
             kql=kql,
-            invoked_command=ctx.invoked_command or "hunt run",
             library_query=library_query,
             params=params,
-            anchor_incident=None,
             expand_json=not raw,
             display_limit=None,
-            child_recorder=False,
             # Closure keeps the test patch on hunt_cmd.run_query effective —
             # the helper deliberately does not import run_query itself.
             runner=lambda: run_query(client, kql),

@@ -210,6 +210,7 @@ def test_cli_contract():
 
 
 ERROR_CASES = [
+    ["investigate", "42"],
     ["nonesuch"],
     ["incidents", "list", "--severty", "high"],
     ["domains", "list", "--source", "invalid"],

@@ -58,8 +58,8 @@ blocks are parsed as Markdown nodes, so headings and paths inside commands are
 not rewritten. Generated docs have edit links to their original source.
 
 The production build crawls local links, anchors and assets and fails on missing
-targets. The demo is loaded only on request, including from the complete
-handbook. The source GIF remains `docs/media/investigate.gif`.
+targets. The getting-started walkthrough uses expanded incident evidence and
+links to the investigation methodology and playbooks.
 
 ## Styling and assets
 
@@ -70,6 +70,17 @@ handbook. The source GIF remains `docs/media/investigate.gif`.
 - `src/social-card.html`: editable link-preview card; run `npm run social` after
   changing its copy (requires the same Chromium setup as the browser checks).
 - `src/pages/404.astro`: standalone accessible error page.
+- `src/pages/pricing.astro`: tongue-in-cheek free-tier comparison and the
+  explicitly marked creator-note placeholder. Custom page routes are listed
+  in `customRoutes` in the content manifest.
+
+The homepage includes standard and verbose Copilot investigation recordings.
+Their approved MP4s and static posters live in `docs/media/` and are explicitly
+listed in the content manifest. Native video players appear side by side on
+wider screens and stack on smaller screens. They do not autoplay or preload the
+videos, and the page offers no direct download links. Standard/verbose describes
+the Copilot harness display settings, not an xdr-cli setting. Publish
+only reviewed, sanitized recordings, never private source casts or review files.
 
 The site uses system fonts. No analytics, third-party font requests, tenant
 authentication, backend service or Cloudflare credentials are required to build

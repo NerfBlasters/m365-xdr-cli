@@ -190,16 +190,6 @@ rather than retrying login in a subprocess.
 xdr --no-interactive device isolate <machine-id> --yes --comment "IR-1234"
 ```
 
-### `investigate` asks "Run which queries?" or runs every enrichment query
-
-When an incident yields suggested enrichment queries, `xdr investigate`
-without `--auto-enrich` prints the numbered list on stderr and prompts
-`Run which queries?` (default `a` for all; `n` for none; or a
-comma-separated list of numbers) -- but only on a TTY. When stdin or
-stdout is not a TTY, or `--no-interactive` is set, there is no prompt and
-every suggested query runs. Pass `--auto-enrich` to get that behaviour on
-a TTY too, or answer `n` to skip enrichment.
-
 ## Authentication and consent
 
 ### `xdr auth status` shows `"configured": false`
@@ -711,7 +701,6 @@ happens to equal a command name does not count):
 - Incident updates: `incidents update`
 - Authentication: `auth login`, `auth logout`, `auth portal-cookie`,
   `auth portal-logout`
-- Guided investigation: `investigate`
 - Lists: `lists init`
 - Schema cache writes: `schema repair-overlay`, `schema migrate-cache`,
   `schema bundle import`

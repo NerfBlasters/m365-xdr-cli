@@ -53,7 +53,7 @@ Otherwise proceed with the CLI reference below.
    artifact locally.
 8. On `AuthError` (exit code 2), surface to the human. Do **not** loop-retry `xdr auth login` — the login flow is interactive and will not succeed in an agent subprocess.
 9. Exit codes mean distinct things (see Exit Codes section). Branch on the code, not on stderr text.
-10. For guided investigation of an incident, run `xdr investigate <id>` — it extracts entities, runs relevant library queries, and emits a triage-ladder report. Prefer this over hand-rolling the sequence.
+10. Start incident investigations with `xdr incidents show <id> --expand alerts`, inspect the saved evidence, and follow the matching playbook. Choose scoped library queries or custom hunts based on the evidence and the methodology in `docs/investigation.md`.
 11. `xdr hunt run` saves every row returned by the API. Bound server work with
     KQL `take`/`top`; do not claim completeness when the receipt says
     `server_truncation_state: "unknown"`.
@@ -114,12 +114,12 @@ For these: print the exact command, explain the effect in one sentence, then ask
 
 `xdr incidents update` is permitted **only** when the human has explicitly authorized this specific incident and action in the current turn (e.g., "close it", "mark as false positive"). It must never be run on the agent's own initiative.
 
-Read-only commands (`list`, `show`, `hunt run`, `library run`, `investigate`, `domains list`) are safe and should be used freely.
+Read-only commands (`list`, `show`, `hunt run`, `library run`, `domains list`) are safe and should be used freely.
 
 ## 3. Artifact and compact-output shapes
 
 Successful artifact-first reads—`xdr domains list`, `xdr hunt run`, library `list`/`run`, schema
-`refresh`/`tables`/`show`, alert/incident `list`/`show`, `xdr investigate`, and
+`refresh`/`tables`/`show`, alert/incident `list`/`show`, and
 default `xdr device timeline`—emit at most three compact JSON lines:
 
 ```json
@@ -128,11 +128,10 @@ default `xdr device timeline`—emit at most three compact JSON lines:
 {"Timestamp":"...","DeviceName":"host2"}
 ```
 
-The JSONL contains data rows only. Expanded incidents, alerts, and guided
-investigations are normalized into separate `incident`, `alert`, `evidence`,
-`entity`, `enrichment`, and recommendation records so `rg` returns one focused
-row instead of one giant nested report. Query text, observed shape, anchors,
-timing, and hashes live in the `.meta.json` sidecar. `xdr results show` is a
+The JSONL contains data rows only. Expanded incidents and alerts are
+normalized into separate `incident`, `alert`, and `evidence` records so `rg`
+returns one focused row instead of one giant nested report. Query text, observed
+shape, anchors, timing, and hashes live in the `.meta.json` sidecar. `xdr results show` is a
 bounded provenance summary; use `results query`, bounded/searchable `results
 shape`, or the reported `meta_path` for full local metadata.
 Every artifact receipt reports preview `shown`, `total`, and `has_more` in
@@ -195,9 +194,8 @@ The Defender advanced-hunting API separately enforces a 10-minute-per-hour CPU q
 redacted argv: the device response actions (`isolate`, `unisolate`, `restrict`,
 `unrestrict`, `scan`, `collect-package`), `incidents update`, `auth
 login`/`logout`/`portal-cookie`/`portal-logout`, `lists init`,
-`schema repair-overlay`/`migrate-cache`/`bundle import`, and `investigate`
-(read-only, logged for traceability). The line is written when Click dispatches
-the command, before it runs, so `--dry-run` and declined confirmations appear
+and `schema repair-overlay`/`migrate-cache`/`bundle import`. The line is written
+when Click dispatches the command, before it runs, so `--dry-run` and declined confirmations appear
 too; `--help` and argument errors do not, and outcomes are not recorded. When an
 agent executes `incidents update` (the one permitted write command, with
 explicit human authorization), it should mention in its summary that the
@@ -328,7 +326,7 @@ Sessions track local investigation telemetry. Explicit session end also runs
 the configured tenant schema maintenance; startup and ordinary session attachment
 do not gate investigation work on maintenance.
 `hunt run`, `library run`, `schema observe`,
-`schema candidate-review`, `investigate`, `incidents show`, and `alerts show`
+`schema candidate-review`, `incidents show`, and `alerts show`
 auto-create a session when none exists; other commands may attach to exactly
 one existing session but do not create one. Inactivity expires a session after
 30 minutes by default. Incident/alert anchors win over generic attachment.

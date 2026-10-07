@@ -67,13 +67,6 @@ export function renderPage(markdown, page, manifest = pages, assetPaths = assets
   const first = tree.children[0];
   if (first?.type === 'heading' && first.depth === 1) tree.children.shift();
   visit(tree, (node) => {
-    if (node.type === 'image' && node.url.endsWith('investigate.gif')) {
-      // Animation is opt-in on the homepage, including for handbook readers.
-      node.type = 'link';
-      node.url = 'https://xdr-cli.com/#in-action';
-      node.children = [{ type: 'text', value: 'Watch the guided investigation demo' }];
-      delete node.alt;
-    }
     if (['link', 'image', 'definition'].includes(node.type)) node.url = rewriteUrl(node.url, page.source, manifest, assetPaths);
   });
   const frontmatter = [

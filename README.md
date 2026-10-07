@@ -14,17 +14,10 @@ Defender XDR from a terminal. Every large read is saved as a private JSONL
 artifact and summarised by a one-line receipt, so results are greppable,
 pipeable, and small enough for an agent's context window.
 
-![xdr-cli guided investigation demo](docs/media/investigate.gif)
-
-*Demo tenant; tenant and object identifiers replaced for publication.*
-
 ## What it does
 
 - **Incidents and alerts** — list, filter, show (with alerts and their
   evidence), and update status, classification, determination and comments.
-- **Guided investigation** — `xdr investigate <id>` pulls the incident,
-  extracts devices/users/IPs/hashes, runs the relevant hunting queries, and
-  prints suggested next steps with ready-to-run commands.
 - **Advanced hunting** — run ad-hoc KQL, or pick from a library of 66 hunting
   queries (process trees, Kerberos delegation abuse, token replay, inbox rules,
   OAuth consent anomalies, lateral movement, ransomware precursors, …) that
@@ -118,7 +111,7 @@ help remain available through `--help`.
 | Setup | Minutes: copy one request from your browser's DevTools | Register an app, add permissions, get admin consent |
 | Talks to | The Defender portal's own `apiproxy` interface — **undocumented and unsupported by Microsoft; can break without notice** | Microsoft Graph security and Defender for Endpoint APIs — documented and supported |
 | Credential | Your browser session cookie: a bearer credential for *you*, subject to the same expiry, Conditional Access and sign-in-frequency rules as the portal. Renewal is manual (re-import). | MSAL tokens with refresh; or a service principal for automation |
-| Covers | Hunting, incidents, alerts, investigate, domains, device show/timeline/action-status, every response action, package download | Everything except package download and the AD domain inventory |
+| Covers | Hunting, incidents, alerts, domains, device show/timeline/action-status, every response action, package download | Everything except package download and the AD domain inventory |
 | Permissions | Whatever your user already has in the portal (Defender RBAC applies) | Delegated permissions you grant, plus the user's Defender roles |
 
 Start with the portal cookie if you want to try the tool today. Set up the app
@@ -154,27 +147,32 @@ xdr auth status                            # backend: portal-cookie
 xdr incidents list --since 7d --severity high
 xdr incidents show <ID> --expand alerts    # <ID> is .id from the list
 
-# 4. Investigate one incident end to end.
-xdr investigate --auto-enrich <ID>
+# 4. Inspect the saved evidence using the run_id from the receipt.
+xdr results rows <run-id> --type evidence
 
-# 5. Hunt.
+# 5. Explore hunting commands.
 xdr hunt run "DeviceProcessEvents | where Timestamp > ago(1d) | where FileName == 'powershell.exe' | take 10"
 xdr library list --search kerberos
 xdr library run qry_process_tree --param device_name=WS-01
 ```
 
+To work an incident, start with its saved alert evidence, then follow the
+matching [playbook](playbooks/index.md). Choose additional hunts based on what
+the evidence shows, scoped to the affected entities and incident time window;
+see the [investigation guide](docs/investigation.md). The hunting examples above
+illustrate command syntax, not a complete incident investigation.
+
 Optional: `xdr lists init` copies the reference-list templates the hunting
 library reads (internal subnets, known-good signers, tenant domains, …) into
 `~/.xdr-cli/lists/`. Generic lists ship with defaults; tenant-specific ones
-such as `TenantDomains` start empty. Not needed for `incidents` or
-`investigate`.
+such as `TenantDomains` start empty. Not needed for incident or alert reads.
 
 When a command answers with exit 2 in cookie mode, the session has expired:
 capture and import a fresh cookie. `xdr auth logout` deletes the local cookie
 only; it does not sign you out of the portal.
 
 Global flags go **before** the subcommand: `xdr --quiet incidents list`,
-`xdr --no-interactive investigate 42`, `xdr --backend official hunt run …`.
+`xdr --no-interactive incidents show 42 --expand alerts`, `xdr --backend official hunt run …`.
 
 ## Setting up the Entra app registration
 
@@ -194,9 +192,9 @@ everyone on the team.
 
    | API | Permission | Used by |
    |---|---|---|
-   | Microsoft Graph | `SecurityIncident.ReadWrite.All` | `incidents list/show/update`, `investigate` |
+   | Microsoft Graph | `SecurityIncident.ReadWrite.All` | `incidents list/show/update` |
    | Microsoft Graph | `SecurityAlert.Read.All` | `alerts list/show` |
-   | Microsoft Graph | `ThreatHunting.Read.All` | `hunt run`, `library run`, `investigate`, `schema` |
+   | Microsoft Graph | `ThreatHunting.Read.All` | `hunt run`, `library run`, `schema` |
    | Microsoft Graph | `Domain.Read.All` | Entra portion of `domains list` |
    | WindowsDefenderATP¹ | `Machine.Read` | `device show`, `device action-status`, hostname lookups |
    | WindowsDefenderATP | `Machine.Isolate` | `device isolate` / `unisolate` |
@@ -211,10 +209,11 @@ everyone on the team.
    `api.security.microsoft.com`; that is why these live under
    WindowsDefenderATP rather than Microsoft Graph.
 
-   The minimum for the quick start above is the first three Graph rows plus
-   `Machine.Read` (used by `investigate` to enrich devices). Grant only what
-   the commands you intend to use need. `device download-package` and the
-   Active Directory part of `domains list` have no official API and stay
+   For the incident reads and hunts in the quick start, use
+   `SecurityIncident.ReadWrite.All` and `ThreatHunting.Read.All`. Add
+   `SecurityAlert.Read.All` for standalone alert reads and `Machine.Read` for
+   device reads. Grant only what the commands you intend to use need.
+   `device download-package` and the Active Directory part of `domains list` have no official API and stay
    cookie-only.
 
    Hunting goes through Microsoft Graph. If Graph hunting returns 403 or 404,
@@ -269,9 +268,9 @@ The preview rows above are abridged; real rows are the full API objects
 (previews larger than 4 KB are replaced by a `preview_omitted` marker).
 
 Work with the artifact using whatever you already use — `jq`, `rg`, Python —
-or the built-in `xdr results` commands. `incidents show`, `alerts show`, and
-`investigate` split their output into typed rows (`record_type` of `incident`,
-`alert`, `evidence`, `entity`, …), so one kind can be selected directly:
+or the built-in `xdr results` commands. `incidents show` and `alerts show`
+split their output into typed rows (`record_type` of `incident`, `alert`, or
+`evidence`), so one kind can be selected directly:
 
 ```bash
 xdr incidents show 42 --expand alerts   # note the receipt's data_path
@@ -343,9 +342,10 @@ The short version:
 
 ```bash
 # In a Claude Code / Copilot CLI / Codex prompt:
-"Use xdr-cli to investigate incident 4421: run `xdr investigate --auto-enrich 4421`,
-read the receipt's data_path, and summarise the alerts, entities, and recommended
-actions. Do not run any `xdr device` command without asking me."
+"Read AGENTS.md, then investigate incident 4421. Start with
+`xdr incidents show 4421 --expand alerts` and inspect the saved evidence. Follow
+the matching playbook and run scoped hunts as needed. Summarise the timeline,
+blast radius, impact, and gaps for my review. Leave response actions to me."
 ```
 
 ## Optional: sessions and the improvement loop
@@ -355,7 +355,7 @@ so gaps show up as data rather than anecdotes. The record stays on your
 machine under `~/.xdr-cli/sessions/`; nothing is sent anywhere.
 
 - **Sessions record every command.** `hunt run`, `library run`,
-  `investigate`, `incidents show`, `alerts show`, `schema observe` and
+  `incidents show`, `alerts show`, `schema observe` and
   `schema candidate-review` start a session automatically when none is live
   (or start one yourself with `xdr session start --label incident-42`). Each
   invocation becomes one JSONL record with the command and redacted
@@ -443,7 +443,6 @@ query budgets, what session end does, BloodHound export, and portable bundles
 | `xdr incidents list` | `--since`, `--severity`, `--status`, `--assigned-to`, `--limit` |
 | `xdr incidents show ID [--expand alerts]` / `update ID` | View (alerts include their evidence); update `--status`, `--classification`, `--determination`, `--comment` (`--dry-run`, `--yes`) |
 | `xdr alerts list / show ID` | `--since`, `--severity`, `--service`, `--limit` |
-| `xdr investigate ID [--auto-enrich]` | Guided investigation; without `--auto-enrich` it asks which queries to run (all, when non-interactive) |
 | `xdr hunt run KQL` | Ad-hoc advanced hunting (`--from-file`, `--from-stdin`, `--timeout`, `--raw`) |
 | `xdr hunt library-show NAME -p k=v` | Render a library query's resolved KQL without running it |
 | `xdr library list / show NAME / run NAME` | Browse (`--search`, `--tier`) and run library queries (`-p key=value`, repeatable; `--timeout`, `--raw`) |
@@ -501,7 +500,7 @@ Unknown keys produce a warning on stderr.
 | `~/.xdr-cli/token_cache.json` | MSAL token cache for the official backend (`0600`) |
 | `~/.xdr-cli/portal_cookies.json` | Imported portal session cookie (`0600`) |
 | `~/.xdr-cli/action_associations/` | Action ID → device ID pairs (IDs only) learned in cookie mode |
-| `~/.xdr-cli/audit.log` | Local log of attempted state-changing commands (response actions, incident updates, auth changes, `lists init`, schema repair/import) and `investigate` runs. Written with redacted argv when the command is dispatched, before it runs, so `--dry-run` and declined attempts appear too; `--help` and argument errors do not, and outcomes are not recorded (`0600`) |
+| `~/.xdr-cli/audit.log` | Local log of attempted state-changing commands (response actions, incident updates, auth changes, `lists init`, schema repair/import). Written with redacted argv when the command is dispatched, before it runs, so `--dry-run` and declined attempts appear too; `--help` and argument errors do not, and outcomes are not recorded (`0600`) |
 | `~/.xdr-cli/lists/*.txt` | Reference lists for library queries |
 | `~/.xdr-cli/queries/*.kql` | Your own library queries (see [docs/library.md](docs/library.md)) |
 | `~/.xdr-cli/results/YYYY-MM-DD/` | Result artifacts and metadata |

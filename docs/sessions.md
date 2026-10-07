@@ -17,7 +17,7 @@ Resolution order is:
 2. a matching incident/alert anchor;
 3. exactly one unexpired marker;
 4. automatic creation for `hunt run`, `library run`,
-   `schema observe`, `schema candidate-review`, `investigate`,
+   `schema observe`, `schema candidate-review`,
    `incidents show`, and `alerts show`;
 5. unattached execution when multiple unmatched sessions remain.
 

@@ -479,14 +479,6 @@ def test_library_run_auto_creates_without_session(gate_home):
     assert list((gate_home / "sessions").glob("*.jsonl"))
 
 
-def test_investigate_auto_creates_without_session(gate_home):
-    result = runner.invoke(app, ["investigate", "12345"])
-    assert result.exit_code != 0
-    combined = (result.output or "") + (result.stderr or "")
-    assert "no active session" not in combined.lower()
-    assert list((gate_home / "sessions").glob("*.jsonl"))
-
-
 def test_alerts_list_runs_without_session(gate_home):
     """Browse command — must work without session, no record written."""
     async def _empty_async_gen(*args, **kwargs):

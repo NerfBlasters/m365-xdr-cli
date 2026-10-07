@@ -124,7 +124,7 @@ cookie-mode record (trimmed here):
   },
   "capabilities": [
     "hunting", "incidents-list", "incidents-show", "alerts-list",
-    "alerts-show", "investigate", "domains-list", "device-show",
+    "alerts-show", "domains-list", "device-show",
     "device-timeline", "device-action-status-with-device",
     "device-download-package", "incident-comments", "incidents-update",
     "device-scan-quick", "device-scan-full", "device-isolate-selective",
@@ -153,7 +153,6 @@ Supported operations, as reported by `auth status`:
 | Hunting | `hunt`, plus `library run` and schema workflows that execute KQL |
 | Incidents | `incidents list`, `incidents show` (with `--expand alerts`), `incidents update` (status, classification, determination, `--comment`) |
 | Alerts | `alerts list`, `alerts show` |
-| Investigation | `investigate` |
 | Domains | `domains list` (Entra and MDI-observed Active Directory) |
 | Devices | `device show`, `device timeline`, `device action-status` |
 | Device actions | `device scan` (Quick/Full), `device isolate` (Selective/Full), `device unisolate`, `device restrict`, `device unrestrict`, `device collect-package`, `device download-package` |
