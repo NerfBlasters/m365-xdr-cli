@@ -5,7 +5,7 @@ invocation records. Intentionally NOT a real KQL parser — Microsoft's KQL
 grammar is complex enough that a faithful implementation would be a
 multi-hundred-line job for marginal value. This tokenizer recognises the
 common shapes (``Table | ...``, ``union A, B``, ``join (Other) on ...``,
-``let`` bindings, ``//`` and ``/* */`` comments) and returns ``[]`` on
+``let`` bindings, ``materialize(Table | ...)``, ``//`` and ``/* */`` comments) and returns ``[]`` on
 anything else.
 
 The whole entry point is wrapped in ``try/except Exception: return []`` so a
@@ -103,10 +103,15 @@ _KNOWN_TABLES: frozenset[str] = frozenset({
     "OAuthAppInfo",
 })
 
-# Pattern A: identifier at the start of a statement / pipeline. Anchored to
+# Pattern A: identifier at the start of a statement / pipeline, optionally
+# wrapped in materialize(). Restrict wrapper recognition to source position;
+# matching function-looking text anywhere would tag strings/columns as tables.
+# Anchored to
 # either the start of input or a newline / semicolon to avoid matching mid-
 # expression identifiers (column refs, function args).
-_STATEMENT_START_RE = re.compile(rf"(?:^|[\n;])\s*({_IDENT})\b")
+_STATEMENT_START_RE = re.compile(
+    rf"(?:^|[\n;])\s*(?:(?i:materialize)\s*\(\s*)*({_IDENT})\b"
+)
 
 # Pattern B: identifier following ``union`` / ``join`` / ``lookup``. We use
 # inline case-insensitive ``(?i:...)`` for the keyword only — the identifier
@@ -135,6 +140,7 @@ def extract_tables(kql: str) -> list[str]:
       * ``//`` line comments and ``/* ... */`` block comments (stripped
         before scanning)
       * ``let name = expr;`` bindings (stripped before scanning)
+      * ``materialize(Table | ...)`` in query or let-binding source position
 
     Returns ``[]`` on empty input, junk input, or anything that raises
     internally — by design. The recorder annotation must never crash a hunt.

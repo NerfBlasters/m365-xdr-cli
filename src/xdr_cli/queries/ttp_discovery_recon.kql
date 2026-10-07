@@ -12,7 +12,9 @@
 let _xdr_KnownServiceAccounts = dynamic([]);
 let _xdr_KnownRemoteSupportTools = dynamic([]);
 let Window = {hours}h;
-let DeviceLegCandidates = DeviceProcessEvents
+// Cache only projected reconnaissance matches, not the broad process table.
+// These candidates feed both detection and service-account suppression counts.
+let DeviceLegCandidates = materialize(DeviceProcessEvents
     | where Timestamp > ago(Window)
     | where '{device_name}' == '' or DeviceName =~ '{device_name}'
     | where '{account_upn}' == '' or AccountUpn =~ '{account_upn}' or InitiatingProcessAccountUpn =~ '{account_upn}'
@@ -41,7 +43,7 @@ let DeviceLegCandidates = DeviceProcessEvents
               AccountUpn = coalesce(AccountUpn, InitiatingProcessAccountUpn),
               Leg, LegScore, ProcessCommandLine, InitiatingProcessFileName,
               IsRemoteSupportTool,
-              Source = "DeviceProcessEvents";
+              Source = "DeviceProcessEvents");
 let DeviceLeg = DeviceLegCandidates
     | where not(InitiatingProcessAccountName in~ (_xdr_KnownServiceAccounts))
     | project-away InitiatingProcessAccountName;
@@ -73,8 +75,10 @@ let SuppressedPerDeviceWindow = union
         | extend WindowBin = bin(Timestamp, 3h)
         | project DeviceName, WindowBin)
     | summarize SuppressedCount = count() by DeviceName, WindowBin;
-let Hits = union DeviceLeg, LdapBurst
-    | extend WindowBin = bin(Timestamp, 3h);
+// Sparse hits feed detail, scoring, and ranked evidence. Reuse the same rows
+// rather than repeating both source legs for each branch.
+let Hits = materialize(union DeviceLeg, LdapBurst
+    | extend WindowBin = bin(Timestamp, 3h));
 let RankedDetail = Hits | order by LegScore desc, Timestamp desc;
 let TopEv = RankedDetail
     | summarize TopEvidence = make_list(pack(
@@ -103,10 +107,26 @@ let Agg = Hits
     | extend Score = MaxLegScore + (iff(MultiLeg, 5, 0))
     | extend Indicators = strcat("legs=", strcat_array(DistinctLegs, ","), iff(MultiLeg, " multi-leg", ""))
     | where Score >= 5;
-let Correlated = Agg
-    | join kind=leftouter TopEv on DeviceName, WindowBin
-    | join kind=leftouter SuppressedPerDeviceWindow on DeviceName, WindowBin
-    | extend SuppressedCount = coalesce(SuppressedCount, 0)
+// Each input has at most one row per device/window. Merge those rows without
+// joins, which can stall the production summary even when Hits is empty.
+// Only an Agg row creates a finding; evidence/suppression-only groups stay out.
+let Correlated = union kind=outer
+    (Agg | extend SummaryPart = "aggregate"),
+    (TopEv | extend SummaryPart = "evidence"),
+    (SuppressedPerDeviceWindow | extend SummaryPart = "suppression")
+    | summarize
+        Score = take_anyif(Score, SummaryPart == "aggregate"),
+        LegCount = take_anyif(LegCount, SummaryPart == "aggregate"),
+        DistinctLegs = take_anyif(DistinctLegs, SummaryPart == "aggregate"),
+        EventCount = take_anyif(EventCount, SummaryPart == "aggregate"),
+        FirstSeen = take_anyif(FirstSeen, SummaryPart == "aggregate"),
+        LastSeen = take_anyif(LastSeen, SummaryPart == "aggregate"),
+        Indicators = take_anyif(Indicators, SummaryPart == "aggregate"),
+        EvidenceTotal = take_anyif(EvidenceTotal, SummaryPart == "aggregate"),
+        TopEvidence = take_anyif(TopEvidence, SummaryPart == "evidence"),
+        SuppressedCount = sum(SuppressedCount)
+        by DeviceName, WindowBin
+    | where isnotnull(Score)
     | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
     | extend ListHealth = _xdr_ListHealth
     | project DeviceName, WindowBin, Score, LegCount, DistinctLegs, EventCount,

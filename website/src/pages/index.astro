@@ -2,16 +2,28 @@
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
 const install = 'pipx install "git+https://github.com/NerfBlasters/m365-xdr-cli.git"';
 const debutSession = 'https://web.cvent.com/event/085f4a29-b31d-4ed2-8359-eff167fab504/websitePage:7d595276-28d3-48c2-861c-bce0903d325b?session=0d88d202-485d-4d90-a1fb-5d86edc7df99&shareLink=true';
+const clickfixArticle = 'https://thehackernews.com/2026/10/clickfix-smuggles-payloads-through.html';
+const exampleHunt = `xdr hunt run "DeviceProcessEvents
+| where Timestamp > ago(7d)
+| where FileName in~ ('AnyDesk.exe', 'rustdesk.exe')
+| summarize Runs=count() by DeviceName, AccountUpn
+| top 50 by Runs desc"`;
 const destinations = [
   ['01', 'Installation and setup', 'Install xdr-cli and connect it to your Defender tenant.', '/docs/getting-started/'],
   ['02', 'Query library', 'Find a hunting query and check which parameters it needs.', '/docs/library/'],
   ['03', 'Investigation playbooks', 'Look up an alert title for investigation steps and common false positives.', '/docs/playbooks/'],
   ['04', 'AI assistants', 'Set up an agent to use xdr-cli and read its results.', '/docs/agents/'],
+  ['05', 'Investigation guide', 'Gather evidence, build a timeline, and decide which questions to hunt next.', '/docs/investigation/'],
+  ['06', 'Result files', 'Read JSONL evidence, inspect metadata, and reuse the exact query behind a result.', '/docs/results/'],
+];
+const demos = [
+  { name: 'standard', title: 'Standard output', description: 'The agent’s thinking and compact tool output.', duration: '2m 33s', width: 1246 },
+  { name: 'verbose', title: 'Verbose output', description: 'More of the commands, queries, and returned evidence.', duration: '3m 27s', width: 1356 },
 ];
 ---
-<StarlightPage frontmatter={{ title: 'Defender XDR for your coding agent', description: 'xdr-cli is built for AI agents to investigate Microsoft Defender XDR incidents, with advanced hunting, investigation playbooks, and compact results.', template: 'splash' }}>
+<StarlightPage frontmatter={{ title: 'Turn your coding agent into a security analyst', description: 'Use the coding agent you already have to investigate Microsoft Defender XDR incidents and hunt for threats, with investigation playbooks and compact results.', template: 'splash' }}>
   <div class="landing" data-pagefind-body>
-    <nav class="section-nav" aria-label="Explore xdr-cli"><a href="/docs/getting-started/">Get started</a><a href="/docs/">Documentation</a><a href="/docs/playbooks/">Playbooks</a><a href="https://github.com/NerfBlasters/m365-xdr-cli">View source <span aria-hidden="true">↗</span></a></nav>
+    <nav class="section-nav" aria-label="Explore xdr-cli"><a href="/docs/getting-started/">Get started</a><a href="/docs/">Documentation</a><a href="/docs/playbooks/">Playbooks</a><a href="/pricing/">Pricing</a><a href="https://github.com/NerfBlasters/m365-xdr-cli">View source <span aria-hidden="true">↗</span></a></nav>
     <aside class="debut-banner" aria-label="WWHF debut">
       <span class="debut-badge" aria-hidden="true">WWHF<br />2026</span>
       <div class="debut-copy"><p class="debut-title">Debuting at Wild West Hackin’ Fest</p><p class="debut-details"><time datetime="2026-10-09T13:35:00-06:00">October 9, 2026 · 1:35 PM MT</time> · Tool Shed Talks</p></div>
@@ -19,53 +31,49 @@ const destinations = [
     </aside>
     <section class="hero" aria-labelledby="_top">
       <div class="hero-copy">
-        <div class="eyebrow"><span class="status-dot" aria-hidden="true"></span> BUILT FOR AI AGENTS / OPEN SOURCE</div>
-        <h1 id="_top">Defender XDR<br /><span>for your coding agent.</span></h1>
-        <p class="hero-description">xdr-cli is built for an AI agent to drive. Give your coding agent access to Defender incidents and advanced hunting, with investigation playbooks and output designed for its context window.</p>
+        <div class="eyebrow"><span class="status-dot" aria-hidden="true"></span> LESS CLICKING. MORE INVESTIGATING.</div>
+        <h1 id="_top">Turn your coding agent <br /><span>into a security analyst.</span></h1>
+        <p class="hero-description">Give the coding agent you already use access to Microsoft Defender XDR incidents and advanced hunting. xdr-cli brings the investigation playbooks and evidence. Your agent brings the questions.</p>
         <p class="hero-value">Put the coding-agent subscription you already have to work on incident triage.</p>
         <div class="hero-actions"><a class="button primary" href="/docs/getting-started/">Start investigating <span aria-hidden="true">↗</span></a><a class="text-link" href="/docs/agents/">Set up your agent <span aria-hidden="true">↗</span></a></div>
         <div class="install"><div class="install-heading"><span>INSTALL WITH PIPX</span><span>Python 3.11+</span></div><div class="install-command"><span class="shell-prompt" aria-hidden="true">$</span><code>{install}</code><button class="copy-button" data-copy={install} aria-label="Copy installation command">Copy</button></div><span class="copy-status" role="status" aria-live="polite"></span></div>
       </div>
-      <div class="terminal" aria-label="Example investigation workflow">
-        <div class="terminal-chrome"><span class="terminal-lights" aria-hidden="true"><i></i><i></i><i></i></span><span>analyst@workstation: ~</span><span class="terminal-label">xdr</span></div>
+      <div class="terminal" aria-label="Example agent prompt and hunt">
+        <div class="terminal-chrome"><span class="terminal-lights" aria-hidden="true"><i></i><i></i><i></i></span><span>Defender data. Agent curiosity.</span><span class="terminal-label">xdr</span></div>
         <div class="terminal-body">
-          <div class="terminal-step"><span class="terminal-comment"># List recent high-severity incidents</span><code><b>$</b> xdr incidents list <em>--since</em> 7d \<br />&nbsp; <em>--severity</em> high</code></div>
-          <div class="terminal-step"><span class="terminal-comment"># Read the alerts and their evidence</span><code><b>$</b> xdr incidents show 42 <em>--expand</em> alerts</code></div>
-          <div class="terminal-step"><span class="terminal-comment"># Run the guided investigation</span><code><b>$</b> xdr investigate 42</code></div>
-          <div class="evidence-flow" aria-label="Investigation stages"><span><i aria-hidden="true">✓</i> Incident context</span><span><i aria-hidden="true">✓</i> Entities &amp; evidence</span><span><i aria-hidden="true">→</i> Relevant hunts</span><span><i aria-hidden="true">→</i> Suggested next steps</span></div>
-          <div class="terminal-bottom"><span class="cursor" aria-hidden="true"></span><span>Review the evidence before taking action.</span></div>
+          <div class="terminal-step terminal-prompt"><span class="terminal-comment">YOU</span><p>Do we have any North Koreans working for us?</p></div>
+          <div class="terminal-step terminal-thinking"><span class="terminal-comment">THINKING</span><p>I’ll look for DPRK IT-worker tradecraft: unexpected remote-access tools, VPN/proxy use, and laptop-farm sign-in patterns. Start with remote-access tooling, then correlate the accounts and sign-ins.</p></div>
+          <div class="terminal-step"><span class="terminal-comment">HUNT / FIRST PASS</span><code class="example-hunt"><b>$</b> {exampleHunt}</code></div>
+          <div class="terminal-bottom"><span class="cursor" aria-hidden="true"></span><span>Remote-access tooling is a lead, not attribution.</span></div>
         </div>
-        <div class="terminal-caption">Illustrative workflow · replace 42 with your incident ID</div>
+        <div class="terminal-caption">Illustrative prompt and first hunt · <a href="https://www.microsoft.com/en-us/security/blog/2025/06/30/jasper-sleet-north-korean-remote-it-workers-evolving-tactics-to-infiltrate-organizations/">Microsoft’s IT-worker threat research ↗</a></div>
       </div>
     </section>
     <div class="principles" aria-label="Project essentials"><span><i aria-hidden="true">↳</i> Defender permissions apply</span><span><i aria-hidden="true">{ }</i> Local JSONL evidence</span><span><i aria-hidden="true">&gt;_</i> Works with AI assistants</span><a href="https://github.com/NerfBlasters/m365-xdr-cli/blob/main/LICENSE">MIT licensed <span aria-hidden="true">↗</span></a></div>
 
     <section class="agent-section section" aria-labelledby="agent-title">
       <div class="agent-prompt"><span class="eyebrow">EXAMPLE PROMPT</span><p>Read AGENTS.md, then investigate incident 42. Summarize the evidence and flag anything that needs my review.</p><span class="prompt-note">Use an incident ID from your tenant.</span></div>
-      <div><span class="eyebrow">AGENT-DRIVEN INVESTIGATIONS</span><h2 id="agent-title">Your coding agent can investigate incidents</h2><p>Point your agent at AGENTS.md and ask it to investigate an incident. The instructions cover how to gather evidence, choose hunts, and report what it found. You review its conclusions and decide on response actions.</p><p>xdr-cli saves large results locally and returns a compact receipt. An agent can inspect the evidence a few rows at a time, using the same <code>xdr</code> commands you can run yourself.</p><a class="text-link" href="/docs/agents/">Set up your assistant <span aria-hidden="true">↗</span></a></div>
+      <div><span class="eyebrow">AGENT-DRIVEN INVESTIGATIONS</span><h2 id="agent-title">Your coding agent can investigate incidents <small class="heading-aside">(and it’s surprisingly good at it)</small></h2><p>Point your agent at AGENTS.md and ask it to investigate an incident. The instructions cover how to gather evidence, choose hunts, and report what it found. You review its conclusions and decide on response actions.</p><p>xdr-cli saves large results locally as <strong>.jsonl</strong>—one complete JSON record per line—and returns a compact receipt. Your agent can <code>grep</code> for relevant rows, then parse them with <code>jq</code>, <code>awk</code>, <code>sed</code>, or whatever it already knows. Its context window can breathe again.</p><p>If your harness hooks allow <code>xdr</code> but restrict other shell tools, <code>xdr results rows</code> reads the saved data through that same CLI, with no extra tools to configure. Each result has rich metadata: the producing command, exact KQL for hunts, resolved library parameters, timestamps, row counts, and integrity hashes.</p><a class="text-link" href="/docs/agents/">Set up your assistant <span aria-hidden="true">↗</span></a></div>
     </section>
 
-    <section class="why section" aria-labelledby="why-title">
-      <div class="section-heading"><span class="eyebrow">INCIDENTS &amp; HUNTING</span><h2 id="why-title">The commands you'll use most</h2><p>Start with the incident's alerts and evidence. Run a library query or your own KQL when you need more detail.</p></div>
-      <div class="feature-list">
-        <article><span class="feature-number">01 / TRIAGE</span><h3>Read the incident and its alerts</h3><p>View alert evidence, including affected accounts and devices. The guided investigation extracts those entities and suggests queries to investigate them further.</p><a href="/docs/investigation/">Read the investigation guide <span aria-hidden="true">↗</span></a></article>
-        <article><span class="feature-number">02 / HUNT</span><h3>Run a saved hunt or write KQL</h3><p>The query library covers common investigations and accepts parameters for the accounts, devices, or time range you're working with. You can also run KQL directly.</p><a href="/docs/library/">Browse the query library <span aria-hidden="true">↗</span></a></article>
-        <article><span class="feature-number">03 / RESULTS</span><h3>Use the results in your own tools</h3><p>Large results are saved as local JSONL files. A receipt tells you where to find them, so you can inspect the data with jq, grep, Python, or <code>xdr results</code>.</p><a href="/docs/results/">Read about result files <span aria-hidden="true">↗</span></a></article>
-      </div>
+    <section class="section demos" aria-labelledby="demos-title">
+      <div class="section-heading"><span class="eyebrow">WATCH AN INVESTIGATION</span><h2 id="demos-title">Two views of an agent at work</h2><p>Recorded in GitHub Copilot using xdr-cli. Standard and verbose are <strong>Copilot harness display settings</strong>; xdr-cli is the same in both. Names, hostnames, and other selected identifiers have been replaced with aliases.</p><div class="demo-prompt"><a href={clickfixArticle}>{clickfixArticle}</a><p>Read this article on the latest clickfix variant, extract the IOCs and tactics, and then hunt in my tenant using xdr-cli for any instances of it.</p></div><p class="demo-note">Two runs of the same hunt, with slightly different prompt wording. Use fullscreen to read the terminal detail.</p></div>
+      <div class="demo-list">{demos.map((demo) => <article class="demo-card">
+        <div class="demo-heading"><h3 id={`demo-${demo.name}`}>{demo.title}</h3><span>{demo.duration}</span></div>
+        <p id={`demo-${demo.name}-description`}>{demo.description}</p>
+        <video controls controlslist="nodownload" playsinline preload="none" poster={`/media/copilot-${demo.name}.png`} width={demo.width} height="882" aria-labelledby={`demo-${demo.name}`} aria-describedby={`demo-${demo.name}-description`}>
+          <source src={`/media/copilot-${demo.name}.mp4`} type="video/mp4" />
+          Your browser does not support embedded video.
+        </video>
+      </article>)}</div>
     </section>
 
-    <section id="in-action" class="section demo-section" aria-labelledby="demo-title">
-      <div class="demo-heading"><div><span class="eyebrow">TERMINAL DEMO</span><h2 id="demo-title">Watch an investigation</h2></div><a class="text-link" href="/docs/getting-started/">Try the walkthrough <span aria-hidden="true">↗</span></a></div>
-      <div class="demo-frame"><div class="demo-placeholder" id="demo-placeholder"><div class="play-symbol" aria-hidden="true">▶</div><code>xdr investigate &lt;incident-id&gt;</code><p>Watch a guided investigation from the terminal.</p><button id="play-demo" class="button primary">Play investigation demo</button></div><img id="demo-image" width="1103" height="784" data-src="/media/investigate.gif" alt="Sanitized terminal recording of a guided xdr-cli investigation. A text walkthrough is linked below." hidden /><button id="stop-demo" class="button demo-stop" hidden>Stop demo</button></div>
-      <div class="demo-caption"><span>Demo tenant; tenant and object identifiers replaced for publication.</span><a href="/docs/getting-started/#quick-start-portal-cookie">Read the text walkthrough <span aria-hidden="true">↗</span></a></div>
-    </section>
-
-    <section class="section sign-in" aria-labelledby="signin-title"><div class="section-heading"><span class="eyebrow">AUTHENTICATION</span><h2 id="signin-title">Choose how to sign in</h2><p>Use a portal session to try xdr-cli quickly, or set up an Entra app to use Microsoft's supported APIs.</p></div><div class="auth-options">
-      <article><div class="auth-heading"><h3>Portal cookie</h3><span class="tag">QUICK START</span></div><p>Import your existing Defender portal session to get started without an app registration. Your existing Defender permissions apply.</p><p class="caveat"><span aria-hidden="true">ⓘ</span> Uses an undocumented interface, unsupported by Microsoft. Sessions expire and need manual renewal.</p><a href="/docs/authentication/portal-cookie/">Set up portal sign-in <span aria-hidden="true">↗</span></a></article>
-      <article><div class="auth-heading"><h3>Entra app registration</h3><span class="tag">SUPPORTED APIs</span></div><p>Connect through Microsoft Graph and Defender APIs with your own app registration. Setup requires permissions and admin consent.</p><a href="/docs/authentication/entra/">Set up an Entra app <span aria-hidden="true">↗</span></a></article>
+    <section class="section sign-in" aria-labelledby="signin-title"><div class="section-heading"><span class="eyebrow">AUTHENTICATION</span><h2 id="signin-title">Choose how to sign in</h2><p>Borrow your own browser session for a quick start, or register an app to control the API permissions available to your agent.</p></div><div class="auth-options">
+      <article><div class="auth-heading"><h3>Portal cookie</h3><span class="tag">QUICK START</span></div><p>Already signed in to the Defender portal? Import your browser session and xdr-cli uses it to call the same interface as the web UI. No app registration or admin consent needed to get started.</p><p>You’re operating as your signed-in user, with your existing Defender roles and permissions. The session carries the access you already have in the portal.</p><p class="auth-aside">It’s not really hijacking if it’s <em>your</em> session, right?</p><p class="caveat"><span aria-hidden="true">ⓘ</span> Uses an undocumented interface, unsupported by Microsoft. Browser sessions expire; renew access by importing a fresh session.</p><a href="/docs/authentication/portal-cookie/">Set up portal sign-in <span aria-hidden="true">↗</span></a></article>
+      <article><div class="auth-heading"><h3>Entra app registration</h3><span class="tag">SCOPED API ACCESS</span></div><p>Register your own Entra app, choose its API permissions, grant admin consent, and sign in through Microsoft’s MSAL authentication flow. xdr-cli uses the official Microsoft Graph and Defender APIs, with token caching and refresh when your tenant policy allows.</p><p>Choose tighter permission scopes for the agent: grant the reads and hunting you need, and leave device-response permissions such as <code>Machine.Isolate</code> ungranted. The agent cannot isolate devices through that app without the isolation permission. The same principle applies to scans and other response actions.</p><p class="auth-aside">Proper OAuth. No session borrowing. No hijinks.</p><a href="/docs/authentication/entra/">Set up an Entra app <span aria-hidden="true">↗</span></a></article>
     </div></section>
 
-    <section class="section resources" aria-labelledby="resources-title"><div class="demo-heading"><div><span class="eyebrow">GUIDES &amp; REFERENCE</span><h2 id="resources-title">RTFM</h2><p class="manual-subtitle">Read the fu....n.. manual</p></div><a class="text-link" href="/docs/">All documentation <span aria-hidden="true">↗</span></a></div><div class="resource-grid">{destinations.map(([number, title, description, href]) => <a class="resource" href={href}><span class="resource-top"><span>{number}</span><span aria-hidden="true">↗</span></span><h3>{title}</h3><p>{description}</p></a>)}</div></section>
+    <section class="section resources" aria-labelledby="resources-title"><div class="resources-heading"><div><span class="eyebrow">GUIDES &amp; REFERENCE</span><h2 id="resources-title">RTFM</h2><p class="manual-subtitle">Read the fu....n.. manual</p></div><a class="text-link" href="/docs/">All documentation <span aria-hidden="true">↗</span></a></div><div class="resource-grid">{destinations.map(([number, title, description, href]) => <a class="resource" href={href}><span class="resource-top"><span>{number}</span><span aria-hidden="true">↗</span></span><h3>{title}</h3><p>{description}</p></a>)}</div></section>
   </div>
 </StarlightPage>
 
@@ -81,26 +89,6 @@ const destinations = [
     } catch {
       if (status) status.textContent = 'Copy unavailable. Select and copy the command above.';
     }
-  });
-  const play = document.querySelector<HTMLButtonElement>('#play-demo');
-  const stop = document.querySelector<HTMLButtonElement>('#stop-demo');
-  const image = document.querySelector<HTMLImageElement>('#demo-image');
-  const placeholder = document.querySelector<HTMLElement>('#demo-placeholder');
-  play?.addEventListener('click', () => {
-    if (!image || !placeholder || !stop) return;
-    image.src = image.dataset.src ?? '';
-    image.hidden = false;
-    placeholder.hidden = true;
-    stop.hidden = false;
-    stop.focus();
-  });
-  stop?.addEventListener('click', () => {
-    if (!image || !placeholder) return;
-    image.hidden = true;
-    image.removeAttribute('src');
-    placeholder.hidden = false;
-    stop.hidden = true;
-    play?.focus();
   });
 </script>
 
@@ -156,6 +144,10 @@ const destinations = [
   .terminal-label { color: #9ab9a7; }
   .terminal-body { padding: 1.65rem; font-family: var(--sl-font-mono); }
   .terminal-step { margin-bottom: 1.65rem; }
+  .terminal-prompt { border-left: 2px solid #8cddba; padding-left: .8rem; }
+  .landing .terminal-prompt p { color: #e0e8df; font: .87rem/1.65 var(--sl-font-mono); }
+  .landing .terminal-thinking p { color: #a0b3a8; font: .72rem/1.75 var(--sl-font-mono); }
+  .terminal-step .example-hunt { display: block; white-space: pre-wrap; font-size: .66rem; line-height: 1.75; }
   .terminal-comment { display: block; color: #8fa39a; font-size: .64rem; margin-bottom: .4rem; }
   .terminal-step code { font: .73rem/1.9 var(--sl-font-mono); color: #e0e8df; overflow-wrap: anywhere; }
   .terminal-step b { color: #8cddba; font-weight: 400; }.terminal-step em { color: #c3bd8d; font-style: normal; }
@@ -166,22 +158,26 @@ const destinations = [
   .principles { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; padding: 1.4rem 0; border-block: 1px solid var(--sl-color-hairline-light); font: .68rem var(--sl-font-mono); color: var(--sl-color-gray-2); }
   .principles i { font-style: normal; color: var(--sl-color-text-accent); margin-right: .4rem; }
   .section { padding-top: 6rem; }
-  .why, .sign-in { display: grid; grid-template-columns: .85fr 1.15fr; gap: 5rem; }
+  .demos .section-heading { max-width: 54rem; margin-bottom: 2rem; }
+  .demos .demo-prompt { margin-top: 1.3rem; padding: 1.2rem; border-left: 2px solid var(--sl-color-text-accent); background: var(--sl-color-gray-6); font: .78rem/1.8 var(--sl-font-mono); overflow-wrap: anywhere; }
+  .demos .demo-prompt a { color: var(--sl-color-text-accent); }
+  .demos .demo-prompt p { font: inherit; margin-top: .7rem; }
+  .demos .demo-note { font-size: .75rem; margin-top: 1rem; }
+  .demo-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2rem; }
+  .demo-list > .demo-card { min-width: 0; margin: 0; }
+  .demo-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+  .demo-heading span { font: .7rem var(--sl-font-mono); color: var(--sl-color-gray-2); }
+  .demo-card > p { margin: .6rem 0 1rem; font-size: .88rem; }
+  .demo-card video { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: contain; background: #252936; border: 1px solid var(--sl-color-hairline-light); border-radius: 8px; }
+  .heading-aside { display: inline-block; font: .75rem/1.6 var(--sl-font); color: var(--sl-color-gray-2); letter-spacing: 0; font-weight: 400; }
+  @media (max-width: 900px) { .demo-list { grid-template-columns: 1fr; } }
+  .sign-in { display: grid; grid-template-columns: .85fr 1.15fr; gap: 5rem; }
   .section-heading p { font-size: .9rem; margin-top: 1.3rem; }
-  .feature-list article { padding-bottom: 1.8rem; margin-bottom: 1.8rem; border-bottom: 1px solid var(--sl-color-hairline-light); }
-  .feature-list article:last-child { margin-bottom: 0; }
-  .feature-number { display: block; font: .6rem var(--sl-font-mono); color: var(--sl-color-gray-2); letter-spacing: .08em; margin-bottom: .85rem; }
-  .feature-list p, .auth-options p { margin-top: .9rem; font-size: .88rem; }
-  .feature-list a, .auth-options a { display: inline-block; margin-top: 1rem; font-size: .8rem; color: var(--sl-color-text-accent); }
-  .demo-heading { display: flex; justify-content: space-between; gap: 1.5rem; align-items: end; margin-bottom: 2rem; }
-  .demo-heading .eyebrow { margin-bottom: .8rem; }
-  .demo-frame { position: relative; background: #111b1b; border: 1px solid var(--sl-color-hairline-light); border-radius: 8px; overflow: hidden; }
-  .demo-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2rem; min-height: 330px; padding: 2rem 1rem; text-align: center; background: radial-gradient(ellipse at 50% 100%, #284235 0%, transparent 65%); }
-  .play-symbol { font-size: 1.1rem; color: #96e9bf; width: 50px; height: 50px; display: grid; place-items: center; border: 1px solid #577561; border-radius: 50%; }
-  .demo-placeholder code { font: .95rem var(--sl-font-mono); color: #e0e8df; }.demo-placeholder p { font-size: .8rem; color: #b6c1bb; }
-  #demo-image { width: 100%; height: auto; display: block; }
-  .landing .demo-stop { position: absolute; right: 1rem; bottom: 1rem; color: #f0f2eb; background: #101a1b; }
-  .demo-caption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .7rem; color: var(--sl-color-gray-2); font-size: .66rem; margin-top: .8rem; }
+  .auth-options p { margin-top: .9rem; font-size: .88rem; }
+  .auth-options a { display: inline-block; margin-top: 1rem; font-size: .8rem; color: var(--sl-color-text-accent); }
+  .auth-options .auth-aside { font-size: .8rem; color: var(--sl-color-text-accent); }
+  .resources-heading { display: flex; justify-content: space-between; gap: 1.5rem; align-items: end; margin-bottom: 2rem; }
+  .resources-heading .eyebrow { margin-bottom: .8rem; }
   .auth-options { border-top: 1px solid var(--sl-color-hairline-light); }
   .auth-options article { padding: 1.8rem 0; border-bottom: 1px solid var(--sl-color-hairline-light); }
   .auth-heading { display: flex; justify-content: space-between; align-items: center; gap: .8rem; flex-wrap: wrap; }
@@ -192,12 +188,12 @@ const destinations = [
   .agent-prompt p { font: .9rem/1.8 var(--sl-font-mono); color: var(--sl-color-white); }
   .prompt-note { display: block; font-size: .7rem; color: var(--sl-color-gray-2); }
   .agent-section p { margin: 1.1rem 0; font-size: .9rem; }.agent-section .eyebrow { margin-bottom: 1rem; }
-  .resource-grid { display: grid; grid-template-columns: repeat(4, 1fr); border-block: 1px solid var(--sl-color-hairline-light); }
-  .resource { display: block; padding: 1.5rem; border-right: 1px solid var(--sl-color-hairline-light); }.resource:first-child { padding-left: 0; }.resource:last-child { border-right: 0; }
+  .resource-grid { display: grid; grid-template-columns: repeat(3, 1fr); border-block: 1px solid var(--sl-color-hairline-light); }
+  .resource { display: block; padding: 1.5rem; border-right: 1px solid var(--sl-color-hairline-light); }.resource:nth-child(3n) { border-right: 0; }.resource:nth-child(n+4) { border-top: 1px solid var(--sl-color-hairline-light); }
   .resource-top { display: flex; justify-content: space-between; font: .68rem var(--sl-font-mono); color: var(--sl-color-text-accent); margin-bottom: 2rem; }
   .resource h3 { font-size: 1rem; }.resource p { font-size: .78rem; margin-top: .7rem; }
-  @media (max-width: 1050px) { .hero { gap: 2rem; }.terminal-body { padding: 1.2rem; }.terminal-step code { font-size: .66rem; }.why, .sign-in, .agent-section { gap: 2.5rem; } }
+  @media (max-width: 1050px) { .hero { gap: 2rem; }.terminal-body { padding: 1.2rem; }.terminal-step code { font-size: .66rem; }.sign-in, .agent-section { gap: 2.5rem; } }
   @media (max-width: 760px) { .debut-banner { flex-wrap: wrap; gap: 1rem; padding: 1rem; }.debut-copy { flex-basis: calc(100% - 5rem); }.debut-banner .text-link { width: 100%; }.landing .debut-title { font-size: .9rem; }.landing .debut-details { font-size: .68rem; } }
-  @media (max-width: 760px) { .section-nav { gap: 1.2rem; justify-content: start; flex-wrap: wrap; font-size: .72rem; }.hero { grid-template-columns: 1fr; padding: 3rem 0; gap: 2.5rem; }.hero h1 { font-size: clamp(2.1rem, 7vw, 3.4rem); }.terminal { transform: none; }.terminal-body { padding: 1.5rem; }.terminal-step code { font-size: .75rem; }.section { padding-top: 3.5rem; }.why, .sign-in, .agent-section { grid-template-columns: 1fr; gap: 2rem; }.demo-heading { align-items: start; flex-direction: column; }.resource-grid { grid-template-columns: repeat(2, 1fr); }.resource { border-bottom: 1px solid var(--sl-color-hairline-light); }.resource:nth-child(2) { border-right: 0; }.resource:first-child { padding-left: 1.5rem; }.agent-prompt { padding: 1.5rem; }.principles { display: grid; grid-template-columns: 1fr 1fr; font-size: .6rem; }.demo-placeholder { min-height: 300px; } }
-  @media (max-width: 400px) { .hero-actions { gap: 1rem; }.terminal-body { padding: 1rem; }.terminal-step code { font-size: .65rem; }.resource-grid { grid-template-columns: 1fr; }.resource { border-right: 0; padding: 1.5rem 0; }.resource:first-child { padding-left: 0; }.resource-top { margin-bottom: 1rem; } }
+  @media (max-width: 760px) { .section-nav { gap: 1.2rem; justify-content: start; flex-wrap: wrap; font-size: .72rem; }.hero { grid-template-columns: 1fr; padding: 3rem 0; gap: 2.5rem; }.hero h1 { font-size: clamp(2.1rem, 7vw, 3.4rem); }.terminal { transform: none; }.terminal-body { padding: 1.5rem; }.terminal-step code { font-size: .75rem; }.section { padding-top: 3.5rem; }.sign-in, .agent-section { grid-template-columns: 1fr; gap: 2rem; }.resources-heading { align-items: start; flex-direction: column; }.resource-grid { grid-template-columns: repeat(2, 1fr); }.resource { border-bottom: 1px solid var(--sl-color-hairline-light); }.resource:nth-child(odd) { border-right: 1px solid var(--sl-color-hairline-light); }.resource:nth-child(even) { border-right: 0; }.resource:first-child { padding-left: 1.5rem; }.agent-prompt { padding: 1.5rem; }.principles { display: grid; grid-template-columns: 1fr 1fr; font-size: .6rem; } }
+  @media (max-width: 400px) { .hero-actions { gap: 1rem; }.terminal-body { padding: 1rem; }.terminal-step code { font-size: .65rem; }.resource-grid { grid-template-columns: 1fr; }.resource:nth-child(n) { border-right: 0; border-top: 0; padding: 1.5rem 0; }.resource-top { margin-bottom: 1rem; } }
 </style>

@@ -7,12 +7,14 @@ let DetailRows =
     | where Timestamp between(datetime({start}) .. datetime({end}))
     | where Application contains '{app_name}'
     | where ActionType in ('FileDownloaded', 'FileAccessed', 'FileUploaded', 'FileSyncDownloadedFull')
+    // UserId is source-provided; it is not necessarily a normalized UPN.
+    | extend AccountUpn = tostring(parse_json(RawEventData).UserId)
     | project Timestamp, AccountUpn, ActionType, ObjectName, ObjectType, IPAddress, UserAgent;
 let SummaryRow =
     DetailRows
     | summarize
         EventCount         = count(),
-        DistinctAccounts   = dcount(AccountUpn),
+        DistinctAccounts   = dcountif(AccountUpn, isnotempty(AccountUpn)),
         DistinctActions    = make_set(ActionType),
         DistinctObjects    = dcount(ObjectName),
         FirstSeen          = min(Timestamp),

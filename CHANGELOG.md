@@ -10,6 +10,54 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.16.0] - 2026-10-04
+
+### Fixed
+
+- Pin the website's nested CSS selector parser to 7.1.6 to address a CPU
+  exhaustion advisory without downgrading Starlight.
+- Fix `ttp_ad_recon_queries` referencing the nonexistent `IdentityQueryEvents.SourceDeviceName`
+  column. Detail rows now include `IPAddress`, and `DistinctSources` counts
+  distinct endpoint IP addresses.
+- Fix `ttp_lateral_targets` aggregating away columns needed by its summary.
+  Summary counts now use the original filtered logon events; detail mode retains
+  its account/protocol target groups.
+- Fix `qry_app_data_access` referencing a nonexistent `CloudAppEvents.AccountUpn`:
+  extract the source `RawEventData.UserId` and exclude missing users from counts.
+- Fix `qry_email_url_blast_radius` aggregating away its summary inputs. Bound
+  recipient lookups by time and deduplicate delivery mappings; rename the
+  misleading `Clicks` count to `MessageUrlRows`.
+- Fix the quoted integer threshold preventing `ttp_ransomware_mass-rename`
+  from rendering through the typed library parameter loader.
+- Preserve source-table metadata for materialized hunts, and exclude missing
+  endpoint IPs from AD reconnaissance source counts.
+- Replace discovery summary joins with grouped aggregation after production
+  probes isolated the timeout to the correlated summary stage.
+
+### Removed
+
+- Remove `xdr investigate` and its fixed automatic enrichment workflow. Start
+  with `xdr incidents show <id> --expand alerts`, inspect the evidence, then use
+  the matching playbook and scoped library queries or hunts. Existing saved
+  results and session history remain readable.
+- Remove the obsolete guided-investigation terminal recording from the README
+  and website.
+
+### Changed
+
+- README, website, and agent guidance now lead with evidence-first incident
+  investigation using expanded alerts, playbooks, and scoped hunting.
+- Replace the website demo with reviewed Copilot investigation recordings in
+  standard and verbose harness modes, with side-by-side pauseable video players
+  that load on demand and stack on smaller screens.
+- Reuse filtered reconnaissance matches in `ttp_discovery_recon` across detail,
+  scoring, evidence, and suppression branches to reduce repeated source work.
+
+### Added
+
+- A joke pricing page with identical Community, Pro, and Enterprise features,
+  free-price reveals, and a placeholder for the creator's community note.
+
 ## [0.15.1] - 2026-10-04
 
 ### Added

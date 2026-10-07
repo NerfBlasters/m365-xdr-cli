@@ -5,7 +5,7 @@
 -- lists: KnownGoodSigners
 let _xdr_KnownGoodSigners = dynamic([]);
 let Window = {hours}h;
-let Threshold = toint('{threshold}');
+let Threshold = {threshold};
 let DeviceFilter = '{device_name}';
 let ShadowCopy = DeviceProcessEvents
     | where Timestamp > ago(Window)

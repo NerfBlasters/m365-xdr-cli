@@ -28,7 +28,7 @@ For multi-step investigations, render a markdown checklist to give the analyst v
 - Playbook-driven investigations — derive items from the playbook's numbered steps.
 - Manual triage-ladder investigations with 3+ phases — derive items from the methodology steps below.
 - Multi-entity hunts (multiple devices, users, or hashes to work through).
-- Do **not** create a checklist for single-command lookups, `xdr investigate` (which sequences its own steps), or quick KQL one-offs.
+- Do **not** create a checklist for single-command lookups or quick KQL one-offs.
 
 **Dynamic expansion:** When a step surfaces multiple targets (e.g., blast-radius check reveals 4 devices with the same hash), expand that single item into per-entity items before proceeding. This prevents marking a multi-entity step complete after processing only the first entity.
 
@@ -41,7 +41,7 @@ For multi-step investigations, render a markdown checklist to give the analyst v
 Follow a **triage-ladder** pattern. Each step informs the next; don't skip ahead.
 
 0. **Let the CLI attach telemetry.** `hunt run`, `library run`,
-   `schema observe`, `schema candidate-review`, `investigate`,
+   `schema observe`, `schema candidate-review`,
    `incidents show`, and `alerts show` automatically create an optional
    30-minute session when none exists. Other commands may attach to one
    existing session but do not create one. Session ambiguity never blocks
@@ -51,9 +51,8 @@ Follow a **triage-ladder** pattern. Each step informs the next; don't skip ahead
    truthful agent assessment.
 1. **Establish the alert/incident.** Start from whatever the analyst gives you — an incident ID, an alert, a device name, a user, or a hash. Pivot to the incident or alert to anchor the timeline.
    - **Check for a playbook.** Once you know the alert title, read `playbooks/index.md` and match against the alert title column. If a playbook is listed, read it now — it provides alert-specific steps, tables, pivots, and false-positive guidance that tailor the remaining steps below.
-> **Shortcut:** `xdr investigate <incident_id>` wraps steps 2–5 into one command — it extracts entities from alerts, runs relevant library queries, and saves a normalized triage-ladder JSONL artifact. Parse the receipt's `data_path`; stdout contains only the receipt and up to two previews. Without `--auto-enrich`, `investigate` prompts "Run which queries?" on a TTY (a number, `a` for all, `n` for none) and runs every suggested enrichment query when not interactive. Containment recommendations in the artifact only appear when severity is high AND classification is not false-positive/informational. Use this when you want automated triage; use the manual steps below when you need finer control.
 
-2. **Extract evidence from alerts.** Use `--expand alerts` to pull file hashes, device IDs, user accounts, IPs, verdicts, and timestamps. This often answers key questions without additional hunting.
+2. **Extract evidence from alerts.** Run `xdr incidents show <incident_id> --expand alerts`, then inspect the JSONL at the receipt's `data_path` to read file hashes, device IDs, user accounts, IPs, verdicts, and timestamps. This often answers key questions without additional hunting.
 3. **Build the timeline.** Query for activity in a tight window around the alert's `firstActivityDateTime`. Include the right tables for the event type (e.g., `DeviceEvents` for AV detections, `EmailEvents` for mail, `DeviceLogonEvents` for logons).
 4. **Assess blast radius.** Did the threat spread? For malware: other devices with the same hash. For phishing: other recipients, URL clicks, credential harvesting. For identity: sign-in anomalies, lateral movement.
 5. **Determine impact.** Was the threat blocked or did it execute? Was data exfiltrated? Were credentials compromised? Distinguish prevented from delivered/executed explicitly — this is the most important determination for the analyst.

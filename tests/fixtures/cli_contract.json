@@ -490,18 +490,6 @@
       "status": "sample",
       "yes": true
     },
-    "investigate:--auto-enrich": {
-      "auto_enrich": true,
-      "incident_id": "sample"
-    },
-    "investigate:required": {
-      "auto_enrich": false,
-      "incident_id": "sample"
-    },
-    "investigate:supplied": {
-      "auto_enrich": true,
-      "incident_id": "sample"
-    },
     "library list:required": {
       "search": null,
       "tier": null
@@ -3593,56 +3581,6 @@
           "nargs": 1,
           "opts": [
             "--dry-run"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        }
-      ]
-    },
-    "investigate": {
-      "help": "Guided incident investigation.",
-      "hidden": false,
-      "invoke_without_command": false,
-      "no_args_is_help": false,
-      "params": [
-        {
-          "count": false,
-          "default": null,
-          "envvar": null,
-          "help": "Incident ID to investigate.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": false,
-          "kind": "argument",
-          "multiple": false,
-          "name": "incident_id",
-          "nargs": 1,
-          "opts": [
-            "incident_id"
-          ],
-          "required": true,
-          "secondary_opts": [],
-          "type": {
-            "name": "text"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Auto-run all relevant enrichment queries.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "auto_enrich",
-          "nargs": 1,
-          "opts": [
-            "--auto-enrich"
           ],
           "required": false,
           "secondary_opts": [],

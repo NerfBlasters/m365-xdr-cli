@@ -2,15 +2,17 @@
 -- description: Summarize successful on-prem authentication destinations for an account — identifies lateral movement targets
 -- tier: r3
 -- params: account_oid, start, end, mode=detail
-let DetailRows =
+let LogonRows =
     IdentityLogonEvents
     | where Timestamp between(datetime({start}) .. datetime({end}))
     | where AccountObjectId == '{account_oid}'
     | where FailureReason == ''
-    | project Timestamp, AccountUpn, ActionType, TargetDeviceName, Protocol
+    | project Timestamp, AccountUpn, ActionType, TargetDeviceName, Protocol;
+let DetailRows =
+    LogonRows
     | summarize Targets=make_set(TargetDeviceName), Count=count() by AccountUpn, Protocol;
 let SummaryRow =
-    DetailRows
+    LogonRows
     | summarize
         LogonCount      = count(),
         DistinctTargets = dcount(TargetDeviceName),

@@ -1,5 +1,6 @@
 // Publication is opt-in. Never replace this list with a recursive docs glob.
 export const repository = 'https://github.com/NerfBlasters/m365-xdr-cli';
+export const customRoutes = ['/', '/pricing/'];
 export const pages = [
   { source: 'README.md', route: 'docs/index', title: 'xdr-cli handbook', search: false },
   { source: 'README.md', route: 'docs/getting-started', title: 'Get started', sections: ['Install', 'Two ways to sign in', 'Quick start (portal cookie)'] },
@@ -44,5 +45,10 @@ export const pages = [
     ['privilege-escalation', 'Privilege escalation'],
   ].map(([name, title]) => ({ source: `playbooks/${name}.md`, route: `docs/playbooks/${name}`, title })),
 ];
-export const assets = ['docs/media/investigate.gif'];
+export const assets = [
+  'docs/media/copilot-standard.mp4',
+  'docs/media/copilot-standard.png',
+  'docs/media/copilot-verbose.mp4',
+  'docs/media/copilot-verbose.png',
+];
 export const routeUrl = (route) => `/${route.replace(/\/index$/, '')}/`;

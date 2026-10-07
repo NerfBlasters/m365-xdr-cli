@@ -1,0 +1,98 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+const tiers = [
+  { name: 'Community', pitch: 'For people who like free things.' },
+  { name: 'Pro', pitch: 'For people who prefer their free things professionally labeled.' },
+  { name: 'Enterprise', pitch: 'For people who need a third column to get procurement approval.' },
+];
+const features = [
+  'Full CLI and source code',
+  'Incident and alert investigations',
+  'Advanced hunting and query library',
+  'Investigation playbooks',
+  'JSONL evidence and rich metadata',
+  'Portal and Entra authentication',
+  'All xdr-cli features. Really.',
+];
+const creatorPlaceholder = "<Placeholder for heartfelt note from the creator about giving back to the community, and that if it wasn't for free tools and free education he wouldn't be where he was today.  Shoutout to John Strand, the whole BHIS crew, and antisyphon training, with links to BHIS and antisyphon training> below the joke pricing tiers - no, damnit, don't paraphrase, it's not heartfelt if AI writes it.  Just print exactly what I type into this section.  No inference needed, just copy/paste/done.  Seriously, this isn't that hard, just fill in the block of text.";
+---
+<StarlightPage frontmatter={{ title: 'Pricing', description: 'Community, Pro, Enterprise. Three impressive columns. One equally impressive price: free.', template: 'splash' }}>
+  <div class="pricing" data-pagefind-body>
+    <nav class="pricing-nav" aria-label="Explore xdr-cli"><a href="/">Home</a><a href="/docs/getting-started/">Get started</a><a href="/docs/">Documentation</a><a href="/pricing/" aria-current="page">Pricing</a></nav>
+    <header class="pricing-intro">
+      <p class="eyebrow">ENTERPRISE-GRADE PRICING THEATER</p>
+      <h1>Pick your favorite column.</h1>
+      <p>Every SaaS product needs a pricing page. Apparently so does a free CLI.</p>
+    </header>
+    <section class="tiers" aria-label="Compare pricing tiers">
+      {tiers.map((tier, index) => <article class="tier" aria-labelledby={`tier-${index}`}>
+        <h2 id={`tier-${index}`}>{tier.name}</h2>
+        <p class="tier-pitch">{tier.pitch}</p>
+        <div class="price-slot">
+          {index === 0 ? <><p class="price">Free</p><p class="price-note">No asterisk. No credit card.</p></> : <details class="price-reveal">
+            <summary>Click to reveal <span class="sr-only">{tier.name} pricing</span></summary>
+            <div class="revealed-price"><p>Yeah, also free.</p><p class="price">$0<span>/user/mo</span></p></div>
+          </details>}
+        </div>
+        <ul class="features" aria-label={`${tier.name} features`}>{features.map((feature) => <li><span class="check" aria-hidden="true">✓</span><span class="sr-only">Included: </span>{feature}</li>)}</ul>
+        <a class="start-link" href="/docs/getting-started/">Get started <span aria-hidden="true">↗</span></a>
+      </article>)}
+    </section>
+    <aside class="annual-deal" aria-label="Pricing example">
+      <h2>Let’s run the numbers.</h2>
+      <p class="calculation">20 users × $0/mo = $0/mo</p>
+      <p>20% discount available for an annual subscription. That brings your annual total to a very competitive $0.</p>
+      <p class="fine-print">xdr-cli is free. Your existing Microsoft licensing and coding-agent costs still apply.</p>
+    </aside>
+    <section class="creator-note" aria-labelledby="creator-note-title">
+      <p class="eyebrow">THE SERIOUS PART</p>
+      <h2 id="creator-note-title">A note from the creator</h2>
+      <p class="placeholder-label">Creator’s note · placeholder</p>
+      <p class="placeholder">{creatorPlaceholder}</p>
+      <p>Shoutout to John Strand, the whole <a href="https://www.blackhillsinfosec.com/">Black Hills Information Security crew</a>, and <a href="https://www.antisyphontraining.com/">Antisyphon Training</a>.</p>
+    </section>
+  </div>
+</StarlightPage>
+<style is:global>
+  body:has(.pricing) .main-pane { width: 100%; }
+  body:has(.pricing) .sl-container { max-width: 1200px; }
+  body:has(.pricing) .content-panel { border: none; padding-top: 0; }
+  body:has(.pricing) .content-panel:first-child { display: none; }
+  .pricing { font-size: 1rem; }
+  .pricing :is(h1, h2, p, article, ul, li) { margin: 0; }
+  .pricing h1, .pricing h2 { color: var(--sl-color-white); letter-spacing: -.04em; }
+  .pricing h1 { font-size: clamp(2.3rem, 5vw, 3.8rem); line-height: 1.15; font-weight: 600; }
+  .pricing h2 { font-size: 1.6rem; line-height: 1.3; }
+  .pricing p { line-height: 1.8; color: var(--sl-color-gray-2); }
+  .pricing a { color: var(--sl-color-text-accent); }
+  .pricing-nav { display: flex; justify-content: end; flex-wrap: wrap; gap: 2rem; padding: 1.25rem 0; border-bottom: 1px solid var(--sl-color-hairline-light); font-size: .82rem; }
+  .pricing-nav a, .start-link { text-decoration: none; }
+  .pricing-intro { padding: 4rem 0 3rem; max-width: 50rem; }
+  .pricing .eyebrow { font: .65rem/1.6 var(--sl-font-mono); letter-spacing: .1em; color: var(--sl-color-text-accent); margin-bottom: 1.5rem; }
+  .pricing-intro > p:last-child { margin-top: 1.5rem; }
+  .tiers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5rem; }
+  .pricing .tier { min-width: 0; padding: 2rem 1.5rem; border: 1px solid var(--sl-color-hairline-light); border-radius: 8px; background: var(--sl-color-gray-6); }
+  .pricing .tier-pitch { min-height: 5rem; margin-top: .75rem; font-size: .85rem; }
+  .price-slot { min-height: 10.5rem; padding-top: 1.25rem; }
+  .pricing .price { color: var(--sl-color-white); font-size: 2.65rem; font-weight: 600; line-height: 1.3; letter-spacing: -.035em; }
+  .price span { font-size: .9rem; font-weight: 400; letter-spacing: 0; color: var(--sl-color-gray-2); }
+  .pricing .price-note { font-size: .78rem; margin-top: .5rem; }
+  .price-reveal summary { width: fit-content; cursor: pointer; padding: .6rem .9rem; border: 1px solid var(--sl-color-text-accent); border-radius: 4px; color: var(--sl-color-text-accent); font-size: .85rem; }
+  .pricing .revealed-price { margin-top: .7rem; }
+  .pricing .revealed-price > p:first-child { font-size: .85rem; }
+  .pricing .features { padding: 1.5rem 0; list-style: none; border-top: 1px solid var(--sl-color-hairline-light); }
+  .pricing .features li { display: flex; gap: .75rem; padding: .5rem 0; font-size: .82rem; line-height: 1.6; }
+  .check { flex: none; color: var(--sl-color-text-accent); }
+  .start-link { display: inline-flex; justify-content: space-between; gap: 1rem; width: 100%; border-top: 1px solid var(--sl-color-hairline-light); padding-top: 1rem; font-size: .85rem; }
+  .pricing .annual-deal { margin-top: 2rem; padding: 2rem; border: 1px solid var(--sl-color-hairline-light); border-radius: 8px; }
+  .pricing .annual-deal .calculation { margin: 1rem 0; color: var(--sl-color-white); font: 1.2rem/1.6 var(--sl-font-mono); }
+  .pricing .fine-print { margin-top: 1rem; font-size: .75rem; }
+  .creator-note { max-width: 50rem; padding: 5rem 0 2rem; }
+  .pricing .creator-note > p { margin-top: 1.2rem; }
+  .pricing .creator-note .eyebrow { margin-top: 0; }
+  .pricing .placeholder-label { font: .7rem/1.6 var(--sl-font-mono); color: var(--sl-color-text-accent); }
+  .pricing .placeholder { padding-left: 1rem; border-left: 2px solid var(--sl-color-hairline-light); font-style: italic; white-space: pre-wrap; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  @media (max-width: 900px) { .tiers { grid-template-columns: 1fr; }.pricing .tier-pitch { min-height: 0; }.price-slot { min-height: 8rem; }.pricing-intro { padding-top: 3rem; } }
+  @media (max-width: 500px) { .pricing-nav { justify-content: start; gap: 1.2rem; }.pricing .tier, .pricing .annual-deal { padding: 1.5rem; }.pricing .annual-deal .calculation { font-size: .95rem; } }
+</style>

@@ -605,7 +605,6 @@ _AUTO_SESSION_COMMANDS: frozenset[str] = frozenset(
         "library run",
         "schema observe",
         "schema candidate-review",
-        "investigate",
         "incidents show",
         "alerts show",
     }
