@@ -107,10 +107,26 @@ let Agg = Hits
     | extend Score = MaxLegScore + (iff(MultiLeg, 5, 0))
     | extend Indicators = strcat("legs=", strcat_array(DistinctLegs, ","), iff(MultiLeg, " multi-leg", ""))
     | where Score >= 5;
-let Correlated = Agg
-    | join kind=leftouter TopEv on DeviceName, WindowBin
-    | join kind=leftouter SuppressedPerDeviceWindow on DeviceName, WindowBin
-    | extend SuppressedCount = coalesce(SuppressedCount, 0)
+// Each input has at most one row per device/window. Merge those rows without
+// joins, which can stall the production summary even when Hits is empty.
+// Only an Agg row creates a finding; evidence/suppression-only groups stay out.
+let Correlated = union kind=outer
+    (Agg | extend SummaryPart = "aggregate"),
+    (TopEv | extend SummaryPart = "evidence"),
+    (SuppressedPerDeviceWindow | extend SummaryPart = "suppression")
+    | summarize
+        Score = take_anyif(Score, SummaryPart == "aggregate"),
+        LegCount = take_anyif(LegCount, SummaryPart == "aggregate"),
+        DistinctLegs = take_anyif(DistinctLegs, SummaryPart == "aggregate"),
+        EventCount = take_anyif(EventCount, SummaryPart == "aggregate"),
+        FirstSeen = take_anyif(FirstSeen, SummaryPart == "aggregate"),
+        LastSeen = take_anyif(LastSeen, SummaryPart == "aggregate"),
+        Indicators = take_anyif(Indicators, SummaryPart == "aggregate"),
+        EvidenceTotal = take_anyif(EvidenceTotal, SummaryPart == "aggregate"),
+        TopEvidence = take_anyif(TopEvidence, SummaryPart == "evidence"),
+        SuppressedCount = sum(SuppressedCount)
+        by DeviceName, WindowBin
+    | where isnotnull(Score)
     | extend EvidenceOmitted = max_of(0, EvidenceTotal - array_length(TopEvidence))
     | extend ListHealth = _xdr_ListHealth
     | project DeviceName, WindowBin, Score, LegCount, DistinctLegs, EventCount,

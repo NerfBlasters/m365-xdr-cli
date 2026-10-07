@@ -31,6 +31,8 @@ for the current checks.
   from rendering through the typed library parameter loader.
 - Preserve source-table metadata for materialized hunts, and exclude missing
   endpoint IPs from AD reconnaissance source counts.
+- Replace discovery summary joins with grouped aggregation after production
+  probes isolated the timeout to the correlated summary stage.
 
 ### Removed
 
