@@ -1,22 +1,7 @@
-"""KQL-with-recording orchestration.
+"""Shared KQL execution and session annotations for hunt and library commands.
 
-Both ``hunt run`` (top-level, parent recorder on AppContext) and
-``investigate`` (nested, one fresh child recorder per internal hunt) need the
-same plumbing: pre-API recorder annotations (kql, tables_referenced,
-library_query, params, anchor_incident), the API call itself, and post-API
-annotations (columns_projected, result.row_count / execution_time_ms /
-cpu_usage / has_more / sample_rows). Centralising it here:
-
-* keeps ``_hunt_run`` a thin wrapper (the OutputFormatter / click.echo work
-  stays in commands/hunt_cmd.py — the helper is recording-only),
-* lets ``investigate`` fan out internal hunts each as their own JSONL line
-  without duplicating annotation logic,
-* concentrates the "keep recorder fail-soft" guards in one place.
-
-Imports flow one way: this module imports from ``xdr_cli.sessions`` (for
-``Recorder``); ``sessions`` does NOT import this module. Heavy imports
-(api.hunting, kql_parse, json_expansion) are still deferred into the function
-body to keep import time low for sub-commands that never run KQL.
+The command boundary flushes the recorder with the final exit code and duration.
+This helper records query inputs, results, and failures without owning the client.
 """
 
 from __future__ import annotations
@@ -28,8 +13,6 @@ from time import monotonic
 from typing import TYPE_CHECKING, Any
 
 import httpx
-
-from xdr_cli.sessions import Recorder
 
 if TYPE_CHECKING:
     from xdr_cli.api.hunting import HuntingResult
@@ -141,133 +124,48 @@ async def run_kql_with_recording(
     ctx: AppContext,
     *,
     kql: str,
-    invoked_command: str,
     library_query: str | None,
     params: dict | None,
-    anchor_incident: Any = None,  # int | str | None — incidents accept both
     expand_json: bool = True,
     display_limit: int | None = None,
-    child_recorder: bool = False,
     runner: Callable[[], Awaitable[HuntingResult]],
 ) -> QueryResult:
-    """Run KQL and emit recorder annotations onto the right recorder.
+    """Run KQL and annotate the command's recorder on success or failure.
 
-    ``runner`` MUST execute the same KQL passed to the helper — the helper
-    annotates the record with the ``kql`` parameter, so a mismatch would mean
-    the record lies about what was run.
-
-    Modes
-    -----
-    * ``child_recorder=False`` (default — used by ``hunt run`` /
-      ``library run``): annotates ``ctx.recorder`` (the parent recorder
-      created in ``main.py``'s callback). The outer ``run()`` try/finally
-      flushes it with the final exit_code and duration.
-    * ``child_recorder=True`` (used by ``investigate`` for each internal
-      library query): constructs a fresh :class:`Recorder` bound to the same
-      :class:`Session` (so session_id and operator inherit), annotates it,
-      and flushes immediately under the same monotonic seq axis as the
-      parent. ``flush`` is fail-soft: a JSONL lock failure or disk-full
-      degrades to a stderr line and does not abort sibling queries.
-
-    Parameters
-    ----------
-    kql:
-        Resolved KQL string (already substituted for library queries).
-    invoked_command:
-        ``command`` field on the resulting record (e.g. ``"hunt run"``,
-        ``"library run"``, ``"investigate.hunt"``). Inner records keep
-        the ``investigate.`` prefix so ``xdr history --command investigate``
-        matches both outer and inner.
-    library_query:
-        Library query name (or ``None`` for inline KQL).
-    params:
-        Substituted params dict. ``None`` collapses to an empty dict on the
-        record so jq paths stay stable.
-    anchor_incident:
-        Incident id this query is rooted to. Populated on the outer
-        ``investigate`` record AND on every internal ``investigate.hunt``
-        record so analysts can group fan-outs back to the originating
-        incident.
-    expand_json:
-        When True (the default), expand JSON-string columns
-        (``RawEventData``, ``AdditionalFields``, ``ResourceData``) into
-        nested objects in ``display_rows``. ``--raw`` callers pass False.
-    display_limit:
-        Max rows to keep in ``display_rows``. ``None`` returns all rows
-        (``investigate``'s aggregator path; no per-query truncation).
-    child_recorder:
-        See "Modes" above.
-    runner:
-        Async callable returning the API result (e.g.
-        ``lambda: run_query(client, kql)``). Required, keyword-only. Callers
-        pass a closure bound to their module's ``run_query`` import so
-        test-time patches targeting the *caller's* namespace (e.g.
-        ``patch("xdr_cli.commands.hunt_cmd.run_query")``) take effect — the
-        helper deliberately does NOT import ``run_query`` itself for this
-        reason.
-
-    Notes
-    -----
-    Errors raised by the API call propagate. For ``child_recorder=True`` we
-    record the partial annotation block and re-raise so the caller (typically
-    ``investigate``'s per-query try/except) can decide how to surface the
-    failure. When the child recorder write itself fails (lock contention,
-    disk full), Recorder.flush is fail-soft — a stderr line is emitted but
-    sibling queries are not affected.
+    The runner must execute the supplied KQL. Callers own client lifecycle and
+    provide the runner so patches to their API imports still take effect.
+    ``display_limit=None`` retains all returned rows; ``expand_json`` controls
+    expansion of known JSON-string columns. API failures propagate after their
+    annotations are captured, and the outer command boundary flushes the record.
     """
     # Heavy imports deferred to keep this module light for non-KQL commands.
     from xdr_cli.json_expansion import expand_json_string_columns
     from xdr_cli.kql_parse import extract_tables
 
-    # ---- Recorder selection -------------------------------------------------
-    rec: Recorder | None
-    if child_recorder:
-        # Fresh per-call Recorder bound to the same Session as the parent.
-        # The Session carries upn / label / learning_mode; actor is read from
-        # XDR_ACTOR at construction time inside Recorder.__post_init__.
-        parent = ctx.recorder
-        session = parent.session if parent is not None else None
-        # argv: copy parent's argv verbatim. The child's `command` field
-        # (what jq filters on) is set via ``invoked_command``. Keeping argv
-        # identical to the outer makes downstream analysis simpler — every
-        # child of one investigate run shares the same args list, the
-        # ``command`` field disambiguates outer vs. inner.
-        argv = list(parent.argv) if parent is not None else []
-        rec = Recorder(
-            session=session,
-            argv=argv,
-            invoked_command=invoked_command,
-        )
-    else:
-        rec = ctx.recorder
+    rec = ctx.recorder
 
     # ---- Pre-API annotations ------------------------------------------------
     # Even if the API blows up before returning, the record captures what was
-    # attempted (kql + library_query + anchor_incident).
+    # attempted (kql + library_query + params).
     if rec is not None:
         # extract_tables() never raises; returns [] on unparseable input.
         rec.annotate("kql", kql)
         rec.annotate("tables_referenced", extract_tables(kql))
         rec.annotate("library_query", library_query)
         rec.annotate("params", params or {})
-        if anchor_incident is not None:
-            rec.annotate("anchor_incident", anchor_incident)
 
     # ---- API call -----------------------------------------------------------
     # The caller supplies the runner closure so test patches targeting the
-    # caller module's namespace (``hunt_cmd.run_query``,
-    # ``investigate_cmd.run_query``) take effect. Client lifecycle (auth,
-    # close) is the caller's responsibility for the same reason.
+    # caller module's namespace (``hunt_cmd.run_query``) take effect. Client
+    # lifecycle (auth, close) is the caller's responsibility for the same reason.
     api_error: Exception | None = None
-    api_error_exit_code: int = 1  # default; overridden for known API error types
     api_result: HuntingResult | None = None
     started = monotonic()
     try:
         api_result = await runner()
     except httpx.TimeoutException as e:
         # Distinct handling so the message (e.g. "Server didn't respond in
-        # 30s") is captured and the exit code is the canonical 3 for all
-        # API-layer errors — not 1 (generic unhandled exception). The stderr
+        # 30s") is captured with the distinct timeout exit code. The stderr
         # print is what makes a timeout user-visible: previously only the
         # recorder annotation captured it, which made a timeout look identical
         # to "empty results" on stdout.
@@ -279,7 +177,6 @@ async def run_kql_with_recording(
             help_command="Retry once with --timeout <seconds> if the query is bounded.",
             original={"type": type(e).__name__, "message": str(e)},
         )
-        api_error_exit_code = int(api_error.exit_code)
         err_console.print(
             f"[red]error:[/red] query timed out ({e}). "
             f"Raise the timeout via [bold]--timeout[/bold] or "
@@ -311,7 +208,6 @@ async def run_kql_with_recording(
                 status_code=e.response.status_code,
                 detail=e.response.text[:500],
             )
-        api_error_exit_code = int(api_error.exit_code)
         err_console.print(f"[red]error:[/red] {msg}")
         if rec is not None:
             rec.annotate("error", msg)
@@ -319,8 +215,7 @@ async def run_kql_with_recording(
         # Narrowed from BaseException so KeyboardInterrupt / SystemExit /
         # asyncio.CancelledError keep their normal cooperative-cancel
         # semantics. The parent recorder's flush in run()'s try/finally
-        # already handles Ctrl-C for the parent record; the child path
-        # losing its record on Ctrl-C is acceptable.
+        # already handles Ctrl-C for the invocation record.
         api_error = e
 
     # ---- Post-API recorder annotations --------------------------------------
@@ -371,15 +266,7 @@ async def run_kql_with_recording(
             if not isinstance(api_error, (httpx.TimeoutException, httpx.HTTPStatusError)):
                 rec.annotate("error", str(api_error))
 
-    # ---- Child recorder: flush immediately ----------------------------------
-    if child_recorder and rec is not None:
-        duration_ms = int((monotonic() - started) * 1000)
-        exit_code = 0 if api_error is None else api_error_exit_code
-        # Recorder.flush is fail-soft (logs to stderr, never raises) — a
-        # transient lock failure on this child does not break sibling queries.
-        rec.flush(exit_code=exit_code, duration_ms=duration_ms)
-
-    # Re-raise after the recorder has been annotated + flushed (child path).
+    # Re-raise after the recorder has been annotated.
     # Structured XDRError subclasses retain their own recovery-specific exit
     # class at the root command boundary.
     if api_error is not None:

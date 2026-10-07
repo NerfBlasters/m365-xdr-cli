@@ -545,7 +545,6 @@ def status(
                         "incidents-show",
                         "alerts-list",
                         "alerts-show",
-                        "investigate",
                         "domains-list",
                         "device-show",
                         "device-timeline",

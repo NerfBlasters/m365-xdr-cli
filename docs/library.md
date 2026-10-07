@@ -157,7 +157,7 @@ the query declares them.
 | Query | Tier | Description | Parameters |
 |---|---|---|---|
 | `ttp_ad_directory_changes` | r3 | On-prem AD group membership changes, account modifications, and computer account creation by a specific account | `account_oid`*, `start`*, `end`*, `mode` =detail |
-| `ttp_ad_recon_queries` | r3 | LDAP/SAMR reconnaissance activity — AD queries by a specific account or source IP | `account_oid`*, `start`*, `end`*, `mode` =detail |
+| `ttp_ad_recon_queries` | r3 | LDAP/SAMR reconnaissance activity — AD queries by a specific account, with endpoint IP and device context | `account_oid`*, `start`*, `end`*, `mode` =detail |
 | `ttp_adcs_abuse` | beta | (beta) ADCS abuse signals — template enrollment by non-admin, SAN/requester mismatch, ESC8 NTLM-relay artefacts | `hours` =72, `account_upn`, `mode` =summary |
 | `ttp_conditional_access_tamper` | n | Conditional Access policy add/update/disable/delete (CloudAppEvents) correlated with actor sign-in context (new IP vs 30d baseline, off-hours, RiskLevel/anonymizing IP within 30m) — Storm-1167 / Tycoon2FA admin-token tamper pattern | `hours` =72, `actor_upn`, `mode` =summary |
 | `ttp_credential_dumping` | n | T1003 LSASS credential dumping — comsvcs.dll MiniDump, procdump -ma lsass, rundll32 MiniDumpW, mimikatz / sekurlsa / lsadump cmdline literals, nanodump / dumpert / pypykatz / SilentTrinity, taskmgr -d, sqldumper LOLBin, plus DeviceEvents OpenProcess/ReadProcessMemory against lsass.exe with signer-allowlist and KnownGoodSigners suppression | `hours` =24, `device_id`, `account_upn`, `mode` =summary |
@@ -189,6 +189,18 @@ the query declares them.
 | `ttp_token_theft_replay` | r1 | Per-session sign-in fingerprint anomalies (SessionId / UniqueTokenId reuse from different IPs / UAs / Countries / JA4) + AiTM infra hits + refresh-token replay (>24h, no-MFA) | `hours` =24, `account_upn`, `session_id`, `mode` =summary |
 
 ## Parameter typing and escaping
+
+Two lookup fields need care when interpreting results:
+
+- `qry_app_data_access.AccountUpn` is extracted from the source payload's
+  `RawEventData.UserId` to preserve the query's existing output name. It is not
+  guaranteed to be a normalized UPN; missing values are excluded from
+  `DistinctAccounts`.
+- `qry_email_url_blast_radius.MessageUrlRows` counts matching URL rows joined
+  to distinct message/recipient mappings within the requested time window.
+  It measures delivery scope, not user clicks. Repeated delivery records for
+  the same message and recipient do not multiply this count. Use
+  `qry_url_clicks` for click-event evidence.
 
 Parameters are not pasted into the KQL as raw text. The loader assigns a
 catalog-wide type to each parameter by name (`_parameter_contract`), then

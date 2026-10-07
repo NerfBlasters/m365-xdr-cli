@@ -19,7 +19,7 @@ test('selects real headings, preserving fenced code and resolving reference link
 test('maps docs, media and local anchors while retaining external/source links', () => {
   assert.equal(rewriteUrl('../README.md#install', 'docs/guide.md', manifest), '/docs/#install');
   assert.equal(rewriteUrl('#setup', 'docs/guide.md', manifest), '/docs/guide/#setup');
-  assert.equal(rewriteUrl('docs/media/investigate.gif', 'README.md'), '/media/investigate.gif');
+  assert.equal(rewriteUrl('docs/media/example.png', 'README.md', manifest, ['docs/media/example.png']), '/media/example.png');
   assert.equal(rewriteUrl('https://example.com/#test', 'README.md'), 'https://example.com/#test');
   assert.match(rewriteUrl('../src/example.py', 'docs/guide.md', manifest), /\/blob\/main\/src\/example.py$/);
   assert.throws(() => rewriteUrl('../../secret', 'docs/guide.md', manifest), /boundary/);

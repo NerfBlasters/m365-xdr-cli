@@ -477,7 +477,7 @@ def test_incident_anchor_matches_then_rotates_automatic_session(
     )
     assert first is not None and mode == "automatic-created"
     matched, mode = resolve_session_for_invocation(
-        "investigate",
+        "incidents show",
         anchor_incident=101,
     )
     assert matched is not None and matched.id == first.id
@@ -621,7 +621,6 @@ def test_no_args_group_help_is_success_not_an_auth_or_usage_failure(
         ["history", "--not-a-real-option"],
         ["hunt", "--not-a-real-option"],
         ["incidents", "--not-a-real-option"],
-        ["investigate", "--not-a-real-option"],
         ["library", "--not-a-real-option"],
         ["lists", "--not-a-real-option"],
         ["results", "--not-a-real-option"],

@@ -24,7 +24,6 @@ from xdr_cli.commands.domains_cmd import domains_app
 from xdr_cli.commands.history_cmd import history_app
 from xdr_cli.commands.hunt_cmd import hunt_app
 from xdr_cli.commands.incidents_cmd import incidents_app
-from xdr_cli.commands.investigate_cmd import investigate
 from xdr_cli.commands.library_cmd import library_app
 from xdr_cli.commands.lists_cmd import lists_app
 from xdr_cli.commands.results_cmd import results_app
@@ -41,9 +40,9 @@ from xdr_cli.sessions import (
     resolve_session_for_invocation,
 )
 
-# Resolved command chains that modify state (plus `investigate`, for
-# traceability) — logged to the audit log when Click dispatches them. Matching
-# the resolved chain, not raw argv, means every syntax Click accepts (`--`,
+# Resolved command chains that modify state — logged to the audit log when
+# Click dispatches them. Matching the resolved chain, not raw argv, means
+# every syntax Click accepts (`--`,
 # clustered short flags, `--opt=value`) is covered and an argument that
 # happens to equal a command name is not.
 _TENANT_MUTATION_COMMANDS = frozenset(
@@ -63,7 +62,6 @@ _WRITE_COMMANDS = _TENANT_MUTATION_COMMANDS | frozenset(
         "auth logout",
         "auth portal-cookie",
         "auth portal-logout",
-        "investigate",
         "lists init",
         "schema repair-overlay",
         "schema migrate-cache",
@@ -378,7 +376,6 @@ app.add_command(library_app)
 app.add_command(results_app)
 app.add_command(schema_app)
 app.add_command(session_app)
-app.command("investigate")(investigate)
 app.command("annotate")(annotate)
 
 
@@ -438,10 +435,7 @@ def _capture_chain_from_leaf() -> None:
     anchor_incident: int | None = None
     anchor_alert: str | None = None
     try:
-        if chain == "investigate":
-            pos = argv.index("investigate")
-            anchor_incident = int(argv[pos + 1])
-        elif chain == "incidents show":
+        if chain == "incidents show":
             pos = argv.index("show", argv.index("incidents") + 1)
             anchor_incident = int(argv[pos + 1])
         elif chain == "alerts show":

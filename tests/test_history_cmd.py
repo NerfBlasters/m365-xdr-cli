@@ -757,6 +757,22 @@ def test_stats_hunt_ratio_zero_zero(home):
     assert hr["ratio_explanatory"] == "0:0"
 
 
+def test_stats_counts_legacy_investigate_hunts(home):
+    """Removing the command must not discard evidence from saved sessions."""
+    _seed_session(home, "jd-1", [
+        _stats_record(1, "investigate"),
+        _stats_record(2, "investigate.hunt", library_query="qry_process_tree"),
+        _stats_record(3, "investigate.hunt", library_query="qry_file_hash_scope"),
+    ])
+    _set_current(home, "jd-1")
+
+    result = runner.invoke(app, ["history", "stats"])
+    assert result.exit_code == 0, result.output
+    stats = json.loads(result.stdout)["data"]
+    assert stats["hunt_ratio"]["investigate.hunt"] == 2
+    assert stats["invocations"]["by_command"]["investigate"] == 1
+
+
 def test_stats_session_duration_seconds_single_session(home):
     """Single session -> last_timestamp - first_timestamp in seconds."""
     records = [

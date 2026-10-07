@@ -9,7 +9,6 @@ from click.testing import CliRunner
 
 from xdr_cli.api.incidents import get_incident, list_incidents
 from xdr_cli.backends import create_client
-from xdr_cli.commands.investigate_cmd import _extract_entities
 from xdr_cli.config import Config
 from xdr_cli.exceptions import APIError
 from xdr_cli.main import app
@@ -69,9 +68,6 @@ async def test_expansion_preserves_full_official_evidence(config):
     assert result['alerts'] == [alert()]
     assert route.calls[0].request.url.params['$expand'] == 'alerts'
     assert 'authorization' not in route.calls[0].request.headers
-    entities = _extract_entities(result)
-    assert entities['devices'] == {'sample.invalid'}
-    assert entities['users'] == {'sample@example.invalid'}
 
 
 @pytest.mark.parametrize('malformed', [
@@ -175,22 +171,6 @@ async def test_domains_preserve_unverified_domain_and_authentication_type(config
         assert await list_domains(client) == domains
     finally:
         await client.close()
-
-
-@respx.mock
-def test_guided_investigation_uses_portal_graph_and_hunting(config, monkeypatch):
-    mock_contract()
-    monkeypatch.setattr('xdr_cli.main.load_config', lambda: config)
-    monkeypatch.setattr('xdr_cli.auth.AuthManager.__init__', Mock(
-        side_effect=AssertionError('MSAL must not initialize'),
-    ))
-    hunt = respx.post(
-        ORIGIN + 'hunting/huntingQueryExecutorService/queryExecutor/v1/external',
-    ).respond(200, json={'Schema': [], 'Results': []})
-    result = CliRunner().invoke(app, ['investigate', '42'])
-    assert result.exit_code == 0, result.output
-    assert hunt.called
-    assert all('authorization' not in call.request.headers for call in respx.calls)
 
 
 @pytest.mark.asyncio

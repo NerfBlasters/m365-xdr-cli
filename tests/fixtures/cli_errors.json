@@ -1,6 +1,59 @@
 [
   {
     "argv": [
+      "investigate",
+      "42"
+    ],
+    "exit": 6,
+    "stderr": "",
+    "stdout": {
+      "error": {
+        "allowed": [
+          "alerts",
+          "annotate",
+          "auth",
+          "device",
+          "domains",
+          "history",
+          "hunt",
+          "incidents",
+          "library",
+          "lists",
+          "results",
+          "schema",
+          "session"
+        ],
+        "code": "CLI_UNKNOWN_COMMAND",
+        "corrected_argv": null,
+        "exit_code": 6,
+        "help_command": "xdr --help",
+        "invalid": {
+          "kind": "command",
+          "value": "investigate"
+        },
+        "message": "No such command 'investigate'.",
+        "original": {
+          "message": "No such command 'investigate'.",
+          "type": "NoSuchCommand"
+        },
+        "request_ids": null,
+        "retry_after_seconds": null,
+        "retryable": false,
+        "schema_version": 1,
+        "suggestions": [
+          {
+            "confidence": "heuristic",
+            "message": "annotate",
+            "reason": "nearest_command"
+          }
+        ],
+        "type": "UsageError"
+      },
+      "status": "error"
+    }
+  },
+  {
+    "argv": [
       "nonesuch"
     ],
     "exit": 6,
@@ -16,7 +69,6 @@
           "history",
           "hunt",
           "incidents",
-          "investigate",
           "library",
           "lists",
           "results",
@@ -292,7 +344,6 @@
           "history",
           "hunt",
           "incidents",
-          "investigate",
           "library",
           "lists",
           "results",

@@ -100,7 +100,7 @@ def _iter_filtered_records(
         string compare is correct here and avoids per-record datetime parsing.
       * ``command``: substring match against the ``command`` field
         (e.g., ``"hunt"`` matches ``"hunt run"``, ``"hunt library-show"``,
-        ``"investigate.hunt"``).
+        legacy ``"investigate.hunt"`` records).
       * ``incident``: exact match against ``anchor_incident``.
       * ``actor``: exact match against the ``actor`` field — currently unused
         by any caller (``stats --by-actor`` buckets already-fetched records
@@ -240,6 +240,7 @@ def history_app(
 _HUNT_RUN = "hunt run"
 _LIBRARY_RUN = "library run"
 _PIVOT = "pivot"
+# Retained for sessions saved before the investigate command was removed in 0.16.
 _INVESTIGATE_HUNT = "investigate.hunt"
 
 _CPU_PCT_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*%\s*$")
@@ -403,7 +404,7 @@ def _compute_table_coverage_gaps(
     for r in records:
         cmd = r.get("command", "")
         # Only ``hunt run`` represents "hand-rolled query". Library-run /
-        # investigate.* / pivot all delegate to the library or to wrapped
+        # legacy investigate.* / pivot all delegate to the library or to wrapped
         # entity-anchored KQL we don't expect operators to "library-fy".
         if cmd != _HUNT_RUN:
             continue
