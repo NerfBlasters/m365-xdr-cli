@@ -10,6 +10,14 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.16.1] - 2026-10-07
+
+### Changed
+
+- Update locked Filelock to 4.0.7 and Ruff to 0.16.9.
+- Renew the exact-version Ruff scanner exception after verifying the flagged
+  binary against the official release and the launcher against tagged source.
+
 ## [0.16.0] - 2026-10-04
 
 ### Fixed

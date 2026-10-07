@@ -49,13 +49,15 @@
     },
     {
       "package": "ruff",
-      "version": "0.16.8",
-      "findings_sha256": "ef63fcb75d74a768f0f15b0bffafc470099bf272f91610c3021511edee46fbfd",
-      "reviewed_on": "2026-09-23",
-      "expires": "2026-12-22",
-      "reason": "The bundled ELF is the Ruff executable; __main__.py launches that executable. This exception covers only the binary hash and launcher observation in this report.",
+      "version": "0.16.9",
+      "findings_sha256": "16c6b6dcc5289bcf969b3b827c296b86a640b2c0a3e517225196ff0214b44f15",
+      "reviewed_on": "2026-10-07",
+      "expires": "2027-01-05",
+      "reason": "The flagged ARM ELF SHA256 7ad7644bab61a4c1bec19b68f91cf062123dfe0bd7aa41b9415676ad515e3898 matches the Ruff executable in Astral's official 0.16.9 arm-unknown-linux-musleabihf release archive, whose published SHA256 was verified. The PyPI wheel digest was checked against registry metadata. The subprocess-spawning __main__.py matches the upstream tag byte-for-byte and launches that executable. Accept only this exact version and findings fingerprint.",
       "evidence": [
-        "https://pypi.org/project/ruff/0.16.8/"
+        "https://pypi.org/project/ruff/0.16.9/",
+        "https://github.com/astral-sh/ruff/releases/tag/0.16.9",
+        "https://github.com/astral-sh/ruff/blob/0.16.9/python/ruff/__main__.py"
       ]
     },
     {
