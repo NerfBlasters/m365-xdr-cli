@@ -35,7 +35,8 @@ Semgrep dependencies into the application environment. All default rules run.
 The small adapter checks exact package/version coverage and rejects scanner
 errors, empty output, and unknown risk labels. Native `suspicious` and
 `high_risk` results block; `low` and `no_risks_detected` results do not. Raw
-JSON and SARIF retain the observations, including nonblocking results.
+`guarddog.json` and `guarddog.raw.sarif` retain all native observations,
+including nonblocking results, without modification.
 
 The two maintainer-email domain rules obtain registration data through HTTPS
 RDAP endpoints selected from IANA's bootstrap directory. A narrow `.io`
@@ -56,8 +57,21 @@ lock hashes protect artifact integrity during installation; review upstream
 provenance and release changes for sensitive updates as well.
 
 Reports are retained as workflow artifacts for 14 days. Once the repository is
-public, GuardDog SARIF also uploads to GitHub code scanning. Private repositories
-still retain reports without requiring a code-scanning subscription.
+public, `guarddog.sarif` also uploads to GitHub code scanning under the existing
+`guarddog` category. This derived report contains one package/version review
+alert per unreviewed `suspicious` or `high_risk` result, matching the CI gate.
+It does not publish ordinary capability observations or exact reviewed
+exceptions as open alerts. `guarddog.review.json` inventories every scanned
+package's risk label, findings fingerprint, and disposition; matched exceptions
+include their reason, evidence, and review/expiry dates. Private repositories
+retain the same artifacts without requiring a code-scanning subscription.
+
+A changed fingerprint produces a new review alert. Scan errors, incomplete
+coverage, unknown labels, and invalid/expired policies fail before writing the
+public report; an interrupted rerun cannot reuse an earlier clean report.
+The reporting migration retires the old observation-level alerts on the next
+successful main scan. Their closure reflects changed reporting, not a claim
+that dependency code was repaired. Full observations remain in the artifacts.
 
 ### Handling a blocked dependency
 
