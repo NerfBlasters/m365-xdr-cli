@@ -4,14 +4,14 @@ import copy
 
 # RDAP uses the same registration/date contract as the native WHOIS helper.
 import io
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from unittest.mock import Mock
 from urllib.error import URLError
 
 import pytest
 from guarddog_rdap import BOOTSTRAP, HTTPSRedirects, RDAPLookup
-from guarddog_scan import fingerprint
+from guarddog_scan import fingerprint, main, review_reports
 
 
 def report(binary_text):
@@ -41,6 +41,145 @@ def test_changed_hash_filename_or_added_binary_never_matches_exception():
     changed = copy.deepcopy(original)
     changed["results"]["new-threat"] = [{"code": "new suspicious code"}]
     assert fingerprint(original) != fingerprint(changed)
+
+
+def scan_row(label="suspicious"):
+    return {
+        "dependency": "example-package", "version": "1.0",
+        "result": {
+            "issues": 1, "errors": {},
+            "results": {
+                "bundled_binary": f"Binary file/s detected in package:\n{'a' * 64}: tool (elf)"
+            },
+            "risk_score": {"label": label},
+        },
+    }
+
+
+def review_policy(row=None):
+    policy = {"scanner_version": "3.2.0", "exceptions": []}
+    if row:
+        policy["exceptions"].append({
+            "package": "example-package", "version": "1.0",
+            "findings_sha256": fingerprint(row["result"]),
+            "reviewed_on": "2026-10-07", "expires": "2027-01-05",
+            "reason": "Verified upstream executable", "evidence": ["https://example.org/release"],
+        })
+    return policy
+
+
+def native_sarif():
+    return {"version": "2.1.0", "runs": [{
+        "tool": {"driver": {"name": "GuardDog-pypi", "rules": [{"id": "bundled_binary"}]}},
+        "results": [{"ruleId": "bundled_binary", "message": {"text": "native observation"}}],
+    }]}
+
+
+def test_unreviewed_package_alerts_even_when_observation_is_only_a_capability():
+    row = scan_row()
+    row["result"]["results"] = {"capability-process-spawn": [{"code": "run()"}]}
+    public, review, blocked = review_reports(
+        [row], "example-package==1.0\n", review_policy(), date(2026, 10, 7), native_sarif()
+    )
+    assert blocked == ["example-package==1.0: suspicious"]
+    assert len(public["runs"][0]["results"]) == 1
+    alert = public["runs"][0]["results"][0]
+    assert alert["ruleId"] == "dependency-review-required"
+    assert review["packages"][0]["disposition"] == "needs-review"
+
+
+@pytest.mark.parametrize("label", ["low", "no_risks_detected"])
+def test_nonblocking_observations_retained_without_open_alerts(label):
+    public, review, blocked = review_reports(
+        [scan_row(label)], "example-package==1.0", review_policy(),
+        date(2026, 10, 7), native_sarif(),
+    )
+    assert not blocked and not public["runs"][0]["results"]
+    assert review["packages"][0]["disposition"] == "nonblocking-observation"
+    assert "review" not in review["packages"][0]
+
+
+def test_exact_review_retains_rationale_and_native_report_is_unchanged():
+    row, native = scan_row(), native_sarif()
+    before = copy.deepcopy(native)
+    policy = review_policy(row)
+    public, review, blocked = review_reports(
+        [row], "example-package==1.0", policy, date(2026, 10, 7), native
+    )
+    assert not blocked and not public["runs"][0]["results"]
+    assert native == before
+    accepted = review["packages"][0]
+    assert accepted["disposition"] == "reviewed-exception"
+    assert accepted["review"] == policy["exceptions"][0]
+
+
+def test_changed_findings_reappear_with_new_identity_and_are_not_reviewed():
+    row = scan_row()
+    policy = review_policy(row)
+    public1, _, _ = review_reports(
+        [row], "example-package==1.0", review_policy(), date(2026, 10, 7), native_sarif()
+    )
+    row["result"]["results"]["bundled_binary"] = "new unreviewed binary"
+    public2, review, blocked = review_reports(
+        [row], "example-package==1.0", policy, date(2026, 10, 7), native_sarif()
+    )
+    assert blocked and review["packages"][0]["disposition"] == "needs-review"
+    assert "review" not in review["packages"][0]
+    assert public1["runs"][0]["results"][0]["partialFingerprints"] != (
+        public2["runs"][0]["results"][0]["partialFingerprints"]
+    )
+
+
+@pytest.mark.parametrize("failure", ["missing", "error", "label", "empty-results", "duplicate"])
+def test_incomplete_or_unknown_scans_cannot_publish_clean_report(failure):
+    rows = [scan_row()]
+    if failure == "missing":
+        rows = []
+    elif failure == "error":
+        rows[0]["result"]["errors"] = {"rule": "scanner failed"}
+    elif failure == "label":
+        rows[0]["result"]["risk_score"]["label"] = "unknown"
+    elif failure == "empty-results":
+        rows[0]["result"]["results"] = {}
+    else:
+        rows.append(copy.deepcopy(rows[0]))
+    with pytest.raises(ValueError):
+        review_reports(
+            rows, "example-package==1.0", review_policy(), date(2026, 10, 7), native_sarif()
+        )
+
+
+@pytest.mark.parametrize("failure", ["expired", "scanner-version"])
+def test_invalid_review_policy_cannot_publish_clean_report(failure):
+    row = scan_row()
+    policy = review_policy(row)
+    if failure == "expired":
+        policy["exceptions"][0]["expires"] = "2026-10-07"
+    else:
+        policy["scanner_version"] = "3.3.0"
+    with pytest.raises(ValueError):
+        review_reports([row], "example-package==1.0", policy, date(2026, 10, 7), native_sarif())
+
+
+def test_failed_rerun_removes_stale_public_report_before_scanner_import(tmp_path, monkeypatch):
+    import builtins
+
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    for name in ("guarddog.sarif", "guarddog.review.json"):
+        (reports / name).write_text("stale clean report")
+    original_import = builtins.__import__
+
+    def fail_import(name, *args, **kwargs):
+        if name == "whois":
+            raise ImportError("scanner environment unavailable")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fail_import)
+    with pytest.raises(ImportError, match="scanner environment unavailable"):
+        main(tmp_path / "dependencies.txt", reports)
+    assert not (reports / "guarddog.sarif").exists()
+    assert not (reports / "guarddog.review.json").exists()
 
 
 class NotFound(Exception):

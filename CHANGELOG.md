@@ -10,6 +10,14 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.16.2] - 2026-10-07
+
+### Fixed
+
+- Publish actionable GuardDog package-review alerts instead of every raw
+  capability observation. Preserve full native reports and review rationale
+  in CI artifacts; incomplete scans cannot publish a stale clean report.
+
 ## [0.16.1] - 2026-10-07
 
 ### Changed

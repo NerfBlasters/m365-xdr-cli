@@ -936,7 +936,7 @@ wheels = [
 
 [[package]]
 name = "xdr-cli"
-version = "0.16.1"
+version = "0.16.2"
 source = { editable = "." }
 dependencies = [
     { name = "click" },

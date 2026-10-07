@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 import sys
+from copy import deepcopy
 from datetime import date
 from pathlib import Path
 from unittest.mock import patch
@@ -105,7 +106,94 @@ def apply_exceptions(rows: list, blocked: list[str], policy: dict, today: date) 
             print(f"Reviewed exception: {marker}; expires {entry['expires']}")
     return remaining
 
+
+def review_reports(
+    rows: list, requirements: str, policy: dict, today: date, native_sarif: dict
+) -> tuple[dict, dict, list[str]]:
+    """Publish the gate's review decisions, retaining native evidence separately.
+
+    Validate completeness and exception policy before producing even an empty
+    public report. A changed fingerprint becomes a new review alert; ordinary
+    capabilities remain in the native audit reports rather than open alerts.
+    """
+    blocked = validate_scan(rows, expected_packages(requirements))
+    remaining = apply_exceptions(rows, blocked, policy, today)
+    if native_sarif.get("version") != "2.1.0" or len(native_sarif.get("runs", [])) != 1:
+        raise ValueError("Unexpected native SARIF format")
+    public = deepcopy(native_sarif)
+    run = public["runs"][0]
+    if run["tool"]["driver"]["name"] != "GuardDog-pypi":
+        raise ValueError("Unexpected native SARIF tool")
+    rule_id = "dependency-review-required"
+    run["tool"]["driver"]["rules"] = [{
+        "id": rule_id,
+        "shortDescription": {"text": "Dependency findings require review"},
+        "fullDescription": {"text": (
+            "GuardDog classified this exact package/version as suspicious or high risk, "
+            "and no current fingerprint-matched review exception accepts it. "
+            "This heuristic requires investigation; it is not a confirmed vulnerability."
+        )},
+        "defaultConfiguration": {"level": "warning"},
+        "help": {"text": (
+            "Inspect guarddog.json and guarddog.raw.sarif in the dependency-security "
+            "workflow artifact. guarddog.review.json records the disposition and "
+            "any matching review reason. Scanner errors and incomplete coverage "
+            "fail CI and never publish a clean report."
+        )},
+    }]
+    run["results"] = []
+    locations = {}
+    for line_number, pin in enumerate(requirements.splitlines(), 1):
+        name, version = pin.strip().split("==")
+        locations.setdefault((canonical(name), version), (line_number, len(name)))
+    exceptions = {(canonical(e["package"]), e["version"]): e for e in policy["exceptions"]}
+    inventory = []
+    for row in sorted(rows, key=lambda r: (canonical(r["dependency"]), r["version"])):
+        key = (canonical(row["dependency"]), row["version"])
+        result = row["result"]
+        marker = f"{key[0]}=={key[1]}: {result['risk_score']['label']}"
+        needs_review = marker in remaining
+        reviewed = marker in blocked and not needs_review
+        observation = {
+            "package": key[0], "version": key[1],
+            "risk_label": result["risk_score"]["label"],
+            "findings_sha256": fingerprint(result),
+            "disposition": (
+                "needs-review" if needs_review else
+                "reviewed-exception" if reviewed else "nonblocking-observation"
+            ),
+        }
+        if reviewed:
+            observation["review"] = deepcopy(exceptions[key])
+        inventory.append(observation)
+        if not needs_review:
+            continue
+        line_number, name_length = locations[key]
+        identity = hashlib.sha256(json.dumps(
+            [*key, observation["findings_sha256"]], separators=(",", ":")
+        ).encode()).hexdigest()
+        run["results"].append({
+            "ruleId": rule_id, "ruleIndex": 0, "level": "warning",
+            "message": {"text": (
+                f"Review required: {marker}. Findings SHA256: "
+                f"{observation['findings_sha256']}. See the dependency-security "
+                "artifact for complete native observations and review decisions."
+            )},
+            "locations": [{"physicalLocation": {
+                "artifactLocation": {"uri": "reports/dependencies.txt"},
+                "region": {"startLine": line_number, "endLine": line_number,
+                           "startColumn": 1, "endColumn": name_length + 1},
+            }}],
+            "partialFingerprints": {"guarddog/review-v1": identity},
+        })
+    return public, {"scanner_version": "3.2.0", "packages": inventory}, remaining
+
+
 def main(requirements: Path, reports: Path) -> int:
+    reports.mkdir(parents=True, exist_ok=True)
+    # Never let a failed/incomplete rerun upload a previous clean report.
+    for name in ("guarddog.sarif", "guarddog.review.json"):
+        (reports / name).unlink(missing_ok=True)
     # Imports stay inside main so fail-closed behavior can be tested without
     # installing scanner dependencies into the application environment.
     from importlib.metadata import version
@@ -120,7 +208,8 @@ def main(requirements: Path, reports: Path) -> int:
 
     if version("guarddog") != "3.2.0":
         raise ValueError("Review the adapter and exception policy before updating GuardDog")
-    expected = expected_packages(requirements.read_text())
+    requirements_text = requirements.read_text()
+    expected_packages(requirements_text)
     reports.mkdir(parents=True, exist_ok=True)
     rdap = RDAPLookup(whois.extract_domain, whois.whois, PywhoisError)
     try:
@@ -132,13 +221,16 @@ def main(requirements: Path, reports: Path) -> int:
     sarif, errors = SarifReporter.render_verify(
         dependencies, sorted(_get_all_rules(ECOSYSTEM.PYPI)), rows, ECOSYSTEM.PYPI
     )
-    (reports / "guarddog.sarif").write_text(sarif)
+    (reports / "guarddog.raw.sarif").write_text(sarif)
     if errors.strip():
         print(errors, file=sys.stderr)
         return 1
-    blocked = validate_scan(rows, expected)
     policy = json.loads(Path(".github/guarddog-exceptions.json").read_text())
-    blocked = apply_exceptions(rows, blocked, policy, date.today())
+    public, review, blocked = review_reports(
+        rows, requirements_text, policy, date.today(), json.loads(sarif)
+    )
+    (reports / "guarddog.review.json").write_text(json.dumps(review, indent=2))
+    (reports / "guarddog.sarif").write_text(json.dumps(public, indent=2))
     print(f"GuardDog completed {len(rows)} package-version scans.")
     if blocked:
         print("Review required:\n" + "\n".join(blocked), file=sys.stderr)
