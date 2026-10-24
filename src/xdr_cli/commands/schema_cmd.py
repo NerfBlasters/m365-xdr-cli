@@ -62,9 +62,11 @@ from xdr_cli.schema_graph.correlate import correlate_inputs, load_artifact_input
 from xdr_cli.schema_graph.diagnostics import build_diagnostics
 from xdr_cli.schema_graph.docs import BEGIN_MARKER, END_MARKER, render_semantic_reference
 from xdr_cli.schema_graph.effective import (
+    QUERYABLE_AVAILABILITY,
     EffectiveGraph,
     FieldAvailability,
     compose_effective_graph,
+    unobserved_availability,
 )
 from xdr_cli.schema_graph.evidence_cache import cached_evidence, with_evidence_snapshot
 from xdr_cli.schema_graph.loader import load_packaged_graph, load_packaged_profile
@@ -96,6 +98,7 @@ from xdr_cli.schema_graph.overlay import (
     schema_evidence_lock,
     tenant_overlay_status,
 )
+from xdr_cli.schema_graph.physical import coverage_summary, probe_coverage
 from xdr_cli.schema_graph.probe import (
     PROBE_QUERY_BYTE_LIMIT,
     aggregate_observation,
@@ -274,6 +277,7 @@ async def _schema_refresh(ctx: AppContext, *, on_result=None) -> None:
     finally:
         await client.close()
     rows = list(result.results)
+    coverage = probe_coverage(query, rows, result.metadata.get("execution_surface", "unknown"))
     legacy_data, _legacy_meta = _cache_paths(ctx.config.tenant_id)
     root = legacy_data.parent
     generation = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ") + "-" + secrets.token_hex(6)
@@ -311,6 +315,7 @@ async def _schema_refresh(ctx: AppContext, *, on_result=None) -> None:
                 "data_bytes": data_bytes,
                 "query_sha256": hashlib.sha256(query.encode()).hexdigest(),
                 "server_truncation_state": "unknown",
+                "coverage": coverage,
             }
             with meta_tmp.open("x", encoding="utf-8") as handle:
                 handle.write(json.dumps(metadata, separators=(",", ":")) + "\n")
@@ -362,8 +367,12 @@ async def _schema_refresh(ctx: AppContext, *, on_result=None) -> None:
             extra_metadata={
                 "schema_cache_path": str(data_path.resolve()),
                 "schema_cache_generation": generation,
+                "schema_coverage": coverage,
             },
-            receipt_context={"schema_cache_generation": generation},
+            receipt_context={
+                "schema_cache_generation": generation,
+                "schema_coverage": coverage_summary(coverage),
+            },
             tenant_id=ctx.config.tenant_id,
         )
     )
@@ -514,6 +523,7 @@ def _compose_effective(
     canonical: Graph,
     overlays: tuple[Graph, ...],
     observations: tuple[ObservationRecord, ...],
+    coverage: dict | None = None,
 ) -> EffectiveGraph:
     """Compose tenant state or return an actionable, stable conflict contract."""
 
@@ -541,6 +551,7 @@ def _compose_effective(
             canonical=canonical,
             overlays=overlays,
             observations=observations,
+            coverage=coverage,
         )
         active_observations = []
         local_source_digests: dict[str, str] = {}
@@ -617,6 +628,7 @@ def _compose_effective(
             overlays=overlays,
             observations=tuple(active_observations),
             verified_observation_ids=frozenset(verified_observation_ids),
+            coverage=coverage,
         )
     except GraphValidationError as exc:
         error = ConflictError(
@@ -1813,6 +1825,8 @@ def _semantic_receipt_context(cache: dict, **extra) -> dict:
             "stale": cache["stale"],
             "age_seconds": cache["age_seconds"],
             "refreshed_at": cache["refreshed_at"],
+            **({"schema_coverage": coverage_summary(cache["coverage"])}
+               if isinstance(cache.get("coverage"), dict) else {}),
         },
         **extra,
     }
@@ -2553,6 +2567,7 @@ async def _schema_observe(
         canonical=_semantic_graph(),
         overlays=(tenant_overlay.graph,),
         observations=tenant_overlay.observations,
+        coverage=cache.get("coverage"),
     )
     try:
         source = _interpretation_for_locator(effective.graph, locator)
@@ -3339,6 +3354,7 @@ async def _schema_candidate_review(
         canonical=_semantic_graph(),
         overlays=(tenant_overlay.graph,),
         observations=tenant_overlay.observations,
+        coverage=_cache.get("coverage"),
     )
     relationship = effective.graph.relationships.get(relationship_id)
     if relationship is None or relationship.status not in {
@@ -3490,6 +3506,11 @@ async def _schema_candidate_review(
             target_locator.table,
             operation=f"candidate review with --lookback {selected_lookback}",
         )
+    if target.field_id not in effective.queryable_fields:
+        error = LocalNotFoundError("tenant schema field", str(target_locator))
+        error.error_code = "SCHEMA_FIELD_UNAVAILABLE"
+        error.help_command = f"xdr schema show {target_locator.table}"
+        raise error
     try:
         compiled = compile_target_context_query(
             target,
@@ -3583,6 +3604,7 @@ def _candidate_report(
         canonical=_semantic_graph(),
         overlays=(tenant_overlay.graph,),
         observations=tenant_overlay.observations,
+        coverage=cache.get("coverage"),
     )
     grouped: dict[str, list] = {}
     for observation in tenant_overlay.observations:
@@ -4667,6 +4689,7 @@ def schema_pivot(
         canonical=_semantic_graph(),
         overlays=(tenant_overlay.graph,),
         observations=tenant_overlay.observations,
+        coverage=cache.get("coverage"),
     )
     graph = effective.graph
     available = effective.queryable_fields
@@ -4696,8 +4719,8 @@ def schema_pivot(
 
     steps = all_steps if include_candidates else reviewed_steps
     candidate_count = len(all_steps) - len(reviewed_steps)
-    if source_availability == FieldAvailability.UNAVAILABLE.value:
-        outcome = "source-unavailable"
+    if source_availability not in QUERYABLE_AVAILABILITY:
+        outcome = f"source-{source_availability}"
     elif source_availability == FieldAvailability.OUTER_AVAILABLE_UNOBSERVED.value:
         outcome = "source-unobserved"
     else:
@@ -4793,6 +4816,7 @@ def schema_path(
         canonical=_semantic_graph(),
         overlays=(tenant_overlay.graph,),
         observations=tenant_overlay.observations,
+        coverage=cache.get("coverage"),
     )
     graph = effective.graph
     available = effective.queryable_fields
@@ -4832,8 +4856,14 @@ def schema_path(
     )
     paths = all_candidate_paths if include_candidates else reviewed_paths
     candidate_only = bool(all_candidate_paths) and not reviewed_paths
-    source_state = "available" if source_table in physical_tables else "unavailable"
-    target_state = "available" if target_table in physical_tables else "unavailable"
+    source_state = (
+        "available" if source_table in physical_tables
+        else unobserved_availability(source_table, cache.get("coverage")).value
+    )
+    target_state = (
+        "available" if target_table in physical_tables
+        else unobserved_availability(target_table, cache.get("coverage")).value
+    )
     outcome = "routes-found" if paths else ("candidate-only" if candidate_only else "disconnected")
     result_rows = []
     for path_ordinal, route in enumerate(paths, start=1):

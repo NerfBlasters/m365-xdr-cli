@@ -26,6 +26,8 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from xdr_cli.hunting_tables import PROBE_TABLES
+
 BEGIN_MARK = "<!-- BEGIN GENERATED PHYSICAL REFERENCE -->"
 END_MARK = "<!-- END GENERATED PHYSICAL REFERENCE -->"
 
@@ -74,11 +76,14 @@ def build(truth: dict[str, set[str]]) -> str:
     p("> Regenerate in any tenant:")
     p("> `xdr library run sys_schema_probe` (the receipt's `data_path` holds the rows)")
     p(">")
-    p("> The probe covers **80 curated Defender XDR, Sentinel, and Entra workspace")
+    p(
+        f"> The probe covers **{len(PROBE_TABLES)} curated Defender XDR, Sentinel, "
+        "and Entra workspace"
+    )
     p("> tables**; which are returned varies by license, role, connected workspace,")
     p("> and connector. `sys_schema_probe` uses `union isfuzzy=true`, so absent tables")
     p("> are silently skipped. Custom logs and future workspace tables must be added to")
-    p("> the probe explicitly. Re-run after any licensing or connector change.")
+    p("> `xdr_cli.hunting_tables` explicitly. Re-run after any licensing or connector change.")
     p("")
     p("> Rebuilding this doc: `python scripts/build_schema_pivots.py <schema.csv> docs/schema_pivots.md`.")
     p("")

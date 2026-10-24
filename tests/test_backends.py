@@ -56,6 +56,7 @@ async def test_cookie_hunting_verifies_tenant_and_never_constructs_msal(config):
     assert result.results == [{"value": 1}]
     assert result.schema == [{"name": "value", "type": "Int64"}]
     assert result.stats["Quota"]["ExecutionTime"] == "00:00:00.001"
+    assert result.metadata["execution_surface"] == "portal"
     assert tenant.call_count == 1
     assert hunting.call_count == 2
     auth.assert_not_called()

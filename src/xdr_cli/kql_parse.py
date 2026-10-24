@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import re
 
+from xdr_cli.hunting_tables import KNOWN_TABLES
+
 # KQL operators / functions / keywords that follow a ``|`` and must NOT be
 # treated as table names. The list is closed: false positives here mean we
 # silently drop a real table; false negatives mean we tag an operator as a
@@ -63,45 +65,10 @@ _BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 # as a statement-start.
 _LET_HEAD_RE = re.compile(r"\blet\s+\w+\s*=\s*", re.IGNORECASE)
 
-# Known Defender XDR / Microsoft Graph hunting table names. Used to filter
+# Known hunting table names, shared with ``sys_schema_probe``. Used to filter
 # extract_tables() output so column names with PascalCase don't leak into
-# tables_referenced. List sourced from schema_probe.kql and docs/schema_pivots.md —
-# keep in sync when new tables ship.
-_KNOWN_TABLES: frozenset[str] = frozenset({
-    # Defender for Endpoint
-    "AlertEvidence", "AlertInfo", "BehaviorEntities", "BehaviorInfo",
-    "DeviceEvents", "DeviceFileCertificateInfo", "DeviceFileEvents",
-    "DeviceImageLoadEvents", "DeviceInfo", "DeviceLogonEvents",
-    "DeviceNetworkEvents", "DeviceNetworkInfo", "DeviceProcessEvents",
-    "DeviceRegistryEvents", "DeviceBaselineComplianceAssessment",
-    "DeviceBaselineComplianceAssessmentKB", "DeviceBaselineComplianceProfiles",
-    "DeviceTvmBrowserExtensions", "DeviceTvmBrowserExtensionsKB",
-    "DeviceTvmCertificateInfo", "DeviceTvmHardwareFirmware",
-    "DeviceTvmInfoGathering", "DeviceTvmInfoGatheringKB",
-    "DeviceTvmSecureConfigurationAssessment",
-    "DeviceTvmSecureConfigurationAssessmentKB",
-    "DeviceTvmSoftwareEvidenceBeta", "DeviceTvmSoftwareInventory",
-    "DeviceTvmSoftwareVulnerabilities", "DeviceTvmSoftwareVulnerabilitiesKB",
-    # Defender for Office 365
-    "EmailAttachmentInfo", "EmailEvents", "EmailPostDeliveryEvents",
-    "EmailUrlInfo", "UrlClickEvents",
-    # Defender for Identity / Cloud Apps / Entra
-    "AADSignInEventsBeta", "AADSpnSignInEventsBeta",
-    "CloudAppEvents", "CloudAuditEvents", "CloudDnsEvents", "CloudProcessEvents",
-    "CloudStorageAggregatedEvents",
-    "IdentityAccountInfo", "IdentityDirectoryEvents", "IdentityEvents",
-    "IdentityInfo", "IdentityLogonEvents", "IdentityQueryEvents",
-    "EntraIdSignInEvents", "EntraIdSpnSignInEvents",
-    # Campaign / Threat Intelligence
-    "CampaignInfo", "DataSecurityBehaviors", "DataSecurityEvents",
-    "ThreatIntelligenceIndicator",
-    # Exposure / Malware / Auxiliary
-    "DisruptionAndResponseEvents", "ExposureGraphEdges", "ExposureGraphNodes",
-    "FileMaliciousContentInfo", "GraphAPIAuditEvents",
-    "ConnectorStatusInfo", "AIAgentsInfo",
-    "MessageEvents", "MessagePostDeliveryEvents", "MessageUrlInfo",
-    "OAuthAppInfo",
-})
+# tables_referenced. Add new tables in ``xdr_cli.hunting_tables``.
+_KNOWN_TABLES = KNOWN_TABLES
 
 # Pattern A: identifier at the start of a statement / pipeline, optionally
 # wrapped in materialize(). Restrict wrapper recognition to source position;

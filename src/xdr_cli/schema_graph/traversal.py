@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from xdr_cli.schema_graph.effective import QUERYABLE_AVAILABILITY
 from xdr_cli.schema_graph.model import (
     Direction,
     Graph,
@@ -226,8 +227,8 @@ def _step(
         target_role=target_interpretation.role,
         evidence_level=relationship.status.value,
         candidate=relationship.status is RelationshipStatus.CANDIDATE,
-        source_available=source_state != "unavailable",
-        target_available=target_state != "unavailable",
+        source_available=source_state in QUERYABLE_AVAILABILITY,
+        target_available=target_state in QUERYABLE_AVAILABILITY,
         source_availability=source_state,
         target_availability=target_state,
     )

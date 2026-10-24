@@ -694,6 +694,13 @@ def test_schema_refresh_content_binds_cache_and_tampering_is_actionable(tmp_path
     assert metadata["data_sha256"] == hashlib.sha256(raw).hexdigest()
     assert metadata["data_bytes"] == len(raw)
     assert metadata["row_count"] == 1
+    assert metadata["coverage"]["scope_known"] is True
+    assert "DeviceInfo" in metadata["coverage"]["probe_tables"]
+    assert metadata["coverage"]["returned_tables"] == ["DeviceInfo"]
+    assert metadata["coverage"]["execution_surface"] == "unknown"
+    assert metadata["coverage"]["absence_is_conclusive"] is False
+    refresh_receipt = json.loads(refreshed.stdout.splitlines()[0])
+    assert isinstance(refresh_receipt["context"]["schema_coverage"]["probe_tables"], int)
     assert cache_temp_newlines == ["\n"]
 
     data_path.write_text("")
@@ -729,6 +736,45 @@ def test_schema_pivot_is_cache_only_and_explains_join_safety(tmp_path, monkeypat
     assert rows[0]["TargetNamespace"] == "mde-device-id"
     assert rows[0]["TraversalDirection"] in {"forward", "reverse"}
     assert rows[0]["Provenance"] == ["curated:mde-device-id-contract"]
+
+
+@pytest.mark.parametrize("state", ["not-probed", "not-observed", "type-conflict"])
+def test_pivot_reports_nonqueryable_source_and_observe_stops_before_network(
+    tmp_path, monkeypatch, state
+):
+    fields = [("DeviceNetworkEvents", "DeviceId")]
+    if state == "type-conflict":
+        fields.append(("DeviceInfo", "DeviceId"))
+    home = _schema_cache(tmp_path, monkeypatch, fields)
+    meta_path = next((home / "schema").glob("*/schema.meta.json"))
+    metadata = json.loads(meta_path.read_text())
+    if state == "type-conflict":
+        data_path = meta_path.with_name("schema.jsonl")
+        physical_rows = [json.loads(line) for line in data_path.read_text().splitlines()]
+        for row in physical_rows:
+            if (row["TableName"], row["ColumnName"]) == ("DeviceInfo", "DeviceId"):
+                row["ColumnType"] = "Int64"
+        raw = "".join(json.dumps(row) + "\n" for row in physical_rows).encode()
+        data_path.write_bytes(raw)
+        metadata.update(data_sha256=hashlib.sha256(raw).hexdigest(), data_bytes=len(raw))
+    metadata["coverage"] = {
+        "probe_tables": ["DeviceNetworkEvents"]
+        + (["DeviceInfo"] if state != "not-probed" else []),
+        "returned_tables": ["DeviceNetworkEvents"],
+        "complete": False,
+    }
+    meta_path.write_text(json.dumps(metadata))
+    with patch("xdr_cli.commands.schema_cmd.create_client") as network:
+        result = runner.invoke(app, ["schema", "pivot", "DeviceInfo.DeviceId"])
+        blocked = runner.invoke(app, ["schema", "observe", "DeviceInfo.DeviceId", "--plan-only"])
+    assert result.exit_code == 0, result.output
+    receipt, rows = _artifact_rows(result.stdout)
+    assert receipt["context"]["outcome"] == f"source-{state}"
+    assert receipt["context"]["source_availability"] == state
+    assert rows and all(not row["SourceAvailable"] for row in rows)
+    assert blocked.exit_code == 8, blocked.output
+    assert json.loads(blocked.stdout)["error"]["code"] == "SCHEMA_FIELD_UNAVAILABLE"
+    network.assert_not_called()
 
 
 def test_schema_pivot_canonicalizes_documented_nested_dotted_shorthand(tmp_path, monkeypatch):

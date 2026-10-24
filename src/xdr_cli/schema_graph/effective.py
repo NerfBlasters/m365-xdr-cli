@@ -17,12 +17,33 @@ from xdr_cli.schema_graph.model import (
     RelationshipStatus,
     empirical_relationship_from_observations,
 )
+from xdr_cli.schema_graph.physical import field_storage_compatible, physical_field_rows
 
 
 class FieldAvailability(StrEnum):
     AVAILABLE = "available"
     OUTER_AVAILABLE_UNOBSERVED = "outer-available-unobserved"
     UNAVAILABLE = "unavailable"
+    NOT_PROBED = "not-probed"
+    NOT_OBSERVED = "not-observed"
+    TYPE_CONFLICT = "type-conflict"
+
+
+QUERYABLE_AVAILABILITY = frozenset({
+    FieldAvailability.AVAILABLE,
+    FieldAvailability.OUTER_AVAILABLE_UNOBSERVED,
+})
+
+
+def unobserved_availability(table: str, coverage: dict | None) -> FieldAvailability:
+    """Explain missing rows without claiming a fuzzy probe proved absence."""
+
+    if coverage is None:
+        return FieldAvailability.UNAVAILABLE
+    probe_tables = coverage.get("probe_tables")
+    if isinstance(probe_tables, list) and table not in probe_tables:
+        return FieldAvailability.NOT_PROBED
+    return FieldAvailability.NOT_OBSERVED
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +58,7 @@ class EffectiveGraph:
         return {
             field_id
             for field_id, state in self.field_availability.items()
-            if state is not FieldAvailability.UNAVAILABLE
+            if state in QUERYABLE_AVAILABILITY
         }
 
 
@@ -192,6 +213,7 @@ def compose_effective_graph(
     observations: tuple[ObservationRecord, ...] = (),
     observed_nested_fields: set[str] | None = None,
     verified_observation_ids: frozenset[str] = frozenset(),
+    coverage: dict | None = None,
 ) -> EffectiveGraph:
     """Apply one physical-schema snapshot without mutating semantic records."""
 
@@ -206,11 +228,7 @@ def compose_effective_graph(
         verified_observation_ids=verified_observation_ids,
     )
     graph = merge_graphs(base, discoveries)
-    physical = {
-        (str(row.get("TableName")), str(row.get("ColumnName")))
-        for row in schema_rows
-        if row.get("TableName") and row.get("ColumnName")
-    }
+    physical = physical_field_rows(schema_rows)
     observed_nested = set(observed_nested_fields or ())
     # A nested field in a tenant overlay is persisted proof that passive shape
     # ingestion observed that exact path. Canonical records may be repeated in
@@ -221,9 +239,12 @@ def compose_effective_graph(
         )
     availability: dict[str, FieldAvailability] = {}
     for record in graph.fields.values():
-        outer_exists = (record.locator.table, record.locator.column) in physical
-        if not outer_exists:
-            state = FieldAvailability.UNAVAILABLE
+        outer_rows = physical.get((record.locator.table, record.locator.column), [])
+        if not outer_rows:
+            # Legacy snapshots retain their label, not a claim of proven absence.
+            state = unobserved_availability(record.locator.table, coverage)
+        elif not field_storage_compatible(record, outer_rows):
+            state = FieldAvailability.TYPE_CONFLICT
         elif not record.locator.json_path or record.id in observed_nested:
             state = FieldAvailability.AVAILABLE
         else:

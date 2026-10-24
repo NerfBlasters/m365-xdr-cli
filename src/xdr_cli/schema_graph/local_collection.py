@@ -39,6 +39,7 @@ from xdr_cli.schema_graph.model import (
     interpretation_id,
 )
 from xdr_cli.schema_graph.overlay import load_tenant_overlay, publish_tenant_overlay
+from xdr_cli.schema_graph.physical import field_storage_compatible, physical_field_rows
 from xdr_cli.schema_graph.probe import bounded_time_column, compile_target_probe_batches
 
 
@@ -323,6 +324,7 @@ async def _collect_local(
     from xdr_cli.schema_graph.effective import merge_graphs
 
     known = merge_graphs(canonical, overlay.graph)
+    physical = physical_field_rows(schema_rows)
     additions = Graph()
     observations = []
     tasks = []
@@ -408,10 +410,18 @@ async def _collect_local(
         observations.append(observation)
         locator = FieldLocator.parse(pair.target)
         time_column = bounded_time_column(locator.table, available)
-        if time_column is None or locator.column not in available.get(locator.table, set()):
+        target_compatible = field_storage_compatible(
+            graph.fields[interpretations[1].field_id],
+            physical.get((locator.table, locator.column), []),
+        )
+        if time_column is None or not target_compatible:
             reverse = FieldLocator.parse(pair.source)
             reverse_time = bounded_time_column(reverse.table, available)
-            if reverse_time and reverse.column in available.get(reverse.table, set()):
+            reverse_compatible = field_storage_compatible(
+                graph.fields[interpretations[0].field_id],
+                physical.get((reverse.table, reverse.column), []),
+            )
+            if reverse_time and reverse_compatible:
                 pair = replace(
                     pair,
                     source=pair.target,
@@ -424,7 +434,7 @@ async def _collect_local(
             else:
                 reason = (
                     "unavailable_validation_targets"
-                    if locator.column not in available.get(locator.table, set())
+                    if not target_compatible
                     else "tables_without_time_column"
                 )
                 coverage[reason] = coverage.get(reason, 0) + 1

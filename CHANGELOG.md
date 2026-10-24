@@ -10,6 +10,37 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.17.0] - 2026-10-23
+
+### Added
+
+- Schema refresh records the actual hunting execution surface and exact probe
+  coverage, with bounded counts in artifact receipts. Missing fuzzy-union results
+  remain inconclusive instead of asserting that a table is absent.
+- Schema pivots distinguish fields outside the recorded probe scope, fields not
+  observed in the response, and incompatible storage types. These states cannot
+  authorize live probes; legacy caches retain their existing missing-field label.
+
+### Changed
+
+- The schema probe and KQL table tokenizer share one packaged table registry.
+  The probe now includes `AgentsInfo`, `CallActivityEvents`,
+  `CloudPolicyEnforcementEvents`, `MessageContents`, and
+  `ThreatIntelligenceIndicator`, preserving existing legacy table names.
+
+### Fixed
+
+- Record workspace table references such as `SigninLogs`, `AuditLogs`, and
+  `SecurityAlert` that the physical probe recognized but session tokenization
+  previously ignored.
+- Enforce physical storage compatibility in semantic availability and probe
+  target planning, including local-overlap validation and candidate context reads.
+  Preserve historical overlap evidence when current storage is incompatible.
+  String identifier interpretations no longer trigger validation against numeric
+  or otherwise incompatible physical columns.
+- Treat new or unknown availability states as non-queryable rather than granting
+  availability to every state except the original unavailable label.
+
 ## [0.16.2] - 2026-10-07
 
 ### Fixed

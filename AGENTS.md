@@ -278,6 +278,13 @@ Rerun after a budget pause to reuse completed searches and continue; inspect
 reported depth, result-cap, and unsupported-path gaps. Refresh physical
 availability separately with `schema refresh`.
 
+Fresh physical-cache metadata records exact probe scope and actual hunting
+surface; missing fuzzy-union results are inconclusive. Treat `not-probed`,
+`not-observed`, and `type-conflict` availability as non-queryable. Legacy
+`unavailable` also does not prove tenant absence. Use each pivot step's
+`SourceAvailable`/`TargetAvailable` flags before planning a probe; semantic
+`JoinSafe` alone does not establish physical availability.
+
 Local discovery recovers direct field origins from saved KQL, including projections,
 aliases, nested properties and direct summary grouping keys. Unsupported query
 shapes and low-information values are reported as coverage gaps. Repeated runs
@@ -359,6 +366,6 @@ For session env vars (`XDR_SESSION`), parallel sub-agents (`XDR_ACTOR`), learnin
 - `docs/investigation.md` — investigation methodology, KQL authoring, presenting findings
 - `docs/sessions.md` — session env vars, parallel sub-agents, learning mode mechanics
 - `playbooks/` — per-alert-type investigation playbooks
-- `docs/schema_pivots.md` — KQL table/column reference (~80 tables); its "Regenerating this file" section covers the `sys_schema_probe` library query
+- `docs/schema_pivots.md` — KQL table/column reference (85 curated tables); its "Regenerating this file" section covers the `sys_schema_probe` library query
 - `docs/schema_graph.md` — see this for the schema workflow (semantic pivots, paths, probes)
 - `src/xdr_cli/queries/` — library query source

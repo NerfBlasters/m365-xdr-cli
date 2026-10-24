@@ -39,6 +39,37 @@ answers "which fields may carry the same identifier, and what workflow is
 safe?" Equal values justify another pivot without proving that a raw KQL join
 is selective, cardinality-safe, or semantically equivalent.
 
+The physical probe is a curated catalog, not exhaustive tenant discovery. New
+refreshes record the exact requested table names and returned tables in cache
+metadata under `coverage`; refresh artifact metadata also exposes `schema_coverage`.
+Refresh, pivot, and path receipts report bounded coverage counts and the actual hunting execution surface
+(`graph`, `mde`, `portal`, or `unknown`). A Graph-to-MDE fallback stays within the
+official backend but changes that surface. Fuzzy-union omissions and unknown
+server truncation never prove a table is absent or inaccessible.
+
+`pivot` and `path` distinguish physical availability from semantic compatibility:
+
+- `available`: a compatible top-level field was returned in the cached schema.
+- `outer-available-unobserved`: JSON storage exists, but this nested path has not
+  been observed locally. This remains an eligible path for explicit probing.
+- `not-probed`: the table was outside the exact recorded probe scope.
+- `not-observed`: the field was not returned, including inconclusive/custom scope.
+- `type-conflict`: an explicit storage type conflicts with the semantic field,
+  or its supplied type is unknown. A nested leaf's type is checked separately
+  from its outer string/dynamic JSON storage.
+- `unavailable`: the legacy label for a missing field when the cache predates
+  coverage metadata; it is not proof of absence.
+
+Only the first two states permit live probing. Missing type metadata in legacy
+rows retains its previous behavior; supplied unknown types do not. Existing
+routes remain visible with their availability labels. Historical local overlaps
+are retained when current storage types prevent live validation. No public schema
+reference is used as evidence that a field exists in the tenant.
+When the pivot source is non-queryable, its receipt outcome is
+`source-not-probed`, `source-not-observed`, `source-type-conflict`, or the legacy
+`source-unavailable`. Path receipts report table-level availability; individual
+steps carry their field-level state and `SourceAvailable`/`TargetAvailable` flags.
+
 Start with the cache-only status command and run its exact
 `context.next_command`:
 

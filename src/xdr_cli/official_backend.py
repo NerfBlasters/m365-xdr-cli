@@ -18,11 +18,13 @@ class OfficialBackend(Backend):
         self.transport = transport
 
     async def execute_hunting(self, query: str) -> HuntingResult:
+        execution_surface = "graph"
         try:
             response = await self.transport.post(
                 APISurface.GRAPH, "runHuntingQuery", json={"query": query},
             )
         except (NotFoundError, ForbiddenError):
+            execution_surface = "mde"
             err_console.print(
                 "[dim]Graph hunting unavailable on this tenant; "
                 "falling back to MDE-only tables...[/dim]"
@@ -30,7 +32,9 @@ class OfficialBackend(Backend):
             response = await self.transport.post(
                 APISurface.MDE, "advancedqueries/run", json={"Query": query},
             )
-        return _normalize_response(response)
+        result = _normalize_response(response)
+        result.metadata["execution_surface"] = execution_surface
+        return result
 
     async def list_incidents(self, *, params: dict, limit: int = 0) -> AsyncIterator[dict]:
         async for row in self.transport.paginate(

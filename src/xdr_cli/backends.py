@@ -224,7 +224,10 @@ class PortalBackend(Backend):
             "PortalSchema": result["Schema"],
             **{key: result[key] for key in ("Quota", "EnhancedQueryStats") if key in result},
         }
-        normalized.metadata = {"portal_query_stats": normalized.stats}
+        normalized.metadata = {
+            "portal_query_stats": normalized.stats,
+            "execution_surface": "portal",
+        }
         return normalized
 
     async def _graph_pages(

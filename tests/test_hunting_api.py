@@ -41,6 +41,7 @@ async def test_run_query_via_graph(client):
     assert result.results[0]["FileName"] == "evil.exe"
     assert result.stats["ExecutionTime"] == 1.5
     assert result.schema[0]["name"] == "Timestamp"
+    assert result.metadata["execution_surface"] == "graph"
     # Graph body must be lowercase "query" — PascalCase "Query" would be a
     # regression against Graph's documented contract.
     body = _body(route.calls.last)
@@ -66,6 +67,7 @@ async def test_run_query_falls_back_to_mde_on_404(client):
     result = await run_query(client, "DeviceEvents | take 1")
     assert result.schema[0]["name"] == "Timestamp"
     assert result.results[0]["Timestamp"] == "2025-04-01T10:00:00Z"
+    assert result.metadata["execution_surface"] == "mde"
     # MDE body must be PascalCase "Query".
     body = _body(mde_route.calls.last)
     assert body == {"Query": "DeviceEvents | take 1"}
@@ -83,6 +85,7 @@ async def test_run_query_falls_back_to_mde_on_403(client):
     )
     result = await run_query(client, "DeviceEvents | take 1")
     assert result.results == []
+    assert result.metadata["execution_surface"] == "mde"
 
 
 @respx.mock

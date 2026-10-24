@@ -70,6 +70,26 @@ def test_empty_local_cache_does_not_trigger_exploration(tmp_path, monkeypatch):
     explore.assert_not_called()
 
 
+def test_collection_retains_local_evidence_without_querying_incompatible_target(local_results):
+    rows = [
+        {"TableName": "Second", "ColumnName": "Who", "ColumnType": "Dynamic"},
+        {"TableName": "Second", "ColumnName": "Timestamp", "ColumnType": "DateTime"},
+    ]
+    with (
+        patch("xdr_cli.main.load_config", return_value=Config(tenant_id="tenant")),
+        patch("xdr_cli.commands.schema_cmd._load_cache", return_value=(rows, {})),
+        patch("xdr_cli.schema_graph.local_collection.create_client") as client,
+        patch("xdr_cli.schema_graph.local_collection.run_query", new_callable=AsyncMock) as query,
+    ):
+        result = runner.invoke(app, ["schema", "collect"])
+    assert result.exit_code == 0, result.output
+    client.assert_not_called()
+    query.assert_not_awaited()
+    receipt = json.loads(result.stdout.splitlines()[0])
+    assert receipt["context"]["local_coverage"]["unavailable_validation_targets"] == 1
+    assert len(load_tenant_overlay("tenant").observations) == 1
+
+
 def test_live_collection_queries_only_the_discovered_target_and_reuses_validation(local_results):
     rows = [
         {"TableName": "Second", "ColumnName": column, "ColumnType": "string"}
