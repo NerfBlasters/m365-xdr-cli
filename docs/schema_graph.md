@@ -306,6 +306,21 @@ exploration reports no work rather than starting a blind scan.
 
 ## How observe compiles and crawls
 
+When a field has a unique packaged interpretation and all competing tenant
+interpretations are provisional occurrences, `observe` uses the packaged
+contract. It keeps the provisional evidence and still enforces source constraints
+and the ban on provisional-source fan-out. Multiple non-provisional meanings or
+multiple packaged meanings remain ambiguous and return
+`SCHEMA_AMBIGUOUS_SEMANTIC_FIELD` (exit 13), with bounded competing interpretation
+IDs. A genuinely unknown semantic field still returns exit 8.
+
+An unsupported source normalizer, currently including `ip-canonical`, returns
+`SCHEMA_SOURCE_NOT_PROBEABLE` (exit 13) before authentication or query execution.
+Cache-only pivots and offline correlation remain available. A constrained source
+the compiler cannot enforce returns `SCHEMA_SOURCE_CONSTRAINED` (exit 12,
+retained for compatibility); it does not indicate that writing a result failed.
+Neither outcome is evidence of a confirmed or invalid relationship.
+
 Use `observe` for one source:
 
 ```bash
@@ -508,6 +523,25 @@ tier, where stronger route semantics rank first. Candidates remain last.
 Per-step output includes transform, cardinality, temporal
 guidance, confidence, provenance, entity kind, namespace, role, and physical
 availability.
+
+Use `SemanticallyReviewed` and `EmpiricallyValidated` to distinguish repository
+review from tenant evidence. `SemanticallyReviewed=true` means the route's
+`EvidenceLevel` is `reviewed`; it does not claim that this tenant was queried.
+`EmpiricallyValidated=true` means the level is `validated` under the independent
+artifact policy above. Neither flag asserts that every value joins safely or
+that the route has just been tested against current tenant data. The legacy
+`Validated` flag is the union of these two states and is retained for compatibility;
+do not interpret it alone as live tenant confirmation. Field availability and
+successful cache-only navigation are separate from empirical validation.
+`EmpiricallyValidated=false` on a reviewed route identifies its reported evidence
+level; it does not mean tenant evidence was checked and failed. Reviewed core
+contracts keep that level even when tenant observations corroborate them.
+
+The CLI does not import the XDRInternals relationship feed automatically. Its
+reference mappings must have their own recorded provenance, semantic review,
+supported conditions and tenant evidence before being presented as executable
+or empirically validated. Downloading a mapping or finding its outer columns in
+the cache is not validation of its conditions or nested paths.
 
 Path output distinguishes:
 

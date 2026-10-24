@@ -14,6 +14,8 @@ for the current checks.
 
 ### Added
 
+- Route output distinguishes `SemanticallyReviewed` from
+  `EmpiricallyValidated`; the existing `Validated` union remains compatible.
 - Schema refresh records the actual hunting execution surface and exact probe
   coverage, with bounded counts in artifact receipts. Missing fuzzy-union results
   remain inconclusive instead of asserting that a table is absent.
@@ -30,6 +32,14 @@ for the current checks.
 
 ### Fixed
 
+- Report unsupported source normalizers, currently including IP canonicalization,
+  as `SCHEMA_SOURCE_NOT_PROBEABLE` (exit 13) before authentication, instead of an
+  internal error. Constrained sources report `SCHEMA_SOURCE_CONSTRAINED`, retaining
+  exit 12 for compatibility without claiming that an artifact write failed.
+- Prefer a unique packaged source interpretation over provisional tenant
+  occurrences on the same field. Genuine ambiguity reports
+  `SCHEMA_AMBIGUOUS_SEMANTIC_FIELD` (exit 13), rather than incorrectly claiming
+  the known field does not exist; provisional-source and constraint checks remain.
 - Record workspace table references such as `SigninLogs`, `AuditLogs`, and
   `SecurityAlert` that the physical probe recognized but session tokenization
   previously ignored.

@@ -65,6 +65,7 @@ from xdr_cli.schema_graph.effective import (
     QUERYABLE_AVAILABILITY,
     EffectiveGraph,
     FieldAvailability,
+    _interpretation_contract,
     compose_effective_graph,
     unobserved_availability,
 )
@@ -106,6 +107,7 @@ from xdr_cli.schema_graph.probe import (
     compile_source_sampling_query,
     compile_target_context_query,
     compile_target_probe_batches,
+    supports_probe_prefilter,
     validate_lookback,
     worst_case_seed_payload_bytes,
 )
@@ -1809,6 +1811,8 @@ def _semantic_step_row(step: GraphStep, ordinal: int) -> dict:
         "EvidenceLevel": step.evidence_level,
         "Observed": step.evidence_level == "observed",
         "Validated": step.evidence_level in {"validated", "reviewed"},
+        "SemanticallyReviewed": step.evidence_level == "reviewed",
+        "EmpiricallyValidated": step.evidence_level == "validated",
         "JoinSafe": step.relationship is RelationshipKind.JOIN_COMPATIBLE,
         "Candidate": step.candidate,
         "SourceAvailable": step.source_available,
@@ -1832,17 +1836,51 @@ def _semantic_receipt_context(cache: dict, **extra) -> dict:
     }
 
 
-def _interpretation_for_locator(graph: Graph, locator: str) -> InterpretationRecord:
+class _AmbiguousSemanticField(GraphValidationError):
+    """A locator has several interpretations and no safe packaged preference."""
+
+    def __init__(self, locator: str, interpretation_ids: list[str]) -> None:
+        super().__init__(f"polymorphic semantic field locator: {locator}")
+        self.interpretation_ids = interpretation_ids
+
+
+def _interpretation_for_locator(
+    graph: Graph,
+    locator: str,
+    *,
+    packaged: Graph | None = None,
+) -> InterpretationRecord:
+    """Select one interpretation, preferring core only over provisional overlays.
+
+    A tenant overlay may add provisional occurrence interpretations to a field
+    that core already interprets. The packaged contract wins only when it is the
+    single packaged match and every competitor is provisional; any other
+    multiplicity stays ambiguous rather than picking by iteration order.
+    """
+
     canonical = str(FieldLocator.parse(locator))
     matches = [
         item
         for item in graph.interpretations.values()
         if str(graph.fields[item.field_id].locator) == canonical
     ]
-    if len(matches) != 1:
-        detail = "unknown" if not matches else "polymorphic"
-        raise GraphValidationError(f"{detail} semantic field locator: {canonical}")
-    return matches[0]
+    if not matches:
+        raise GraphValidationError(f"unknown semantic field locator: {canonical}")
+    if len(matches) == 1:
+        return matches[0]
+    core = [
+        item
+        for item in matches
+        if packaged is not None
+        and item.id in packaged.interpretations
+        and _interpretation_contract(item)
+        == _interpretation_contract(packaged.interpretations[item.id])
+    ]
+    if len(core) == 1 and all(
+        item.id == core[0].id or item.extra.get("provisional") is True for item in matches
+    ):
+        return core[0]
+    raise _AmbiguousSemanticField(canonical, sorted(item.id for item in matches))
 
 
 def _seed_lines(value: str) -> list[str]:
@@ -2561,27 +2599,41 @@ async def _schema_observe(
             },
         )
     tenant_overlay = load_tenant_overlay(ctx.config.tenant_id)
+    canonical = _semantic_graph()
     effective = _compose_effective(
         schema_rows,
         tenant_id=ctx.config.tenant_id,
-        canonical=_semantic_graph(),
+        canonical=canonical,
         overlays=(tenant_overlay.graph,),
         observations=tenant_overlay.observations,
         coverage=cache.get("coverage"),
     )
     try:
-        source = _interpretation_for_locator(effective.graph, locator)
+        source = _interpretation_for_locator(effective.graph, locator, packaged=canonical)
+    except _AmbiguousSemanticField as exc:
+        error = ConflictError(
+            f"{locator} has several semantic interpretations and none is a packaged "
+            "contract competing only with provisional tenant occurrences.",
+            help_command="xdr schema discoveries",
+            original={"type": "AmbiguousSemanticField"},
+        )
+        error.error_code = "SCHEMA_AMBIGUOUS_SEMANTIC_FIELD"
+        error.allowed = exc.interpretation_ids[:20]
+        raise error from exc
     except GraphValidationError as exc:
         error = LocalNotFoundError("semantic field", locator)
         error.error_code = "SCHEMA_UNKNOWN_SEMANTIC_FIELD"
         error.help_command = f"xdr schema show {locator.split('.', 1)[0]}"
         raise error from exc
     if source.constraints:
-        raise ArtifactError(
+        # Exit 12 is retained for compatibility; the code names the actual cause.
+        error = ArtifactError(
             "The source locator has constraints the probe compiler cannot enforce; "
             "choose an unconstrained reviewed source from schema pivot output.",
             help_command=f"xdr schema pivot {locator}",
         )
+        error.error_code = "SCHEMA_SOURCE_CONSTRAINED"
+        raise error
     if source.extra.get("provisional") is True:
         error = ArtifactError(
             "A tenant-provisional interpretation cannot seed another observation fan-out.",
@@ -2593,6 +2645,16 @@ async def _schema_observe(
         error = LocalNotFoundError("tenant schema field", locator)
         error.error_code = "SCHEMA_FIELD_UNAVAILABLE"
         error.help_command = f"xdr schema show {FieldLocator.parse(locator).table}"
+        raise error
+    if not supports_probe_prefilter(source.normalizer):
+        error = ConflictError(
+            f"{locator} uses normalizer {source.normalizer!r}, which has no deterministic "
+            "KQL prefilter, so observe cannot plan a bounded probe for it. Use schema "
+            "pivot for cache-only navigation.",
+            help_command=f"xdr schema pivot {locator}",
+            original={"type": "UnsupportedProbeNormalizer", "normalizer": source.normalizer},
+        )
+        error.error_code = "SCHEMA_SOURCE_NOT_PROBEABLE"
         raise error
     available_columns: dict[str, set[str]] = {}
     for row in schema_rows:

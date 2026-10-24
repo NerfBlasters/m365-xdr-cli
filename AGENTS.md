@@ -285,6 +285,12 @@ surface; missing fuzzy-union results are inconclusive. Treat `not-probed`,
 `SourceAvailable`/`TargetAvailable` flags before planning a probe; semantic
 `JoinSafe` alone does not establish physical availability.
 
+For route evidence, `SemanticallyReviewed` means repository review and
+`EmpiricallyValidated` means the machine evidence policy passed. The legacy
+`Validated` flag includes both and must not be described as a fresh live test.
+Do not call external reference mappings confirmed merely because their columns
+exist or a cache-only pivot returns them.
+
 Local discovery recovers direct field origins from saved KQL, including projections,
 aliases, nested properties and direct summary grouping keys. Unsupported query
 shapes and low-information values are reported as coverage gaps. Repeated runs

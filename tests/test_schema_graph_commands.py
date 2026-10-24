@@ -33,6 +33,7 @@ from xdr_cli.schema_graph.model import (
     Direction,
     FieldLocator,
     FieldRecord,
+    GraphValidationError,
     Graph,
     InterpretationRecord,
     ObservationRecord,
@@ -2533,3 +2534,176 @@ def test_schema_candidates_alias_is_unknown_command(config_dir):
     error = json.loads(result.stdout.splitlines()[-1])["error"]
     assert error["code"] == "CLI_UNKNOWN_COMMAND"
     assert "discoveries" in result.stdout
+
+
+def _occurrence(table: str, namespace: str, *, provisional: bool) -> InterpretationRecord:
+    locator = FieldLocator.parse(f"{table}.DeviceId")
+    extra = {"private": True, "provisional": True} if provisional else {}
+    return InterpretationRecord(
+        id=interpretation_id(locator, namespace, "occurrence"),
+        field_id=field_id(locator),
+        entity_kind="identifier",
+        namespace=namespace,
+        role="occurrence",
+        normalizer="hex40-lower",
+        extra=extra,
+    )
+
+
+def _with(graph: Graph, *records) -> Graph:
+    merged = Graph()
+    for record in (*graph.fields.values(), *graph.interpretations.values(), *records):
+        merged.add(record)
+    return merged
+
+
+def test_selector_prefers_packaged_contract_over_provisional_occurrences():
+    from xdr_cli.commands.schema_cmd import _interpretation_for_locator
+
+    packaged = _probe_graph()
+    effective = _with(packaged, _occurrence("SourceTable", "local-hex40-lower", provisional=True))
+    selected = _interpretation_for_locator(effective, "SourceTable.DeviceId", packaged=packaged)
+    assert selected.namespace == "mde-device-id"
+
+
+@pytest.mark.parametrize(
+    "packaged_arg, extra_records",
+    [
+        # A competing meaning that is not provisional is genuine polymorphism.
+        ("packaged", [("local-hex40-lower", False)]),
+        # Without the packaged graph there is no authority to prefer.
+        (None, [("local-hex40-lower", True)]),
+        # Two packaged meanings for one field stay ambiguous.
+        ("packaged-two", []),
+    ],
+)
+def test_selector_keeps_genuine_ambiguity(packaged_arg, extra_records):
+    from xdr_cli.commands.schema_cmd import _AmbiguousSemanticField, _interpretation_for_locator
+
+    packaged = _probe_graph()
+    if packaged_arg == "packaged-two":
+        packaged = _with(packaged, _occurrence("SourceTable", "second-core", provisional=False))
+    effective = _with(
+        packaged,
+        *(_occurrence("SourceTable", ns, provisional=flag) for ns, flag in extra_records),
+    )
+    with pytest.raises(_AmbiguousSemanticField) as caught:
+        _interpretation_for_locator(
+            effective,
+            "SourceTable.DeviceId",
+            packaged=None if packaged_arg is None else packaged,
+        )
+    assert len(caught.value.interpretation_ids) == 2
+
+
+def test_selector_unknown_locator_is_not_reported_as_ambiguous():
+    from xdr_cli.commands.schema_cmd import _AmbiguousSemanticField, _interpretation_for_locator
+
+    packaged = _probe_graph()
+    with pytest.raises(GraphValidationError) as caught:
+        _interpretation_for_locator(packaged, "NoTable.DeviceId", packaged=packaged)
+    assert not isinstance(caught.value, _AmbiguousSemanticField)
+
+
+def _overlay_with(*records):
+    overlay = Graph()
+    for record in records:
+        overlay.add(record)
+    return SimpleNamespace(graph=overlay, observations=())
+
+
+def test_schema_observe_plan_only_survives_provisional_overlay_occurrence(tmp_path, monkeypatch):
+    _schema_cache(tmp_path, monkeypatch, [("SourceTable", "DeviceId"), ("TargetTable", "DeviceId")])
+    locator = FieldLocator.parse("SourceTable.DeviceId")
+    occurrence = _occurrence("SourceTable", "local-hex40-lower", provisional=True)
+    field = FieldRecord(
+        id=field_id(locator), locator=locator, kql_type="string", extra={"private": True}
+    )
+    with (
+        patch("xdr_cli.commands.schema_cmd._semantic_graph", return_value=_probe_graph()),
+        patch(
+            "xdr_cli.commands.schema_cmd.load_tenant_overlay",
+            return_value=_overlay_with(field, occurrence),
+        ),
+        patch("xdr_cli.commands.schema_cmd.AuthManager", side_effect=AssertionError("auth used")),
+        patch("xdr_cli.commands.schema_cmd.XDRClient", side_effect=AssertionError("network used")),
+    ):
+        result = runner.invoke(app, ["schema", "observe", "SourceTable.DeviceId", "--plan-only"])
+    assert result.exit_code == 0, result.output
+    receipt, rows = _artifact_rows(result.stdout)
+    assert receipt["context"]["networked"] is False
+    assert "TargetTable.DeviceId" in {row["TargetLocator"] for row in rows}
+
+
+def test_schema_observe_reports_genuine_ambiguity_as_conflict(tmp_path, monkeypatch):
+    _schema_cache(tmp_path, monkeypatch, [("SourceTable", "DeviceId"), ("TargetTable", "DeviceId")])
+    locator = FieldLocator.parse("SourceTable.DeviceId")
+    competitor = _occurrence("SourceTable", "other-meaning", provisional=False)
+    field = FieldRecord(id=field_id(locator), locator=locator, kql_type="string")
+    with (
+        patch("xdr_cli.commands.schema_cmd._semantic_graph", return_value=_probe_graph()),
+        patch(
+            "xdr_cli.commands.schema_cmd.load_tenant_overlay",
+            return_value=_overlay_with(field, competitor),
+        ),
+        patch("xdr_cli.commands.schema_cmd.AuthManager", side_effect=AssertionError("auth used")),
+    ):
+        result = runner.invoke(app, ["schema", "observe", "SourceTable.DeviceId", "--plan-only"])
+    assert result.exit_code == 13, result.output
+    error = json.loads(result.stdout)["error"]
+    assert error["code"] == "SCHEMA_AMBIGUOUS_SEMANTIC_FIELD"
+    assert competitor.id in error["allowed"]
+    assert error["help_command"] == "xdr schema discoveries"
+
+
+def test_preferred_packaged_source_still_hits_constraint_guard(tmp_path, monkeypatch):
+    _schema_cache(tmp_path, monkeypatch, [("SourceTable", "DeviceId"), ("TargetTable", "DeviceId")])
+    base = _probe_graph()
+    constrained = Graph()
+    for record in (*base.fields.values(), *base.interpretations.values()):
+        if isinstance(record, InterpretationRecord) and "SourceTable" in record.field_id:
+            record = replace(record, constraints=({"column": "ActionType", "equals": "X"},))
+        constrained.add(record)
+    locator = FieldLocator.parse("SourceTable.DeviceId")
+    field = FieldRecord(
+        id=field_id(locator), locator=locator, kql_type="string", extra={"private": True}
+    )
+    occurrence = _occurrence("SourceTable", "local-hex40-lower", provisional=True)
+    with (
+        patch("xdr_cli.commands.schema_cmd._semantic_graph", return_value=constrained),
+        patch(
+            "xdr_cli.commands.schema_cmd.load_tenant_overlay",
+            return_value=_overlay_with(field, occurrence),
+        ),
+        patch("xdr_cli.commands.schema_cmd.AuthManager", side_effect=AssertionError("auth used")),
+        patch("xdr_cli.commands.schema_cmd.XDRClient", side_effect=AssertionError("network used")),
+    ):
+        result = runner.invoke(app, ["schema", "observe", "SourceTable.DeviceId", "--plan-only"])
+    assert result.exit_code == 12, result.output
+    error = json.loads(result.stdout)["error"]
+    assert error["code"] == "SCHEMA_SOURCE_CONSTRAINED"
+    assert "constraints" in error["message"]
+    assert error["help_command"] == "xdr schema pivot SourceTable.DeviceId"
+
+
+def test_schema_observe_rejects_unprefilterable_normalizer_before_network(tmp_path, monkeypatch):
+    _schema_cache(tmp_path, monkeypatch, [("SourceTable", "DeviceId"), ("TargetTable", "DeviceId")])
+    base = _probe_graph()
+    ip_graph = Graph()
+    for record in (*base.fields.values(), *base.interpretations.values()):
+        if isinstance(record, InterpretationRecord) and "SourceTable" in record.field_id:
+            record = replace(record, normalizer="ip-canonical")
+        ip_graph.add(record)
+    with (
+        patch("xdr_cli.commands.schema_cmd._semantic_graph", return_value=ip_graph),
+        patch("xdr_cli.commands.schema_cmd.AuthManager", side_effect=AssertionError("auth used")),
+        patch("xdr_cli.commands.schema_cmd.XDRClient", side_effect=AssertionError("network used")),
+    ):
+        planned = runner.invoke(app, ["schema", "observe", "SourceTable.DeviceId", "--plan-only"])
+        live = runner.invoke(app, ["schema", "observe", "SourceTable.DeviceId"])
+    for result in (planned, live):
+        assert result.exit_code == 13, result.output
+        error = json.loads(result.stdout)["error"]
+        assert error["code"] == "SCHEMA_SOURCE_NOT_PROBEABLE"
+        assert error["original"]["normalizer"] == "ip-canonical"
+        assert error["help_command"] == "xdr schema pivot SourceTable.DeviceId"
