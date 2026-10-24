@@ -17,14 +17,14 @@
     "social": "node scripts/render-social.mjs"
   },
   "dependencies": {
-    "@astrojs/starlight": "0.42.5",
-    "astro": "7.3.5"
+    "@astrojs/starlight": "0.42.6",
+    "astro": "7.4.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.0",
-    "@astrojs/markdown-remark": "^7.3.0",
-    "@axe-core/playwright": "^4.13.0",
-    "@playwright/test": "^1.63.0",
+    "@astrojs/markdown-remark": "^7.3.3",
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.64.1",
     "cheerio": "^1.1.0",
     "mdast-util-to-string": "^4.0.0",
     "remark-gfm": "^4.0.1",
