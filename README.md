@@ -35,8 +35,8 @@ pipeable, and small enough for an agent's context window.
   exactly how to drive it.
 - **Playbooks** — alert-title → [playbook](playbooks/index.md) mapping for
   common Defender alerts (BEC, forwarding rules, ransomware, AiTM, C2, …).
-- **Optional extras** — a schema graph that learns identifier pivots from your
-  saved hunts (exportable to BloodHound), local investigation sessions with
+- **Optional extras** — a schema graph initialized from XDRInternals that learns identifier
+  pivots from saved hunts or automatic recent-data capture (exportable to BloodHound), local investigation sessions with
   an improvement loop, and an *unofficial* device-timeline download that
   reaches back ~180 days. None of these are needed to work an incident.
 
@@ -415,11 +415,18 @@ xdr schema pivot DeviceNetworkEvents.DeviceId
 xdr schema path DeviceNetworkEvents DeviceProcessEvents
 ```
 
-It starts from a reviewed graph shipped with the tool and grows from your own
-hunts: `xdr schema collect` mines the results you have already saved, recovers
-field origins from their KQL, and validates promising pairs with a few
-targeted queries; `--explore` captures recent tenant data automatically and mines it locally.
-Shared values establish *correlation* evidence, never join safety.
+`schema init` compares XDRInternals reference mappings with this tenant's physical
+schema and validates supported routes. The reviewed graph shipped with the tool
+and tenant observations remain distinct from trusted reference mappings.
+
+`xdr schema collect` mines saved results and recovers field origins from their KQL.
+`--explore` also works without saved hunts: it captures up to 25,000 rows per table
+within a requested 24-hour horizon, saves them privately, and finds overlaps locally.
+Untimed inventory is sampled. Complete captures from the same job support observed
+routes directly; other eligible pairs use focused tenant queries batched by target
+table. Capped coverage and weak candidates remain explicit. Shared values establish
+*correlation* evidence, never join safety. Budgets checkpoint unfinished work for
+resumption by rerunning the command.
 
 ```bash
 xdr schema status                     # cache-only; prints the exact next_command
@@ -488,7 +495,7 @@ schema_stale_seconds = 86400    # cached schema is visibly stale after this age
 schema_collection_stale_seconds = 604800  # nonblocking semantic-collection reminder
 schema_collect_on_session_end = true  # master switch for session-end schema upkeep
 schema_refresh_on_session_end = true  # refresh only if physical cache is missing/stale
-schema_explore_on_session_end = true  # discover new locations after focused validation
+schema_explore_on_session_end = true  # capture recent data and discover pivots after validation
 schema_explore_max_queries = 5        # exploration queries per explicit session end (1-1000)
 schema_maintenance_timeout_seconds = 90  # overall foreground upkeep deadline; maximum 3600
 ```

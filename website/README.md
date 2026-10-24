@@ -48,6 +48,14 @@ override when the upstream dependency chain admits a patched parser normally.
 
 ## Updating content
 
+Schema documentation is published from `docs/schema_graph.md` and
+`docs/schema_pivots.md`; handbook and command pages also publish README
+content. Update those sources rather than editing generated website pages.
+The schema guide covers XDRInternals initialization, recent-data capture,
+evidence levels, table-batched validation and resumable coverage. Run content
+preparation, checks and the production build after changing these sources so
+website help and CLI documentation describe the same behavior.
+
 Edit the original `README.md`, `docs/`, `playbooks/`, or root policy document.
 `scripts/content-manifest.mjs` explicitly maps published documents to routes,
 page titles and optional README section selections. New documents require a

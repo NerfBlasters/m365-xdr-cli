@@ -475,8 +475,10 @@ locally, and hunts save every row the API returns; you shape the JSONL
 artifact with shell tools. (`incidents list`, `alerts list` and
 `results list` do take `--limit`, which bounds how many items are fetched.)
 `schema collect` likewise takes no `--resume` or `--exhaustive`: plain
-`xdr schema collect` continues pending validation and `--explore` drives
-identifier-led discovery.
+`xdr schema collect` continues focused validation over saved results.
+`xdr schema collect --explore` captures recent tenant data, discovers overlaps
+locally and validates remaining eligible pairs in table batches. Rerunning it
+resumes checkpointed work; no prior saved identifiers are required.
 
 | Flag                 | Instead                                                            |
 | -------------------- | ------------------------------------------------------------------ |
@@ -489,6 +491,24 @@ xdr incidents list
 xdr results shape <run-id>
 jq -s 'map(.id)' <data_path>
 ```
+
+### Schema exploration returns partial success
+
+Exit 14 means useful progress was saved but some work remains. Inspect the final
+receipt's capture coverage, stage failures and `next_command`. Rerun
+`xdr schema collect --explore` to continue; use `--max-queries`, `--max-rows`,
+`--max-bytes` or `--deadline` when the reported budget is too small. Resource-limit
+gaps reopen when the limiting budget grows, or in a new capture job. Honor
+`retry_after_seconds` if the collector could not wait within its remaining budget.
+Authentication and permission failures require the recovery command reported in
+the error; do not loop interactive login.
+
+An intentional 25,000-row cap alone does not make the command partial. Its table
+coverage is a sample, with a possibly shorter observed time span; it cannot prove
+absence. Conversely, `scope_complete` means the reported collection policy and
+eligible validation work completed, not that every row or possible relationship
+in the tenant was examined. Untimed or otherwise unsupported validation remains
+explicit in coverage. See the [schema graph guide](schema_graph.md).
 
 ### `CLI_UNKNOWN_COMMAND` / `CLI_UNKNOWN_OPTION`
 

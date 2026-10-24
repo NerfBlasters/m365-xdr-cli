@@ -1624,7 +1624,7 @@ def collect_saved_results(
 @click.option(
     "--explore",
     is_flag=True,
-    help="Capture recent tenant data automatically, then discover and validate pivots locally.",
+    help="Capture recent data, correlate locally, and run focused tenant validation.",
 )
 @click.option(
     "--source",
@@ -1640,9 +1640,17 @@ def collect_saved_results(
     type=click.IntRange(min=1, max=100),
     default=5,
     show_default=True,
-    help="Samples per local-overlap validation; does not cap active discovery.",
+    help="Identifiers per validation cohort; does not cap raw table capture.",
 )
-@click.option("--batch-size", type=click.IntRange(min=1, max=50), default=20, show_default=True)
+@click.option(
+    "--batch-size",
+    type=click.IntRange(min=1, max=50),
+    default=20,
+    show_default=True,
+    help=(
+        "Distinct target fields per validation batch; each pair retains its own identifier cohort."
+    ),
+)
 @click.option(
     "--seed-batch-size", type=click.IntRange(min=1, max=100), default=20, show_default=True
 )
@@ -1715,7 +1723,10 @@ def schema_collect(
     selects follow-up identifiers after table capture.
     Use xdr schema tables and xdr schema show DeviceNetworkEvents for cached availability.
     xdr schema collect --explore gathers up to 25,000 recent rows per table,
-    indexes private rows, and validates locally discovered field pairs.
+    indexes private rows, and discovers field pairs without prior saved identifiers.
+    Complete captures from one job support observed overlaps without re-query;
+    other eligible pairs use tenant validation batched by target table, with
+    separate identifier cohorts. Overlap never asserts join safety.
     The default requested horizon is 24 hours; capped time spans and untimed
     inventory samples are labelled explicitly. Unfinished jobs resume within
     the overall resource budgets.

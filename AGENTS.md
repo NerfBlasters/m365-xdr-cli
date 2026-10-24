@@ -340,7 +340,8 @@ receipts point
 to `xdr results rows RUN_ID --type relationship-path-match`, which supports
 bounded filtering and offsets for large private graphs. `xdr results prune
 --older-than DAYS --yes` deletes eligible old results and retires the automatic
-discovery evidence (local-overlap, local-validation, identifier-search) that
+discovery evidence (local-overlap, capture-overlap-complete, local-validation,
+identifier-search) that
 referenced them; explicit `schema observe` observations and live
 `candidate-proposal` drafts remain protected. Delete merged or abandoned
 proposal drafts before pruning their evidence.
@@ -360,7 +361,9 @@ explicit POSIX/PowerShell attachment syntax.
 
 Use `xdr session start --concurrent` only for deliberate parallel work.
 Explicit `xdr session end` closes the session, then refreshes a missing/stale
-schema cache, validates locally discovered pairs, and runs bounded exploration.
+schema cache, validates locally discovered pairs, and runs bounded recent-data
+capture with local correlation and focused validation. No saved seed identifiers
+are needed for this exploration stage.
 `schema_collect_on_session_end = false` disables all stages. Exploration defaults
 to `schema_explore_max_queries = 5`; `schema_explore_on_session_end = false`
 disables it, and `schema_refresh_on_session_end = false` disables automatic

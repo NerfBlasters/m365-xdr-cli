@@ -1,7 +1,7 @@
 """Engine/sink contract for capture-first exploration (no I/O, no engine imports).
 
 The engine decides what to fetch and proves completeness with the same-query
-control packet. A sink persists one verified or unverified slice as a private
+control packet. A sink persists one verified selected-row slice as a private
 result bundle and reports what it stored. Ledgers are value-free: they hold
 IDs, bounds, counts and hashes, never captured identifiers.
 """

@@ -60,6 +60,11 @@ for the current checks.
 
 ### Fixed
 
+- Refresh vulnerable Python and website lockfile dependencies without weakening
+  dependency audit gates. Align schema help, docstrings, session maintenance,
+  troubleshooting and generated website documentation with capture-first
+  discovery, evidence levels and table-batched validation.
+
 - Require authoritative physical-column evidence, complete conditional scopes,
   process timing and STIX feed/latest-snapshot semantics before exposing routes.
 - Bind saved reference matches to the running compiler; retain failed-check

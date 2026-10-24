@@ -134,7 +134,7 @@ MAX_KEY_COLUMNS = 64
 
 
 def _key_columns(columns: dict[str, set[str]]) -> tuple[str, ...]:
-    """Scalar columns with one known storage type, pinned in name order for hashing."""
+    """Retained scalar-key plan hints in name order; capped capture does not partition."""
 
     scalar = sorted(
         name for name, types in columns.items()

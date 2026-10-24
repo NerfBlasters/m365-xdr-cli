@@ -788,7 +788,7 @@ class _Runner:
                     limits={key: getattr(self.budgets, key) for key in self._LIMIT_KEYS})
 
     def _reduce(self, item: dict, reason: str) -> None:
-        """A capped response just shortens the span: halve the cap and retry."""
+        """Reduce the selected-row cap after a resource or transport limit."""
 
         self.counters.reductions += 1
         smaller = item["cap"] // 2

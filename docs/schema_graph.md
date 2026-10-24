@@ -29,8 +29,10 @@ Terms used throughout:
 - **Candidate** - an unverified hypothesis that two fields share an
   identifier. Hidden from `pivot`/`path` unless you pass
   `--include-candidates`.
-- **Observed** - a completed tenant query showed sampled identifiers from one
-  field recurring in another. Usable as a search route; not a join contract.
+- **Observed** - verified tenant evidence showed at least three eligible shared
+  identifiers in saved results or complete captures, or a bounded probe supported
+  an empirical route. The evidence stage states which source supports it. Usable
+  as a search route; not a join contract.
 - **Validated** - repeated, independent observations passed a fixed machine
   policy. Still correlation-only; a join-safe edge requires a reviewed core
   change.
@@ -63,7 +65,8 @@ server truncation never prove a table is absent or inaccessible.
 
 Only the first two states permit live probing. Missing type metadata in legacy
 rows retains its previous behavior; supplied unknown types do not. Existing
-routes remain visible with their availability labels. Historical local overlaps
+routes with unusable physical fields are omitted by default; pass
+`--include-unavailable` to inspect their availability labels. Historical local overlaps
 are retained when current storage types prevent live validation. No public schema
 reference is used as evidence that a field exists in the tenant.
 When the pivot source is non-queryable, its receipt outcome is
@@ -94,7 +97,9 @@ foreground upkeep stages for the configured tenant:
    5 samples per overlap, and a 20-query budget. These are not configurable.
 3. **Exploration** - `schema collect --explore` with a budget of
    `schema_explore_max_queries` (default 5, integer 1-1000). This is the only
-   stage with a tunable budget.
+   stage with a tunable budget. It captures recent rows (24-hour requested horizon,
+   up to 25,000 rows per table), correlates privately saved rows locally, and uses
+   the remaining budget for focused validation. It does not require saved seeds.
 
 The whole run has one deadline, `schema_maintenance_timeout_seconds = 90`
 (maximum 3600). Completed work is saved and reused at the next explicit end.
@@ -301,7 +306,7 @@ attributed to a raw column when a probe cannot reproduce that transformation.
 | `--source Table.Column` | none | Restrict identifiers for gap-filling follow-up queries; repeatable |
 | `--lookback` | `24h` with explore, otherwise `30d` | Capture horizon and validation window |
 | `--samples` | 5 | Identifiers per local-overlap validation (1-100) |
-| `--batch-size` | 20 | Target fields per validation query (1-50) |
+| `--batch-size` | 20 | Distinct target fields per validation batch (1-50); cohorts stay separate |
 | `--seed-batch-size` | 20 | Identifiers per gap-filling query (1-100) |
 | `--max-json-depth` | 6 | Gap-filling JSON expansion levels (0-12) |
 | `--discovery-row-limit` | 2000 | Rows per gap-filling result (1-10000); does not cap raw capture |

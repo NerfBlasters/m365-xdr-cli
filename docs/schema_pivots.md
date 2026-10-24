@@ -8,7 +8,8 @@ grep for a field name to find every table it reaches.
 > **Physical reference only:** a shared column name does not prove shared
 > semantics, matching values, uniqueness, cardinality, or join safety. Use
 > `xdr schema pivot <Table.Column>` and `xdr schema path <Source> <Target>` for
-> reviewed semantic routes. See `docs/schema_graph.md`.
+> tenant-available semantic routes and their evidence levels. Trusted reference,
+> reviewed and empirical routes are distinct. See `docs/schema_graph.md`.
 
 <!-- BEGIN GENERATED SEMANTIC GRAPH -->
 ## Generated semantic route inventory
