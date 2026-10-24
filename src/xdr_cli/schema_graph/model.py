@@ -36,6 +36,7 @@ class RelationshipStatus(StrEnum):
     VALIDATED = "validated"
     REVIEWED = "reviewed"
     DEPRECATED = "deprecated"
+    REFERENCE_TRUSTED = "reference-trusted"
 
 
 class Direction(StrEnum):

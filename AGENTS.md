@@ -237,6 +237,7 @@ Query the native catalog and execute with:
 xdr library list --search identity
 xdr library show identity_signin_context
 xdr library run <name> --param key=value --param other=value
+xdr schema init                       # new tenant: compare reference and run bounded validation
 xdr schema tables --search signin
 xdr schema show AADSignInEventsBeta --search application
 xdr schema pivot EntraIdSignInEvents.AccountObjectId

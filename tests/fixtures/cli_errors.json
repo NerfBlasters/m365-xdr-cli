@@ -358,9 +358,9 @@
           "kind": "command",
           "value": "incidnets"
         },
-        "message": "No such command 'incidnets'. Did you mean 'incidents'? Did you mean 'incidents'?",
+        "message": "No such command 'incidnets'. Did you mean 'incidents'?",
         "original": {
-          "message": "No such command 'incidnets'. Did you mean 'incidents'? Did you mean 'incidents'?",
+          "message": "No such command 'incidnets'. Did you mean 'incidents'?",
           "type": "NoSuchCommand"
         },
         "request_ids": null,
@@ -397,6 +397,7 @@
           "diagnostics",
           "discoveries",
           "export-opengraph",
+          "init",
           "migrate-cache",
           "observe",
           "path",
@@ -417,9 +418,9 @@
           "kind": "command",
           "value": "obesrve"
         },
-        "message": "No such command 'obesrve'. Did you mean 'observe'? Did you mean 'observe'?",
+        "message": "No such command 'obesrve'. Did you mean 'observe'?",
         "original": {
-          "message": "No such command 'obesrve'. Did you mean 'observe'? Did you mean 'observe'?",
+          "message": "No such command 'obesrve'. Did you mean 'observe'?",
           "type": "NoSuchCommand"
         },
         "request_ids": null,

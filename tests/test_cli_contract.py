@@ -34,6 +34,8 @@ def typed(value):
             "path": (
                 "<existing-file>"
                 if value == Path(__file__)
+                else "<existing-directory>"
+                if value == Path(__file__).parent
                 else "<output-path>"
                 if value == Path("/tmp/xdr-contract-output")
                 else str(value)
@@ -151,6 +153,8 @@ def sample(param):
     if isinstance(t, click.DateTime):
         return "2026-10-04T12:30:00"
     if isinstance(t, click.Path):
+        if t.exists and not t.file_okay:
+            return str(Path(__file__).parent)
         return __file__ if t.exists else "/tmp/xdr-contract-output"
     return "sample"
 

@@ -17,8 +17,9 @@ your own tenant, or a BloodHound picture of the schema.
 Terms used throughout:
 
 - **Physical cache** - the local copy of the tenant's table and column list,
-  written by `xdr schema refresh` (one Advanced Hunting call). Every other
-  schema command reads it; most never contact the tenant.
+  written by `xdr schema refresh` (one Advanced Hunting call, plus the portal's
+  table listing when portal cookies exist). Every other schema command reads it;
+  most never contact the tenant.
 - **Packaged graph** - the reviewed, value-free semantic graph shipped in the
   package: which fields are the same identifier, how to transform them, and
   which joins are safe.
@@ -133,6 +134,60 @@ xdr schema migrate-cache --yes
 Use the recovery command reported by the actual error or diagnostics output.
 `schema refresh` is the tenant-calling operation that replaces the physical
 cache.
+
+### Physical schema refresh
+
+`getschema` is the authority for which columns this tenant can query and their
+types. Refresh probes the union of the packaged table registry
+(`src/xdr_cli/hunting_tables.py`), every table the Defender portal lists for this
+tenant, and every table seen by the previous refresh. Missing tables are skipped
+silently, so absence stays inconclusive.
+
+`--metadata-source` selects the table listing:
+
+| Value | Behavior |
+|---|---|
+| `auto` (default) | Adds the portal `huntingService/schema` listing when tenant-bound portal cookies exist. A missing or failed listing is recorded in `coverage.metadata` and the refresh still succeeds. The selected hunting backend never changes. |
+| `portal` | Requires the listing. If it fails, the getschema cache is still published and the command exits 14. |
+| `probe` | Uses only the getschema probe; the portal is never contacted. |
+
+A metadata listing does not prove that a table can be queried. Columns the
+portal lists are cached only for tables getschema resolved. Tables that are
+listed but unresolved are reported in `coverage.metadata.portal_only_tables` and
+stay unavailable. When the portal and getschema disagree on a column type,
+getschema wins and the count appears in `coverage.metadata.type_disagreements`.
+In the development tenant, seven portal types disagreed with getschema; for
+example, the portal reports `DeviceTvmInfoGatheringKB.IgId` as `DateTime` while
+getschema returns `string`.
+
+`coverage.new_tables` lists tenant tables that are absent from the packaged
+registry and any reference table names supplied by the caller. This is how a
+newly shipped Defender table, such as `ExposureRecommendations` in the
+development tenant, is detected and cached before it enters the packaged probe
+registry. The full portal listing, including descriptions and entity tags,
+is saved privately beside the cache as `schema.<generation>.portal.json`. The
+metadata binds it by SHA-256. Receipts carry only bounded counts.
+
+`schema init` proposes routes for tables that the reference does not know yet.
+A new table's string, GUID or numeric column becomes a candidate when either of
+these holds:
+
+- its exact name matches a top-level reference endpoint column of a family whose
+  endpoints exist in this tenant;
+- the verified portal sidecar tags it `Machine` (Defender device) or
+  `UserObjectId` (Entra user).
+
+Each candidate targets at most three physically present hubs of that family,
+preferring `DeviceInfo`, `IdentityInfo` and `EntraIdSignInEvents`. Route IDs are
+deterministic (`tenant-discovery-<hash>`), and at most 100 derived routes are
+validated per run; the receipt reports when the cap is reached. Candidates run
+through the same bounded validation as reference routes. One becomes an
+`observed` pivot only after at least three distinct sampled values match.
+Weaker results stay candidates and never become reference-trusted, reviewed or
+join-safe. Tables with no candidate are listed as unmapped, with
+`xdr schema collect --explore` as the next step for value-overlap discovery.
+In the development tenant, newer tables such as `CallActivityEvents` have neither
+matching column names nor portal entity tags, so they rely on that discovery path.
 
 Browse the physical cache to form field locators:
 
@@ -1050,3 +1105,49 @@ Shared entities are row evidence; a structural route alone is not.
 | `schema repair-overlay`, `schema migrate-cache` | No | Repair local state |
 | `schema bundle inspect/export/import` | No | Inspect or move portable schema state |
 | `schema prune-evidence` | No | Retire explicit observations before result pruning |
+
+## Tenant initialization from XDRInternals
+
+Run `xdr schema init` when setting up a tenant. It downloads a content-bound public
+XDRInternals snapshot, refreshes physical schema across reference, packaged,
+previously observed and portal-listed table names, and executes bounded,
+aggregate-only validation KQL for every applicable reference mapping. The private
+result contains every reference route, including missing tables and unsupported
+conditions. `--reference-dir DIR` imports the four saved provider JSON documents;
+`--sync-reference` explicitly replaces the cached public snapshot.
+
+The reference starts trusted. `matched` means the saved validation query found
+shared identifiers within its stated scope. `no-source-data`, `no-target-data`
+and `no-overlap` remain inconclusive; they do not contradict a reference mapping.
+Compiled-check failures and incompatible physical types prevent that tenant route from
+being offered. Reference guidance, scope, counts and evidence run IDs accompany
+routes; reference trust alone never establishes raw join safety. Existing reviewed
+core join contracts retain their authored semantics.
+
+Validation defaults to seven days, fifty source keys, a 1,000-row sample, and at
+most 200 queries per invocation. Additional compiler membership-scan caps are
+reported in each route's scope; a capped scan cannot establish absence. Results
+are tenant-, reference-, schema- and query-bound. Repeated runs reuse verified
+results for one day. A budget or service pause saves progress and returns exit 14;
+follow the receipt's exact continuation command and honor `retry_after_seconds`.
+`--revalidate` reruns fresh results. `--plan-only` uses local caches without tenant
+queries or cache publication.
+
+Normal `schema pivot` and `schema path` stay cache-only and omit physically
+unusable routes. Use `--include-unavailable` for diagnostics. `ReferenceTrusted`
+is separate from semantic review. `TenantMatched` reports a bounded reference
+match; `EmpiricallyValidated` retains the stronger independent-artifact policy. Missing or corrupted validation artifacts suppress only the affected
+reference routes until initialization revalidates them. Dense path searches have
+a work cap and report incomplete search/truncated results in `context.path_search`.
+
+Initialization also saves full table/column comparisons, including tenant-only
+columns and type disagreements; physical types from tenant `getschema` take priority.
+Refresh continues to discover tables outside the reference through the tenant
+portal listing and retained cache names. Exact identifier-column names and verified
+portal Entity tags create candidate mappings to available reference hubs. These
+share the validation budget and become observed correlation pivots after at least
+three distinct shared identifiers; weaker matches stay opt-in candidates and never
+inherit reference trust or join safety. Initialization reports the 100-candidate
+cap and unmapped tables as coverage gaps. Existing `schema observe` and
+`schema collect --explore` workflows remain available for fields without usable
+name/tag hints and tenant-specific nested paths.

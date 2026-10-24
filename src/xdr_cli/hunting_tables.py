@@ -13,6 +13,9 @@ be listed in Microsoft's advanced-hunting or Log Analytics table reference.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable
+
 # Defender XDR tables listed in Microsoft Learn's advanced-hunting schema
 # reference, plus legacy/preview spellings already in the probe.
 _DEFENDER_TABLES = (
@@ -77,11 +80,29 @@ _PROBE_HEADER = """\
 """
 
 
-def render_schema_probe() -> str:
-    """Return the ``sys_schema_probe.kql`` source for ``PROBE_TABLES``."""
+TABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,255}")
+"""Names safe to interpolate into a probe arm; anything else is rejected."""
 
+
+def probe_table_names(extra: Iterable[str] = ()) -> tuple[str, ...]:
+    """Return the sorted registry plus safe extra names (portal, reference, cache)."""
+
+    names = set(PROBE_TABLES)
+    for name in extra:
+        if isinstance(name, str) and TABLE_NAME.fullmatch(name):
+            names.add(name)
+    return tuple(sorted(names))
+
+
+def render_schema_probe(names: Iterable[str] | None = None) -> str:
+    """Return ``sys_schema_probe`` KQL for ``names`` (default: ``PROBE_TABLES``)."""
+
+    tables = PROBE_TABLES if names is None else tuple(names)
+    for name in tables:
+        if not TABLE_NAME.fullmatch(name):
+            raise ValueError(f"unsafe hunting table name: {name!r}")
     arms = ",\n".join(
-        f'  ({name} | getschema | extend TableName = "{name}")' for name in PROBE_TABLES
+        f'  ({name} | getschema | extend TableName = "{name}")' for name in tables
     )
     return (
         f"{_PROBE_HEADER}union isfuzzy=true\n{arms}\n"

@@ -772,7 +772,13 @@ def test_pivot_reports_nonqueryable_source_and_observe_stops_before_network(
     receipt, rows = _artifact_rows(result.stdout)
     assert receipt["context"]["outcome"] == f"source-{state}"
     assert receipt["context"]["source_availability"] == state
-    assert rows and all(not row["SourceAvailable"] for row in rows)
+    assert rows == []
+    diagnostic = runner.invoke(
+        app, ["schema", "pivot", "DeviceInfo.DeviceId", "--include-unavailable"]
+    )
+    assert diagnostic.exit_code == 0, diagnostic.output
+    _, diagnostic_rows = _artifact_rows(diagnostic.stdout)
+    assert diagnostic_rows and all(not row["SourceAvailable"] for row in diagnostic_rows)
     assert blocked.exit_code == 8, blocked.output
     assert json.loads(blocked.stdout)["error"]["code"] == "SCHEMA_FIELD_UNAVAILABLE"
     network.assert_not_called()

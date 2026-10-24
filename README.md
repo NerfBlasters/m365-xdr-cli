@@ -410,6 +410,7 @@ for the moment you hold an identifier — a DeviceId, an account, a SHA-256 —
 and want to know which other tables and differently named fields carry it:
 
 ```bash
+xdr schema init                       # reference comparison and tenant validation
 xdr schema pivot DeviceNetworkEvents.DeviceId
 xdr schema path DeviceNetworkEvents DeviceProcessEvents
 ```
@@ -455,6 +456,7 @@ query budgets, what session end does, BloodHound export, and portable bundles
 | `xdr schema status` / `xdr schema diagnostics` | Cache-only state of the schema cache and semantic graph; `status` prints the exact `next_command` |
 | `xdr schema collect` [`--local-only` \| `--plan-only` \| `--explore`] | Mine saved results, validate focused pairs, or discover additional identifier locations; rerun to continue |
 | `xdr schema pivot FIELD` / `xdr schema path A B` / `xdr schema discoveries` | Explain reviewed and empirical identifier routes |
+| `xdr schema init` | Initialize reference mappings and validate them for this tenant |
 | `xdr schema refresh` / `tables` / `show TABLE` | Refresh and query the physical table/column cache (`--search`) |
 | `xdr schema observe` / `candidate-review` / `candidate-proposal` | Explicit identifier probes, private evidence review, non-promoting core proposals |
 | `xdr schema export-opengraph PATH` | Export the graph for BloodHound (`--include-tenant`, `--include-candidates`, `--custom-nodes`) |

@@ -8,5 +8,5 @@
     "bridge",
     "correlation-only"
   ],
-  "relationship_statuses": ["candidate", "reviewed", "deprecated"]
+  "relationship_statuses": ["candidate", "reviewed", "reference-trusted", "deprecated"]
 }

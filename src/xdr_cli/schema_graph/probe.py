@@ -25,8 +25,9 @@ _LOWER_NORMALIZERS = {
     "sha256-lower",
     "smtp-lower",
     "upn-lower",
+    "text-lower",
 }
-_PREFILTER_NORMALIZERS = _LOWER_NORMALIZERS | {"identity"}
+_PREFILTER_NORMALIZERS = _LOWER_NORMALIZERS | {"identity", "token-unpad", "text-upper"}
 _SOURCE_OVERSAMPLE_FACTOR = 10
 PROBE_QUERY_BYTE_LIMIT = 256 * 1024
 MAX_PROBE_SEED_BYTES = 2048
@@ -117,8 +118,12 @@ def _normalized_expression(normalizer: str, source: str = "__xdr_value") -> str:
         return rf'trim_end(@"[.]+", tolower({stripped}))'
     if normalizer in _LOWER_NORMALIZERS:
         return f"tolower({stripped})"
+    if normalizer == "text-upper":
+        return f"toupper({stripped})"
     if normalizer == "identity":
         return stripped
+    if normalizer == "token-unpad":
+        return rf'trim_end(@"[=]+", {stripped})'
     raise GraphValidationError(f"normalizer {normalizer!r} has no deterministic KQL prefilter")
 
 

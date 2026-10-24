@@ -14,6 +14,12 @@ for the current checks.
 
 ### Added
 
+- `schema init` downloads a content-bound XDRInternals reference, compares all
+  mappings to the tenant schema, and saves bounded live validation with resumable
+  query budgets. Trusted reference routes and empirical matches remain distinct.
+- Physical refresh discovers tenant portal tables and retains previously seen
+  names; tenant `getschema` types win over conflicting reference metadata.
+
 - Route output distinguishes `SemanticallyReviewed` from
   `EmpiricallyValidated`; the existing `Validated` union remains compatible.
 - Schema refresh records the actual hunting execution surface and exact probe
@@ -24,6 +30,10 @@ for the current checks.
   authorize live probes; legacy caches retain their existing missing-field label.
 
 ### Changed
+
+- Normal schema pivots and paths omit physically unusable routes;
+  `--include-unavailable` enables diagnostics. Dense path searches report their
+  bounded work and output truncation.
 
 - The schema probe and KQL table tokenizer share one packaged table registry.
   The probe now includes `AgentsInfo`, `CallActivityEvents`,

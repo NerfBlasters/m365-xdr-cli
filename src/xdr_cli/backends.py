@@ -66,6 +66,7 @@ class _Operation(Enum):
     DEVICE_IPS = ("GET", "/apiproxy/mtp/getLatestMachineIpsByIds/LatestMachineIpsByIds")
     DEVICE_EXCLUSION = ("GET", "/apiproxy/mtp/ndr/machines/{identifier}/exclusionDetails")
     HUNT = ("POST", "/apiproxy/hunting/huntingQueryExecutorService/queryExecutor/v1/external")
+    HUNTING_SCHEMA = ("GET", "/apiproxy/mtp/huntingService/schema")
 
 
 class PortalBackend(Backend):
@@ -187,6 +188,14 @@ class PortalBackend(Backend):
         if any(result.get(key) for key in ("error", "errors", "Error", "Errors")):
             raise APIError("Portal returned an application error.", status_code=status)
         return result
+
+    async def list_hunting_schema(self) -> list[dict]:
+        await self.verify_tenant()
+        result = await self._request(_Operation.HUNTING_SCHEMA)
+        tables = result.get("Tables")
+        if not isinstance(tables, list) or not all(isinstance(item, dict) for item in tables):
+            raise APIError("Portal hunting schema response has no table list.")
+        return tables
 
     async def verify_tenant(self) -> None:
         if self._verified:

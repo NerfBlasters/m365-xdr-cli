@@ -34,12 +34,14 @@ _TABLE_EDGE_KINDS = {
     RelationshipKind.BRIDGE: "Bridge",
 }
 _USABLE_STATUSES = {
+    RelationshipStatus.REFERENCE_TRUSTED,
     RelationshipStatus.OBSERVED,
     RelationshipStatus.VALIDATED,
     RelationshipStatus.REVIEWED,
 }
 _STATUS_RANK = {
     RelationshipStatus.CANDIDATE: 0,
+    RelationshipStatus.REFERENCE_TRUSTED: 1,
     RelationshipStatus.OBSERVED: 1,
     RelationshipStatus.VALIDATED: 2,
     RelationshipStatus.REVIEWED: 3,

@@ -132,5 +132,13 @@ class Backend(ABC):
     @abstractmethod
     async def get_package_download_url(self, action_id: str, device_id: str) -> str: ...
 
+    async def list_hunting_schema(self) -> list[dict]:
+        """Return the tenant's advanced-hunting table metadata listing."""
+
+        raise UnsupportedBackendCapability(
+            "Hunting schema metadata is available only through the portal-cookie backend.",
+            suggested_fix="Use the getschema probe, or import portal cookies for this tenant.",
+        )
+
     @abstractmethod
     async def close(self) -> None: ...

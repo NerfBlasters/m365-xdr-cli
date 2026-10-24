@@ -25,7 +25,7 @@ from filelock import Timeout as FileLockTimeout
 from xdr_cli._lock import exclusive_lock
 from xdr_cli.api.hunting import run_query
 from xdr_cli.auth import AuthManager
-from xdr_cli.backends import create_client
+from xdr_cli.backends import PortalBackend, create_client
 from xdr_cli.cli_params import EnumValueChoice, optional_multiple
 from xdr_cli.client import XDRClient
 from xdr_cli.config import get_config_home
@@ -40,11 +40,13 @@ from xdr_cli.exceptions import (
     QueryError,
     RateLimitError,
     UsageError,
+    XDRError,
 )
 from xdr_cli.exceptions import (
     TimeoutError as XDRTimeoutError,
 )
-from xdr_cli.queries import load_query, query_source_hash
+from xdr_cli.hunting_tables import PROBE_TABLES, probe_table_names, render_schema_probe
+from xdr_cli.queries import load_query, parse_frontmatter, query_source_hash
 from xdr_cli.results import emit_result, tenant_fingerprint, write_result
 from xdr_cli.schema_graph.bundle import (
     _link_no_replace,
@@ -99,7 +101,12 @@ from xdr_cli.schema_graph.overlay import (
     schema_evidence_lock,
     tenant_overlay_status,
 )
-from xdr_cli.schema_graph.physical import coverage_summary, probe_coverage
+from xdr_cli.schema_graph.physical import (
+    coverage_summary,
+    merge_portal_rows,
+    portal_schema_tables,
+    probe_coverage,
+)
 from xdr_cli.schema_graph.probe import (
     PROBE_QUERY_BYTE_LIMIT,
     aggregate_observation,
@@ -185,11 +192,11 @@ def _load_cache(ctx: AppContext) -> tuple[list[dict], dict]:
     if not data_path.exists() or not meta_path.exists():
         error = LocalNotFoundError("schema cache", ctx.config.tenant_id or "default")
         error.error_code = "SCHEMA_CACHE_MISSING"
-        error.help_command = "xdr schema refresh"
+        error.help_command = "xdr schema init"
         error.suggestions = [
             {
-                "reason": "cache_refresh",
-                "message": "xdr schema refresh",
+                "reason": "tenant_initialization",
+                "message": "xdr schema init",
                 "confidence": "exact",
             }
         ]
@@ -251,23 +258,78 @@ def _temporal_column_missing(table: str, *, operation: str) -> ConflictError:
 
 
 @schema_app.command("refresh")
+@click.option(
+    "--metadata-source",
+    type=click.Choice(["auto", "portal", "probe"]),
+    default="auto",
+    show_default=True,
+    help=(
+        "Table listing source. `auto` adds the portal hunting-schema listing when "
+        "tenant-bound portal cookies exist and records any failure; `portal` returns "
+        "exit 14 if the listing fails; `probe` uses only the getschema probe."
+    ),
+)
 @click.pass_context
 def schema_refresh(
     ctx: click.Context,
+    metadata_source: str,
 ) -> None:
     """Refresh the tenant's table/column cache with one Advanced Hunting call.
 
-    Run this first on a new workstation or tenant, and again when schema output
-    reports a stale cache. Next: `xdr schema tables`.
+    The getschema probe covers the packaged table registry, every table the portal
+    lists for this tenant, and tables seen by the previous refresh, so newly added
+    Defender tables are detected and reported as `new_tables`. Run this first on a
+    new workstation or tenant, and again when schema output reports a stale cache.
+    Next: `xdr schema tables`.
 
     \b
-    Example: `xdr schema refresh`
+    Examples: `xdr schema refresh`; `xdr schema refresh --metadata-source probe`
     """
-    asyncio.run(_schema_refresh(ctx.obj))
+    asyncio.run(_schema_refresh(ctx.obj, metadata_source=metadata_source))
 
 
-async def _schema_refresh(ctx: AppContext, *, on_result=None) -> None:
-    query = load_query("sys_schema_probe")
+async def _portal_schema_listing(ctx: AppContext, metadata_source: str) -> tuple[list, dict]:
+    """Read the portal table listing as an extra metadata source, never as auth fallback."""
+
+    if metadata_source == "probe":
+        return [], {"source": None, "status": "skipped", "reason": "metadata-source-probe"}
+    try:
+        portal = PortalBackend(ctx.config, ctx.config.api_timeout)
+    except XDRError as exc:
+        return [], {"source": "portal-schema", "status": "unavailable",
+                    "error_code": exc.error_code}
+    try:
+        tables = await portal.list_hunting_schema()
+    except XDRError as exc:
+        return [], {"source": "portal-schema", "status": "failed",
+                    "error_code": exc.error_code, "retryable": exc.retryable}
+    finally:
+        await portal.close()
+    return tables, {"source": "portal-schema", "status": "ok"}
+
+
+def _previous_cache_tables(ctx: AppContext) -> set[str]:
+    try:
+        rows, _cache = _load_cache(ctx)
+    except XDRError:
+        return set()
+    return {str(row["TableName"]) for row in rows if row.get("TableName")}
+
+
+async def _schema_refresh(
+    ctx: AppContext,
+    *,
+    on_result=None,
+    metadata_source: str = "auto",
+    extra_tables: tuple[str, ...] = (),
+) -> None:
+    listing, listing_meta = await _portal_schema_listing(ctx, metadata_source)
+    portal = portal_schema_tables(listing)
+    names = probe_table_names([*portal, *extra_tables, *_previous_cache_tables(ctx)])
+    query = (
+        parse_frontmatter(render_schema_probe(names))[1]
+        if names != PROBE_TABLES else load_query("sys_schema_probe")
+    )
     client = create_client(
         ctx.config,
         timeout=ctx.config.api_timeout,
@@ -278,8 +340,19 @@ async def _schema_refresh(ctx: AppContext, *, on_result=None) -> None:
         result = await run_query(client, query)
     finally:
         await client.close()
-    rows = list(result.results)
-    coverage = probe_coverage(query, rows, result.metadata.get("execution_surface", "unknown"))
+    probed = list(result.results)
+    coverage = probe_coverage(query, probed, result.metadata.get("execution_surface", "unknown"))
+    rows, merge_facts = merge_portal_rows(probed, portal)
+    if listing_meta["status"] == "ok":
+        listing_meta.update(merge_facts)
+    known = set(PROBE_TABLES) | set(extra_tables)
+    tenant_tables = {str(row["TableName"]) for row in rows} | set(portal)
+    coverage["metadata"] = listing_meta
+    coverage["new_tables"] = sorted(tenant_tables - known)
+    portal_sidecar = (
+        json.dumps({"Tables": portal}, separators=(",", ":"), sort_keys=True) + "\n"
+        if portal else None
+    )
     legacy_data, _legacy_meta = _cache_paths(ctx.config.tenant_id)
     root = legacy_data.parent
     generation = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ") + "-" + secrets.token_hex(6)
@@ -319,6 +392,16 @@ async def _schema_refresh(ctx: AppContext, *, on_result=None) -> None:
                 "server_truncation_state": "unknown",
                 "coverage": coverage,
             }
+            if portal_sidecar is not None:
+                sidecar_path = root / f"schema.{generation}.portal.json"
+                with sidecar_path.open("x", encoding="utf-8", newline="\n") as handle:
+                    handle.write(portal_sidecar)
+                if os.name == "posix":
+                    sidecar_path.chmod(0o600)
+                metadata["portal_schema"] = {
+                    "path": sidecar_path.name,
+                    "sha256": hashlib.sha256(portal_sidecar.encode()).hexdigest(),
+                }
             with meta_tmp.open("x", encoding="utf-8") as handle:
                 handle.write(json.dumps(metadata, separators=(",", ":")) + "\n")
                 handle.flush()
@@ -378,6 +461,12 @@ async def _schema_refresh(ctx: AppContext, *, on_result=None) -> None:
             tenant_id=ctx.config.tenant_id,
         )
     )
+    if metadata_source == "portal" and listing_meta["status"] != "ok":
+        raise PartialSuccessError(
+            "The getschema probe refreshed the cache, but the requested portal schema "
+            f"listing was {listing_meta['status']} ({listing_meta.get('error_code')}).",
+            help_command="xdr auth status",
+        )
 
 
 @schema_app.command("tables")
@@ -526,6 +615,7 @@ def _compose_effective(
     overlays: tuple[Graph, ...],
     observations: tuple[ObservationRecord, ...],
     coverage: dict | None = None,
+    cache_metadata: dict | None = None,
 ) -> EffectiveGraph:
     """Compose tenant state or return an actionable, stable conflict contract."""
 
@@ -624,7 +714,7 @@ def _compose_effective(
                     break
                 if found:
                     break
-        return compose_effective_graph(
+        effective = compose_effective_graph(
             schema_rows,
             canonical=canonical,
             overlays=overlays,
@@ -632,6 +722,47 @@ def _compose_effective(
             verified_observation_ids=frozenset(verified_observation_ids),
             coverage=coverage,
         )
+        from xdr_cli.schema_graph.reference import ReferenceError, load_snapshot
+        from xdr_cli.schema_graph.reference_routes import (
+            compose_reference_routes,
+            tenant_candidate_routes,
+        )
+        from xdr_cli.schema_graph.reference_state import (
+            load_validation_state,
+            physical_schema_digest,
+            validation_root,
+            verify_validation_record,
+        )
+
+        try:
+            snapshot = load_snapshot(get_config_home())
+            if snapshot is None:
+                return effective
+            ledger = load_validation_state(
+                get_config_home(), tenant_id, reference_digest=snapshot.digest,
+                schema_digest=physical_schema_digest(schema_rows),
+            )
+            states = {}
+            for route_id, record in (ledger or {}).get("routes", {}).items():
+                if (record.get("run_id") or record.get("status") in {
+                    "matched", "no-source-data", "no-target-data", "no-overlap", "query-failed",
+                }) and not verify_validation_record(
+                    get_config_home(), tenant_id, route_id, record
+                ):
+                    record = {"status": "evidence-unavailable", "warnings": [
+                        "Saved validation evidence is missing or invalid; rerun xdr schema init",
+                    ]}
+                states[route_id] = record
+            candidates, _gaps = tenant_candidate_routes(
+                snapshot, schema_rows, cache_meta=cache_metadata,
+                cache_root=validation_root(get_config_home(), tenant_id).parent,
+            )
+            return compose_reference_routes(
+                effective, replace(snapshot, routes=(*snapshot.routes, *candidates)),
+                schema_rows, states=states, coverage=coverage,
+            )
+        except ReferenceError as exc:
+            raise ArtifactError(str(exc), help_command="xdr schema init --revalidate") from exc
     except GraphValidationError as exc:
         error = ConflictError(
             "The tenant semantic overlay conflicts with the packaged graph and "
@@ -884,6 +1015,15 @@ def schema_status(
         app_ctx.config.tenant_id,
         cache_stale_seconds=app_ctx.config.schema_stale_seconds,
         collection_stale_seconds=app_ctx.config.schema_collection_stale_seconds,
+    )
+    from xdr_cli.schema_graph.reference_state import reference_status
+
+    try:
+        reference_rows, _reference_cache = _load_cache(app_ctx)
+    except XDRError:
+        reference_rows = []
+    status["reference"] = reference_status(
+        get_config_home(), app_ctx.config.tenant_id, reference_rows,
     )
     emit_result(
         write_result(
@@ -1621,12 +1761,18 @@ def schema_export_opengraph(
     overlay_generation = None
     if include_tenant:
         overlay = load_tenant_overlay(app_ctx.config.tenant_id)
+        try:
+            schema_rows, cache_metadata = _load_cache(app_ctx)
+        except LocalNotFoundError:
+            schema_rows, cache_metadata = [], {}
         graph = _compose_effective(
-            [],
+            schema_rows,
             tenant_id=app_ctx.config.tenant_id,
             canonical=graph,
             overlays=(overlay.graph,),
             observations=overlay.observations,
+            coverage=cache_metadata.get("coverage"),
+            cache_metadata=cache_metadata,
         ).graph
         overlay_generation = overlay.metadata.get("generation")
     destination = _export_destination(output)
@@ -1784,6 +1930,8 @@ def _locator_availability(effective, locator: str) -> str:
 
 
 def _semantic_step_row(step: GraphStep, ordinal: int) -> dict:
+    reference_matched = any(route.get("validation") == "matched"
+                            for route in step.reference_routes)
     workflow = (
         "direct-join"
         if step.relationship.value == "join-compatible"
@@ -1813,6 +1961,7 @@ def _semantic_step_row(step: GraphStep, ordinal: int) -> dict:
         "Validated": step.evidence_level in {"validated", "reviewed"},
         "SemanticallyReviewed": step.evidence_level == "reviewed",
         "EmpiricallyValidated": step.evidence_level == "validated",
+        "TenantMatched": reference_matched,
         "JoinSafe": step.relationship is RelationshipKind.JOIN_COMPATIBLE,
         "Candidate": step.candidate,
         "SourceAvailable": step.source_available,
@@ -1820,6 +1969,19 @@ def _semantic_step_row(step: GraphStep, ordinal: int) -> dict:
         "SourceAvailability": step.source_availability,
         "TargetAvailability": step.target_availability,
         "RelationshipId": step.relationship_id,
+        "ReferenceTrusted": bool(step.reference_routes),
+        "ReferenceRoutes": list(step.reference_routes),
+        "TenantDiscoveries": list(step.tenant_discoveries),
+        "RequiredScopeKeys": sorted({
+            key for info in (*step.reference_routes, *step.tenant_discoveries)
+            if isinstance(info.get("scope"), dict)
+            for side in ("source_key_columns", "target_key_columns")
+            for key in info["scope"].get(side, [])
+        }),
+        "ReferenceConditions": sorted({
+            condition for info in step.reference_routes
+            for condition in info.get("constraints_applied", [])
+        }),
     }
 
 
@@ -2607,6 +2769,7 @@ async def _schema_observe(
         overlays=(tenant_overlay.graph,),
         observations=tenant_overlay.observations,
         coverage=cache.get("coverage"),
+        cache_metadata=cache,
     )
     try:
         source = _interpretation_for_locator(effective.graph, locator, packaged=canonical)
@@ -3417,6 +3580,7 @@ async def _schema_candidate_review(
         overlays=(tenant_overlay.graph,),
         observations=tenant_overlay.observations,
         coverage=_cache.get("coverage"),
+        cache_metadata=_cache,
     )
     relationship = effective.graph.relationships.get(relationship_id)
     if relationship is None or relationship.status not in {
@@ -3667,6 +3831,7 @@ def _candidate_report(
         overlays=(tenant_overlay.graph,),
         observations=tenant_overlay.observations,
         coverage=cache.get("coverage"),
+        cache_metadata=cache,
     )
     grouped: dict[str, list] = {}
     for observation in tenant_overlay.observations:
@@ -4723,11 +4888,16 @@ def schema_correlate(
     is_flag=True,
     help="Also include unverified candidate hypotheses after usable routes.",
 )
+@click.option(
+    "--include-unavailable", is_flag=True,
+    help="Include routes with unavailable or unprobed fields for diagnostics.",
+)
 @click.pass_context
 def schema_pivot(
     ctx: click.Context,
     locator: str,
     include_candidates: bool,
+    include_unavailable: bool,
 ) -> None:
     """Find fields that can carry the same semantic identifier; cache-only.
 
@@ -4736,7 +4906,8 @@ def schema_pivot(
 
     Discover valid fields first: `xdr schema show EntraIdSignInEvents`
 
-    Reviewed, validated, and observed routes are returned by default. Add
+    Tenant-usable reviewed, trusted reference, validated, and observed routes
+    are returned by default. Add
     `--include-candidates` only for unverified hypotheses. A returned pivot is a
     search route; check `EvidenceLevel`, `JoinSafe`, `Relationship`, `Workflow`,
     and `Transform` before deciding whether raw equality or a KQL join is safe.
@@ -4752,6 +4923,7 @@ def schema_pivot(
         overlays=(tenant_overlay.graph,),
         observations=tenant_overlay.observations,
         coverage=cache.get("coverage"),
+        cache_metadata=cache,
     )
     graph = effective.graph
     available = effective.queryable_fields
@@ -4764,6 +4936,7 @@ def schema_pivot(
             include_candidates=False,
             available_fields=available,
             field_availability=effective.field_availability,
+            include_unavailable=include_unavailable,
         )
         all_steps = pivot(
             graph,
@@ -4771,6 +4944,7 @@ def schema_pivot(
             include_candidates=True,
             available_fields=available,
             field_availability=effective.field_availability,
+            include_unavailable=include_unavailable,
         )
     except GraphValidationError as exc:
         error = LocalNotFoundError("semantic field", locator)
@@ -4807,6 +4981,7 @@ def schema_pivot(
                 "semantic_graph_schema_version": 1,
                 "locator": canonical_locator,
                 "include_candidates": include_candidates,
+                "include_unavailable": include_unavailable,
                 "outcome": outcome,
                 "source_availability": source_availability,
                 "candidate_routes": candidate_count,
@@ -4817,6 +4992,7 @@ def schema_pivot(
                 outcome=outcome,
                 source_availability=source_availability,
                 candidate_routes=candidate_count,
+                include_unavailable=include_unavailable,
                 warning="pivot compatibility does not automatically mean raw join safety",
             ),
             tenant_id=app_ctx.config.tenant_id,
@@ -4849,6 +5025,10 @@ def schema_pivot(
     is_flag=True,
     help="Also include paths containing unverified candidate hypotheses.",
 )
+@click.option(
+    "--include-unavailable", is_flag=True,
+    help="Include paths through unavailable or unprobed fields for diagnostics.",
+)
 @click.pass_context
 def schema_path(
     ctx: click.Context,
@@ -4856,8 +5036,9 @@ def schema_path(
     target_table: str,
     max_depth: int,
     include_candidates: bool,
+    include_unavailable: bool,
 ) -> None:
-    """Find reviewed or empirical investigation routes between tables; cache-only.
+    """Find tenant-usable reference, reviewed, or empirical routes; cache-only.
 
     \b
     Example: `xdr schema path EntraIdSignInEvents CloudAppEvents`
@@ -4879,6 +5060,7 @@ def schema_path(
         overlays=(tenant_overlay.graph,),
         observations=tenant_overlay.observations,
         coverage=cache.get("coverage"),
+        cache_metadata=cache,
     )
     graph = effective.graph
     available = effective.queryable_fields
@@ -4898,6 +5080,8 @@ def schema_path(
                 }
             ]
             raise error
+    reviewed_search = {}
+    candidate_search = {}
     reviewed_paths = table_paths(
         graph,
         source_table,
@@ -4906,6 +5090,8 @@ def schema_path(
         include_candidates=False,
         available_fields=available,
         field_availability=effective.field_availability,
+        include_unavailable=include_unavailable,
+        diagnostics=reviewed_search,
     )
     all_candidate_paths = table_paths(
         graph,
@@ -4915,8 +5101,11 @@ def schema_path(
         include_candidates=True,
         available_fields=available,
         field_availability=effective.field_availability,
+        include_unavailable=include_unavailable,
+        diagnostics=candidate_search,
     )
     paths = all_candidate_paths if include_candidates else reviewed_paths
+    search = candidate_search if include_candidates else reviewed_search
     candidate_only = bool(all_candidate_paths) and not reviewed_paths
     source_state = (
         "available" if source_table in physical_tables
@@ -4926,7 +5115,10 @@ def schema_path(
         "available" if target_table in physical_tables
         else unobserved_availability(target_table, cache.get("coverage")).value
     )
-    outcome = "routes-found" if paths else ("candidate-only" if candidate_only else "disconnected")
+    outcome = "routes-found" if paths else (
+        "search-incomplete" if not search["search_complete"] else
+        "candidate-only" if candidate_only else "disconnected"
+    )
     result_rows = []
     for path_ordinal, route in enumerate(paths, start=1):
         for step_ordinal, step in enumerate(route.steps, start=1):
@@ -4960,6 +5152,8 @@ def schema_path(
                 "target_table": target_table,
                 "max_depth": max_depth,
                 "include_candidates": include_candidates,
+                "include_unavailable": include_unavailable,
+                "path_search": search,
                 "outcome": outcome,
                 "source_availability": source_state,
                 "target_availability": target_state,
@@ -4972,8 +5166,16 @@ def schema_path(
                 source_availability=source_state,
                 target_availability=target_state,
                 paths=len(paths),
+                include_unavailable=include_unavailable,
+                path_search=search,
                 warning="a schema path is an investigation route, not proof of event correlation",
             ),
             tenant_id=app_ctx.config.tenant_id,
         )
     )
+
+
+# Register separately to keep initialization orchestration out of the graph commands.
+from xdr_cli.commands.schema_init_cmd import register_schema_init  # noqa: E402
+
+register_schema_init(schema_app)

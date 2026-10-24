@@ -20,6 +20,7 @@ from xdr_cli.results import tenant_fingerprint
 ORIGIN = "https://security.microsoft.com"
 TENANT = ORIGIN + "/apiproxy/mtp/sccManagement/mgmt/TenantContext"
 HUNT = ORIGIN + "/apiproxy/hunting/huntingQueryExecutorService/queryExecutor/v1/external"
+HUNTING_SCHEMA = ORIGIN + "/apiproxy/mtp/huntingService/schema"
 
 
 @pytest.fixture
@@ -397,6 +398,7 @@ def test_cookie_session_end_refreshes_schema_without_official_auth(config, monke
         "TableName": "DeviceInfo", "ColumnName": "Timestamp", "ColumnType": "datetime",
     }]
     hunting = respx.post(HUNT).respond(200, json=schema)
+    respx.get(HUNTING_SCHEMA).respond(200, json={"Tables": []})
     runner = CliRunner()
     start = runner.invoke(app, ["--backend", "portal-cookie", "session", "start"])
     assert start.exit_code == 0, start.output

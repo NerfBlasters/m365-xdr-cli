@@ -177,9 +177,176 @@ def test_relationship_constructor_rejects_noncanonical_bidirectional_order():
 
 
 def test_unvalidated_overlap_does_not_hide_a_stronger_route():
-    step = pivot(load_packaged_graph(), 'DeviceInfo.DeviceId')[0]
-    overlap = replace(step, evidence_level='observed', confidence='low',
-                      relationship=RelationshipKind.CORRELATION_ONLY)
-    validated = replace(overlap, evidence_level='validated', confidence='high')
+    step = pivot(load_packaged_graph(), "DeviceInfo.DeviceId")[0]
+    overlap = replace(
+        step,
+        evidence_level="observed",
+        confidence="low",
+        relationship=RelationshipKind.CORRELATION_ONLY,
+    )
+    validated = replace(overlap, evidence_level="validated", confidence="high")
     assert validated.rank < step.rank < overlap.rank
     assert GraphPath((validated,)).rank < GraphPath((step,)).rank < GraphPath((overlap,)).rank
+
+
+def test_trusted_reference_route_is_default_and_preserves_guidance():
+    graph = load_packaged_graph()
+    original = pivot(graph, "DeviceInfo.DeviceId")[0]
+    relationship = graph.relationships[original.relationship_id]
+    info = {"id": "synthetic-device-route", "guidance": "Check event time", "digest": "abc"}
+    reference_id = relationship_id(
+        relationship.source,
+        relationship.target,
+        RelationshipKind.CORRELATION_ONLY,
+        relationship.direction,
+        relationship.transform,
+    )
+    del graph.relationships[relationship.id]
+    graph.relationships[reference_id] = replace(
+        relationship,
+        id=reference_id,
+        status=RelationshipStatus.REFERENCE_TRUSTED,
+        relationship=RelationshipKind.CORRELATION_ONLY,
+        extra={"reference_routes": [info]},
+    )
+    steps = pivot(graph, "DeviceInfo.DeviceId")
+    reference = next(s for s in steps if s.relationship_id == reference_id)
+    assert reference.evidence_level == "reference-trusted"
+    assert reference.candidate is False
+    assert reference.reference_routes == (info,)
+    assert reference.evidence_rank < replace(reference, evidence_level="candidate").evidence_rank
+
+
+def test_nonqueryable_fields_are_opt_in_when_filtering_routes():
+    graph = load_packaged_graph()
+    available = {field_id("DeviceInfo.DeviceId")}
+    assert pivot(graph, "DeviceInfo.DeviceId", available_fields=available)
+    assert (
+        pivot(graph, "DeviceInfo.DeviceId", available_fields=available, include_unavailable=False)
+        == []
+    )
+    assert (
+        table_paths(
+            graph,
+            "DeviceInfo",
+            "DeviceNetworkEvents",
+            available_fields=available,
+            include_unavailable=False,
+        )
+        == []
+    )
+    assert table_paths(
+        graph,
+        "DeviceInfo",
+        "DeviceNetworkEvents",
+        available_fields=available,
+        include_unavailable=True,
+    )
+
+
+def _dense_device_graph(size=12):
+    from xdr_cli.schema_graph.model import Graph
+
+    graph = Graph()
+    interpretations = []
+    for n in range(size):
+        locator = FieldLocator.parse(f"Table{n}.DeviceId")
+        field = FieldRecord(field_id(locator), locator, "string")
+        interpretation = InterpretationRecord(
+            interpretation_id(locator, "mde-device-id", "subject"),
+            field.id,
+            "device",
+            "mde-device-id",
+            "subject",
+            "hex40-lower",
+        )
+        graph.add(field)
+        graph.add(interpretation)
+        interpretations.append(interpretation)
+    for n, source in enumerate(interpretations):
+        for target in interpretations[n + 1 :]:
+            source_id, target_id = sorted((source.id, target.id))
+            graph.add(
+                RelationshipRecord(
+                    relationship_id(
+                        source_id,
+                        target_id,
+                        RelationshipKind.CORRELATION_ONLY,
+                        Direction.BOTH,
+                        "hex40-lower",
+                    ),
+                    source_id,
+                    target_id,
+                    RelationshipKind.CORRELATION_ONLY,
+                    Direction.BOTH,
+                    "hex40-lower",
+                    Cardinality.UNKNOWN,
+                    "check-event-time",
+                    RelationshipStatus.REFERENCE_TRUSTED,
+                    Confidence.MEDIUM,
+                    ("synthetic",),
+                )
+            )
+    return graph
+
+
+def test_dense_path_search_caps_generated_states_and_reports_incomplete():
+    graph = _dense_device_graph()
+    diagnostics = {}
+    paths = table_paths(
+        graph,
+        "Table0",
+        "Table11",
+        max_depth=12,
+        max_paths=100,
+        max_expansions=20,
+        diagnostics=diagnostics,
+    )
+    assert diagnostics["generated_states"] == 20
+    assert diagnostics["expansion_limit_reached"] is True
+    assert diagnostics["search_complete"] is False
+    assert any(path.direct_join is False and path.hop_count == 1 for path in paths)
+    assert paths == table_paths(
+        graph, "Table0", "Table11", max_depth=12, max_paths=100, max_expansions=20
+    )
+
+
+def test_path_result_limit_has_explicit_truncation_diagnostics():
+    graph = _dense_device_graph(5)
+    diagnostics = {}
+    paths = table_paths(graph, "Table0", "Table4", max_paths=1, diagnostics=diagnostics)
+    assert len(paths) == 1
+    assert paths[0].hop_count == 1
+    assert diagnostics["paths_truncated"] is True
+    assert diagnostics["search_complete"] is False
+    assert diagnostics["expansion_limit_reached"] is False
+
+
+def test_complete_path_search_reports_complete():
+    diagnostics = {}
+    paths = table_paths(
+        load_packaged_graph(), "DeviceInfo", "DeviceNetworkEvents", diagnostics=diagnostics
+    )
+    assert paths
+    assert diagnostics["search_complete"] is True
+    assert diagnostics["paths_truncated"] is False
+
+
+def test_queryable_endpoints_do_not_allow_an_unavailable_intermediate():
+    graph = _dense_device_graph(3)
+    graph.relationships = {
+        key: relation
+        for key, relation in graph.relationships.items()
+        if {relation.source, relation.target} != {
+            interpretation_id("Table0.DeviceId", "mde-device-id", "subject"),
+            interpretation_id("Table2.DeviceId", "mde-device-id", "subject"),
+        }
+    }
+    available = {field_id("Table0.DeviceId"), field_id("Table2.DeviceId")}
+    assert table_paths(graph, "Table0", "Table2", available_fields=available)
+    assert (
+        table_paths(
+            graph, "Table0", "Table2", available_fields=available, include_unavailable=False
+        )
+        == []
+    )
