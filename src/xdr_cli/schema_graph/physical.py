@@ -52,12 +52,28 @@ def field_storage_compatible(field: FieldRecord, rows: list[dict]) -> bool:
     return not storage_types or storage_types <= expected_types
 
 
+def is_queryable_row(row: dict) -> bool:
+    """Only getschema rows prove a queryable column; metadata-only rows never do.
+
+    Rows without ``Sources`` predate metadata merging and came from getschema.
+    """
+
+    sources = row.get("Sources")
+    return sources is None or (isinstance(sources, list) and "getschema" in sources)
+
+
+def queryable_rows(rows: list[dict]) -> list[dict]:
+    """Drop metadata-only rows, including those written by earlier cache versions."""
+
+    return [row for row in rows if is_queryable_row(row)]
+
+
 def physical_field_rows(rows: list[dict]) -> dict[tuple[str, str], list[dict]]:
-    """Group physical observations without hiding conflicting duplicate types."""
+    """Group queryable physical observations without hiding conflicting duplicate types."""
 
     grouped: dict[tuple[str, str], list[dict]] = {}
     for row in rows:
-        if row.get("TableName") and row.get("ColumnName"):
+        if row.get("TableName") and row.get("ColumnName") and is_queryable_row(row):
             key = (str(row["TableName"]), str(row["ColumnName"]))
             grouped.setdefault(key, []).append(row)
     return grouped
@@ -159,9 +175,9 @@ def portal_schema_tables(tables: list[dict]) -> dict[str, dict]:
 def merge_portal_rows(rows: list[dict], portal: dict[str, dict]) -> tuple[list[dict], dict]:
     """Union getschema rows with portal-listed columns; getschema wins on type.
 
-    A metadata listing does not prove query authorization, so portal-only
-    columns are added only for tables getschema resolved. Portal-only tables are
-    reported, not cached as available. Every row gains ``Sources``.
+    A metadata listing does not prove query authorization, so only getschema
+    rows are cached. Portal-only tables and columns are reported (bounded) and
+    kept in the private sidecar. Every cached row gains ``Sources``.
     """
 
     if not portal:
@@ -174,20 +190,14 @@ def merge_portal_rows(rows: list[dict], portal: dict[str, dict]) -> tuple[list[d
         merged[key] = {**row, "Sources": ["getschema"]}
     getschema_tables = {key[0] for key in merged}
     type_disagreements = []
+    portal_only_columns = []
     for table, info in portal.items():
         for column in info["Columns"]:
             key = (table, column["ColumnName"])
             existing = merged.get(key)
-            if existing is None and table not in getschema_tables:
-                continue
             if existing is None:
-                merged[key] = {
-                    "TableName": table,
-                    "ColumnName": column["ColumnName"],
-                    "ColumnType": column["ColumnType"],
-                    "ColumnOrdinal": column["ColumnOrdinal"],
-                    "Sources": ["portal-schema"],
-                }
+                if table in getschema_tables:
+                    portal_only_columns.append(f"{table}.{column['ColumnName']}")
                 continue
             existing["Sources"].append("portal-schema")
             ours = canonical_storage_type(existing.get("ColumnType"))
@@ -201,6 +211,8 @@ def merge_portal_rows(rows: list[dict], portal: dict[str, dict]) -> tuple[list[d
         "listed_tables": sorted(portal),
         "portal_only_tables": sorted(set(portal) - getschema_tables),
         "unlisted_getschema_tables": sorted(getschema_tables - set(portal)),
+        "portal_only_columns": len(portal_only_columns),
+        "portal_only_column_examples": sorted(portal_only_columns)[:20],
         "type_disagreements": len(type_disagreements),
         "type_disagreement_examples": sorted(type_disagreements)[:20],
     }

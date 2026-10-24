@@ -30,6 +30,7 @@ from xdr_cli.schema_graph.reference import (
 from xdr_cli.schema_graph.reference_routes import (
     compare_physical_schema,
     reference_catalog,
+    safe_reference_previews,
     tenant_candidate_routes,
 )
 from xdr_cli.schema_graph.reference_validation import validate_reference
@@ -137,6 +138,7 @@ async def _initialize(
     discoveries = reference_catalog(replace(snapshot, routes=candidates), rows, report["routes"])
     comparison = compare_physical_schema(snapshot, rows)
     summary = dict(Counter(row["ReferenceValidationState"] for row in catalog))
+    discovery_summary = dict(Counter(row["ReferenceValidationState"] for row in discoveries))
     continuation = (f"xdr schema init --skip-refresh --lookback {shlex.quote(lookback)}"
                     f" --samples {samples} --row-limit {row_limit} --max-queries {max_queries}")
     context = {"reference_digest": snapshot.digest, "reference_routes": len(catalog),
@@ -145,6 +147,7 @@ async def _initialize(
                "stopped": report["stopped"], "plan_only": plan_only,
                "new_table_discovery": {
                    "candidate_routes": len(candidates),
+                   "validation_states": discovery_summary,
                    "unmapped_tables": len(discovery["unmapped_new_tables"]),
                    "candidate_route_cap_reached": discovery["candidate_route_cap_reached"],
                    "next_command": "xdr schema collect --explore"
@@ -160,16 +163,17 @@ async def _initialize(
                },
                "next_command": continuation if report["pending"]
                else "xdr schema pivot DeviceInfo.DeviceId"}
-    emit_result(write_result(
+    emit_result(safe_reference_previews(write_result(
         [*catalog, *discoveries, *comparison], command="schema init",
         tenant_id=ctx.config.tenant_id,
         extra_metadata={"reference_initialization": context,
                         "new_tables": cache.get("coverage", {}).get("new_tables", []),
                         "new_table_discovery": discovery},
         receipt_context=context,
-    ))
+    )))
     if not plan_only and (report["pending"] or refresh_failure or any(
-        count for state, count in summary.items() if state in {"query-failed", "invalid-shape"}
+        count for state, count in [*summary.items(), *discovery_summary.items()]
+        if state in {"query-failed", "invalid-shape"}
     )):
         raise PartialSuccessError(
             "Schema initialization saved its results with incomplete validation.",

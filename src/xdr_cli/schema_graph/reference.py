@@ -159,6 +159,8 @@ def parse_snapshot(
         if (len(item["id"]) > 256 or not re.fullmatch(r"[A-Za-z0-9_-]+", item["id"])
                 or item["id"] in seen_ids):
             raise ReferenceError("reference route IDs must be unique safe identifiers")
+        if not re.fullmatch(r"[a-z][a-z0-9-]{0,127}", item["family"]):
+            raise ReferenceError("reference families must be bounded identifier slugs")
         seen_ids.add(item["id"])
         guidance = item.get("guidance", "")
         if not isinstance(guidance, str) or len(guidance) > 32768:
@@ -183,7 +185,7 @@ def _atomic_json(path: Path, value: dict) -> None:
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(6)}.tmp")
     try:
         with temporary.open("x", encoding="utf-8", newline="\n") as handle:
-            json.dump(value, handle, separators=(",", ":"))
+            json.dump(value, handle, separators=(",", ":"), sort_keys=True)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())

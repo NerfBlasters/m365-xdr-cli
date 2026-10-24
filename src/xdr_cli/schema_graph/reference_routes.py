@@ -23,7 +23,7 @@ from xdr_cli.schema_graph.model import (
     interpretation_id,
     relationship_id,
 )
-from xdr_cli.schema_graph.physical import canonical_storage_type
+from xdr_cli.schema_graph.physical import canonical_storage_type, queryable_rows
 from xdr_cli.schema_graph.reference import REFERENCE_URLS, ReferenceRoute, ReferenceSnapshot
 from xdr_cli.schema_graph.reference_query import FAMILY_NORMALIZERS
 
@@ -53,16 +53,20 @@ def family_contract(route: ReferenceRoute) -> tuple[str, str, str]:
                        {"lower": "text-lower", "upper": "text-upper"}.get(
                            FAMILY_NORMALIZERS.get(route.family), "identity")),
     )
+    return kind, namespace, normalizer
+
+
+def route_transform(route: ReferenceRoute) -> str:
     if route.family == "entra-token" and any(
         e.table == "AADGraphActivityLogs" and e.column == "SignInActivityId"
         for e in (route.source, route.target)
     ):
-        namespace, normalizer = "entra-token-unpadded", "token-unpad"
-    return kind, namespace, normalizer
+        return "token-unpad"
+    return family_contract(route)[2]
 
 
 def route_schema_status(route: ReferenceRoute, schema_rows: list[dict]) -> str:
-    physical = {(r.get("TableName"), r.get("ColumnName")): r for r in schema_rows}
+    physical = {(r.get("TableName"), r.get("ColumnName")): r for r in queryable_rows(schema_rows)}
     for endpoint in (route.source, route.target):
         row = physical.get((endpoint.table, endpoint.column))
         if row is None:
@@ -85,6 +89,8 @@ def reference_catalog(
         physical = route_schema_status(route, schema_rows)
         validation = state.get("status", "pending")
         trusted = route.record.get("origin") != "tenant-new-table"
+        unverified = [value for value in state.get("constraints_applied", [])
+                      if value.startswith("condition-unverifiable:")]
         records.append({
             "ReferenceId": route.id, "Title": route.title, "Family": route.family,
             "Source": str(route.source.locator), "Target": str(route.target.locator),
@@ -93,7 +99,9 @@ def reference_catalog(
             "ReferenceValidationState": validation,
             "TenantSchema": physical,
             "TenantUsable": (physical == "available"
-                             and validation not in DISABLED_VALIDATION | {"unsupported"}),
+                             and validation not in DISABLED_VALIDATION
+                             | {"unsupported", "schema-unavailable"} and not unverified),
+            "UnverifiableConditions": unverified,
             "Guidance": route.guidance, "SourceUrl": REFERENCE_URLS["relations"],
             "ReferenceDigest": snapshot.digest,
             "ValidationRunId": state.get("run_id"),
@@ -131,6 +139,7 @@ def compose_reference_routes(
         if not record["TenantUsable"]:
             continue
         kind, namespace, normalizer = family_contract(route)
+        transform = route_transform(route)
         trusted = record["MappingOrigin"] == "reference"
         endpoints = []
         for endpoint in (route.source, route.target):
@@ -177,14 +186,16 @@ def compose_reference_routes(
         pair = {i.id for i in endpoints}
         existing_relations = [r for r in graph.relationships.values()
                               if {r.source, r.target} == pair
-                              and r.status is RelationshipStatus.REVIEWED]
+                              and r.status is RelationshipStatus.REVIEWED
+                              and r.transform == transform]
         info = {"id": route.id, "validation": record["ReferenceValidationState"],
                 "guidance": route.guidance, "url": REFERENCE_URLS["relations"],
                 "digest": snapshot.digest, "validation_run_id": record["ValidationRunId"],
                 "counts": record["ValidationCounts"], "scope": record["ValidationScope"],
                 "warnings": record["ValidationWarnings"],
                 "constraints_applied": record["ValidationConstraints"],
-                "origin": record["MappingOrigin"]}
+                "origin": record["MappingOrigin"],
+                "source": str(route.source.locator), "target": str(route.target.locator)}
         if existing_relations:
             if not trusted:
                 continue
@@ -195,7 +206,7 @@ def compose_reference_routes(
         else:
             source, target = sorted(i.id for i in endpoints)
             rel_id = relationship_id(source, target, RelationshipKind.CORRELATION_ONLY,
-                                     Direction.BOTH, normalizer)
+                                     Direction.BOTH, transform)
             prior = graph.relationships.get(rel_id)
             if prior is not None and prior.status is not RelationshipStatus.REFERENCE_TRUSTED:
                 continue
@@ -203,10 +214,11 @@ def compose_reference_routes(
                 continue
             infos = [*(prior.extra.get("reference_routes", []) if prior else []), info]
             observed = (not trusted and record["ReferenceValidationState"] == "matched"
-                        and (record["ValidationCounts"] or {}).get("MatchedSourceValues", 0) >= 3)
+                        and (record["ValidationCounts"] or {}).get("MatchedSourceValues", 0) >= 3
+                        and "candidate-identifier-quality:v1" in record["ValidationConstraints"])
             graph.relationships[rel_id] = RelationshipRecord(
                 rel_id, source, target, RelationshipKind.CORRELATION_ONLY, Direction.BOTH,
-                normalizer, Cardinality.UNKNOWN, "reference-conditions-apply",
+                transform, Cardinality.UNKNOWN, "reference-conditions-apply",
                 (RelationshipStatus.REFERENCE_TRUSTED if trusted else
                  RelationshipStatus.OBSERVED if observed else RelationshipStatus.CANDIDATE),
                 Confidence.MEDIUM if trusted or observed else Confidence.LOW,
@@ -218,14 +230,15 @@ def compose_reference_routes(
             available_nested.update(
                 field_id(e.locator) for e in (route.source, route.target) if e.path
             )
-    return compose_effective_graph(schema_rows, canonical=graph,
-                                   observed_nested_fields=available_nested, coverage=coverage)
+    result = compose_effective_graph(schema_rows, canonical=graph,
+                                     observed_nested_fields=available_nested, coverage=coverage)
+    return replace(result, observation_gaps=effective.observation_gaps)
 
 
 def compare_physical_schema(snapshot: ReferenceSnapshot, schema_rows: list[dict]) -> list[dict]:
     """Compare complete table/column sets without treating fuzzy absence as proof."""
     tenant = {}
-    for row in schema_rows:
+    for row in queryable_rows(schema_rows):
         tenant.setdefault(row["TableName"], {})[row["ColumnName"]] = canonical_storage_type(
             row.get("ColumnType")
         )
@@ -269,3 +282,21 @@ def tenant_candidate_routes(snapshot, schema_rows, *, cache_meta=None, cache_roo
         "candidate_route_cap_reached": len(proposals) > 100,
         "portal_hint_gap": sidecar_gap,
     }
+
+
+def safe_reference_previews(artifact):
+    """Keep third-party prose in the artifact, outside automatic agent previews."""
+    def project(value):
+        if isinstance(value, list):
+            return [project(item) for item in value]
+        if isinstance(value, dict):
+            hidden = any(key.casefold() in {"title", "guidance"} for key in value)
+            result = {key: project(item) for key, item in value.items()
+                      if key.casefold() not in {"title", "guidance"}}
+            if hidden:
+                result["ReferenceText"] = "untrusted-reference-text-in-artifact"
+            return result
+        return value
+
+    return replace(artifact,
+                   preview_records=tuple(project(row) for row in artifact.preview_records))

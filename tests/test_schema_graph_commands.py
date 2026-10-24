@@ -2713,3 +2713,34 @@ def test_schema_observe_rejects_unprefilterable_normalizer_before_network(tmp_pa
         assert error["code"] == "SCHEMA_SOURCE_NOT_PROBEABLE"
         assert error["original"]["normalizer"] == "ip-canonical"
         assert error["help_command"] == "xdr schema pivot SourceTable.DeviceId"
+
+
+def test_schema_observe_refuses_reference_imported_source(tmp_path, monkeypatch):
+    from xdr_cli.schema_graph.effective import EffectiveGraph, FieldAvailability
+
+    _schema_cache(tmp_path, monkeypatch, [("SourceTable", "DeviceId"), ("TargetTable", "DeviceId"),
+                                          ("ImportedTable", "DeviceId")])
+    packaged = _probe_graph()
+    locator = FieldLocator.parse("ImportedTable.DeviceId")
+    imported_field = FieldRecord(id=field_id(locator), locator=locator, kql_type="string")
+    imported = InterpretationRecord(
+        id=interpretation_id(locator, "mde-device-id", "subject"),
+        field_id=field_id(locator), entity_kind="device", namespace="mde-device-id",
+        role="subject", normalizer="hex40-lower", extra={"reference_trusted": True},
+    )
+    runtime = _with(packaged, imported_field, imported)
+    effective = EffectiveGraph(
+        graph=runtime,
+        field_availability={fid: FieldAvailability.AVAILABLE for fid in runtime.fields},
+    )
+    with (
+        patch("xdr_cli.commands.schema_cmd._semantic_graph", return_value=packaged),
+        patch("xdr_cli.commands.schema_cmd._compose_effective", return_value=effective),
+        patch("xdr_cli.commands.schema_cmd.AuthManager", side_effect=AssertionError("auth used")),
+        patch("xdr_cli.commands.schema_cmd.XDRClient", side_effect=AssertionError("network used")),
+    ):
+        result = runner.invoke(app, ["schema", "observe", "ImportedTable.DeviceId", "--plan-only"])
+    assert result.exit_code == 13, result.output
+    error = json.loads(result.stdout)["error"]
+    assert error["code"] == "SCHEMA_REFERENCE_SOURCE_UNSUPPORTED"
+    assert error["help_command"] == "xdr schema init"

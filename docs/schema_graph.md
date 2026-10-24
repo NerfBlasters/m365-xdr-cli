@@ -151,17 +151,21 @@ silently, so absence stays inconclusive.
 | `portal` | Requires the listing. If it fails, the getschema cache is still published and the command exits 14. |
 | `probe` | Uses only the getschema probe; the portal is never contacted. |
 
-A metadata listing does not prove that a table can be queried. Columns the
-portal lists are cached only for tables getschema resolved. Tables that are
-listed but unresolved are reported in `coverage.metadata.portal_only_tables` and
-stay unavailable. When the portal and getschema disagree on a column type,
+A metadata listing does not prove that a table or column can be queried, so
+only getschema rows are cached. Tables and columns that are listed but not
+returned by getschema are reported in `coverage.metadata.portal_only_tables` and
+`coverage.metadata.portal_only_columns` (with bounded examples) and stay
+unavailable. Earlier pre-release caches that stored portal-only rows are filtered
+when read, so those rows never authorize a field. When the portal and getschema disagree on a column type,
 getschema wins and the count appears in `coverage.metadata.type_disagreements`.
 In the development tenant, seven portal types disagreed with getschema; for
 example, the portal reports `DeviceTvmInfoGatheringKB.IgId` as `DateTime` while
 getschema returns `string`.
 
-`coverage.new_tables` lists tenant tables that are absent from the packaged
-registry and any reference table names supplied by the caller. This is how a
+`coverage.new_tables` lists tenant tables that are absent from both the packaged
+registry and the reference table names. `schema init` passes its reference
+snapshot, and a plain `schema refresh` reads the local snapshot when one exists,
+so both commands report the same set. This is how a
 newly shipped Defender table, such as `ExposureRecommendations` in the
 development tenant, is detected and cached before it enters the packaged probe
 registry. The full portal listing, including descriptions and entity tags,
@@ -592,11 +596,14 @@ successful cache-only navigation are separate from empirical validation.
 level; it does not mean tenant evidence was checked and failed. Reviewed core
 contracts keep that level even when tenant observations corroborate them.
 
-The CLI does not import the XDRInternals relationship feed automatically. Its
-reference mappings must have their own recorded provenance, semantic review,
-supported conditions and tenant evidence before being presented as executable
-or empirically validated. Downloading a mapping or finding its outer columns in
-the cache is not validation of its conditions or nested paths.
+`schema init` imports a content-bound XDRInternals snapshot. Reference mappings
+start trusted, with their original provenance and conditions. Cache-only route
+composition checks whether the current compiler can enforce those conditions;
+unsupported conditions prevent tenant use. `TenantMatched` requires verified
+evidence from the current query contract. Reference trust is separate from
+semantic review and the independent-artifact `EmpiricallyValidated` policy.
+Downloading a mapping or finding its outer columns is not validation of its
+conditions or nested paths.
 
 Path output distinguishes:
 
@@ -1151,3 +1158,31 @@ inherit reference trust or join safety. Initialization reports the 100-candidate
 cap and unmapped tables as coverage gaps. Existing `schema observe` and
 `schema collect --explore` workflows remain available for fields without usable
 name/tag hints and tenant-specific nested paths.
+
+### Validation compatibility and evidence retention
+
+Route composition derives scope and conditions from the running compiler, even
+before a validation ledger exists. Saved matches must still match that compiler,
+reference, tenant, options and physical-schema binding. A changed contract retires
+the match claim until initialization reruns. Verified failed checks remain
+suppressed across unrelated schema refreshes and budget pauses until revalidated.
+Unverifiable type conditions, such as a workload-dependent cloud `Target` value,
+are reported as unsupported rather than promoted to unconditional user semantics.
+
+Generic `schema observe` does not use runtime-only imported interpretations as
+sources. It can still test packaged sources against new fields using self-contained
+neutral provisional targets; known contextual constraints cannot be bypassed by
+such a fallback. Older observations with missing interpretation definitions are
+excluded from composition and reported in status and route coverage diagnostics.
+Their private records and artifacts are not silently deleted.
+
+`results prune` preserves verified evidence pinned by current reference ledgers
+and live scope pointers across all local tenants. Active corruption fails pruning
+closed. Per-query obsolete ledger generations are cleaned up in bounded batches;
+live pointer targets remain intact. Authentication, permission, configuration and
+artifact errors keep their original exit classes. Only transient rate, timeout
+and network failures pause validation with exit 14 and a continuation.
+
+Reference trust describes mapping provenance, not instruction authority. Free-form
+third-party titles and guidance remain in the private artifact; automatic previews
+show structured locators, conditions and reference IDs instead of that prose.

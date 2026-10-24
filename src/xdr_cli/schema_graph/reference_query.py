@@ -82,14 +82,28 @@ class CompiledReferenceQuery:
 
 @dataclass
 class _Side:
-    """Per-endpoint compilation state."""
+    """Per-endpoint compilation state.
+
+    Pipeline order: time filter, ``pre`` row filters, row cap, ``snapshot``
+    aggregation, ``post`` filters, extraction, scoped key. Aggregation therefore
+    never runs over more rows than the cap.
+    """
 
     endpoint: ReferenceEndpoint
     role: str
     pre: list[str] = field(default_factory=list)
+    snapshot: list[str] = field(default_factory=list)
+    post: list[str] = field(default_factory=list)
     element_filter: str | None = None
-    key_columns: tuple[str, ...] = ()
+    key_parts: list[tuple[str, str, bool]] = field(default_factory=list)
+    value_filters: list[str] = field(default_factory=list)
     order_column: str | None = None
+
+    def scope(self, label: str, expression: str | None = None, *,
+              preserve_case: bool = False) -> None:
+        """Add a scope value; GUID-like scopes fold case, provenance labels keep it."""
+
+        self.key_parts.append((label, expression or f"tostring({label})", preserve_case))
 
 
 def _columns(schema_rows: list[dict]) -> dict[str, dict[str, set[str | None]]]:
@@ -160,70 +174,100 @@ def _time_column(tables, endpoint: ReferenceEndpoint, role: str, warnings: list[
     return None
 
 
+_WORKSPACE_FAMILIES = {"sentinel-behavior", "sentinel-intel", "stix-object",
+                       "sentinel-alert", "bookmark"}
+_STIX_SNAPSHOT_TABLES = {"ThreatIntelIndicators", "ThreatIntelObjects"}
+_FEED_KEY = "iff(indexof(Id, '---') > 0, substring(Id, 0, indexof(Id, '---')), '')"
+
+
 def _apply_conditions(route: ReferenceRoute, source: _Side, target: _Side, tables,
-                      constraints: list[str], warnings: list[str]) -> None:
-    """Translate the reference's stated conditions into machine predicates."""
+                      times: dict[str, str | None], constraints: list[str],
+                      warnings: list[str]) -> None:
+    """Translate the reference's stated conditions into machine predicates.
+
+    A condition the reference states as required either compiles or makes the
+    route unsupported; it is never silently downgraded to a warning.
+    """
 
     guidance = route.guidance or ""
 
     def both_have(column: str) -> bool:
         return column in tables[source.endpoint.table] and column in tables[target.endpoint.table]
 
+    def require(side: _Side, column: str) -> None:
+        if column not in tables[side.endpoint.table]:
+            raise ReferenceQueryUnsupported(
+                "scope-column-unavailable", f"{side.endpoint.table}.{column}"
+            )
+
+    def scope_both(column: str) -> None:
+        for side in (source, target):
+            require(side, column)
+            side.scope(column)
+        constraints.append(f"composite-key:{column}")
+
+    def latest_snapshot(side: _Side, *keys: str) -> None:
+        time_column = times[side.role]
+        if time_column is None:
+            raise ReferenceQueryUnsupported(
+                "time-column-unavailable", f"{side.endpoint.table} latest snapshot"
+            )
+        for column in keys:
+            require(side, column)
+        side.snapshot.append(f"summarize arg_max({time_column}, *) by {', '.join(keys)}")
+        constraints.append(f"{side.role}-latest-snapshot:{'+'.join(keys)}")
+
     if route.family == "process-start-key":
-        for column in ("DeviceId", "TenantId"):
-            if both_have(column):
-                source.key_columns += (column,)
-                target.key_columns += (column,)
-                constraints.append(f"composite-key:{column}")
-            elif column == "DeviceId":
-                raise ReferenceQueryUnsupported("scope-column-unavailable", "DeviceId")
-            else:
-                warnings.append("TenantId scope unavailable on one endpoint; DeviceId scope only")
-        if "ProcessCreationTime" in tables[source.endpoint.table]:
-            source.order_column = "ProcessCreationTime"
-            constraints.append("target-activity-at-or-after:ProcessCreationTime")
-        else:
-            warnings.append("ProcessCreationTime unavailable; ordering not enforced")
-    if re.search(r"AccountObjectId as well", guidance):
-        if not both_have("AccountObjectId"):
-            raise ReferenceQueryUnsupported("scope-column-unavailable", "AccountObjectId")
-        source.key_columns += ("AccountObjectId",)
-        target.key_columns += ("AccountObjectId",)
-        constraints.append("composite-key:AccountObjectId")
-    if route.family == "crowdstrike-agent":
-        for column in ("Cid", "TenantId"):
-            if not both_have(column):
-                raise ReferenceQueryUnsupported("scope-column-unavailable", column)
-            source.key_columns += (column,)
-            target.key_columns += (column,)
-            constraints.append(f"composite-key:{column}")
-    if route.family in {"sentinel-behavior", "sentinel-intel"} or (
-        route.family == "stix-object" and "workspace" in guidance
-    ):
+        scope_both("DeviceId")
         if both_have("TenantId"):
-            source.key_columns += ("TenantId",)
-            target.key_columns += ("TenantId",)
-            constraints.append("composite-key:TenantId")
+            scope_both("TenantId")
         else:
-            warnings.append("workspace TenantId scope unavailable on one endpoint")
+            # Defender device tables lack TenantId; one selected tenant is implicit.
+            constraints.append("tenant-scope:implicit-single-tenant")
+        require(source, "ProcessCreationTime")
+        source.order_column = "ProcessCreationTime"
+        constraints.append("target-activity-at-or-after:ProcessCreationTime")
+    if re.search(r"AccountObjectId as well", guidance):
+        scope_both("AccountObjectId")
+    if route.family == "crowdstrike-agent":
+        scope_both("Cid")
+        scope_both("TenantId")
+    if route.family in _WORKSPACE_FAMILIES:
+        scope_both("TenantId")
     if route.id == "entra-signin-cloudapp-exchange-session":
-        if "ActionType" not in tables[target.endpoint.table]:
-            raise ReferenceQueryUnsupported("scope-column-unavailable", "ActionType")
+        require(target, "ActionType")
         target.pre.append("where ActionType == 'MailItemsAccessed'")
         constraints.append("target-predicate:ActionType==MailItemsAccessed")
     if route.id.startswith("stix-relationship-"):
-        source.pre.append("where tostring(parse_json(tostring(Data))['type']) == 'relationship'")
-        constraints.append("source-predicate:Data.type==relationship")
         for side in (source, target):
+            latest_snapshot(side, "TenantId", "Id")
             if "IsDeleted" in tables[side.endpoint.table]:
-                side.pre.append("where not(tobool(IsDeleted))")
-                constraints.append(f"{side.role}-predicate:not-deleted")
+                side.post.append("where not(tobool(IsDeleted))")
+                constraints.append(f"{side.role}-predicate:not-deleted-after-latest")
+            # The reference joins feed prefixes exactly; case is provenance.
+            side.scope("FeedKey", _FEED_KEY, preserve_case=True)
+        constraints.append("composite-key:FeedKey")
+        if "StixType" in tables[source.endpoint.table]:
+            source.post.append("where tostring(StixType) == 'relationship'")
+        else:
+            source.post.append(
+                "where tostring(parse_json(tostring(Data))['type']) == 'relationship'"
+            )
+        constraints.append("source-predicate:relationship-object")
+    elif route.family in {"stix-object", "sentinel-intel"}:
+        for side in (source, target):
+            if side.endpoint.table in _STIX_SNAPSHOT_TABLES:
+                latest_snapshot(side, "TenantId", "Id")
     incident_source = source.endpoint.table == "SecurityIncident"
     if route.family in {"sentinel-alert", "bookmark"} and incident_source:
-        if "IncidentName" not in tables["SecurityIncident"]:
-            raise ReferenceQueryUnsupported("scope-column-unavailable", "IncidentName")
-        source.pre.append("summarize arg_max(TimeGenerated, *) by IncidentName")
-        constraints.append("source-latest-snapshot:IncidentName")
+        latest_snapshot(source, "TenantId", "IncidentName")
+    if route.id == "cloudapp-raw-event-target-account-object-id":
+        # Target may name any resource type; only GUID shape is machine-checkable.
+        source.value_filters.append("isnotempty(toguid(__v))")
+        constraints.extend(["source-value-shape:guid", "condition-unverifiable:target-is-user"])
+    if route.record.get("origin") == "tenant-new-table":
+        _candidate_quality(route.family, (source, target))
+        constraints.append("candidate-identifier-quality:v1")
     if route.id == "audit-target-resource-id-account-object-id":
         source.element_filter = "where tostring({element}['type']) =~ 'User'"
         constraints.append("source-element-predicate:type==User")
@@ -231,29 +275,63 @@ def _apply_conditions(route: ReferenceRoute, source: _Side, target: _Side, table
         warnings.append("reference recommends latest-snapshot selection; not enforced")
 
 
-def _side_pipeline(side: _Side, tables, normalizer: str, time_column: str | None,
-                   lookback: str, cap: int) -> list[str]:
-    """Build one endpoint pipeline; every pipeline is row-capped before extraction."""
+_PLACEHOLDERS = "('0', '-', 'null', 'none', 'unknown', 'n/a', " \
+    "'00000000-0000-0000-0000-000000000000')"
+_FAMILY_SHAPES = {
+    "defender-device": "__v matches regex @'^[0-9a-fA-F]{40}$'",
+    "file-sha1": "__v matches regex @'^[0-9a-fA-F]{40}$'",
+    "file-sha256": "__v matches regex @'^[0-9a-fA-F]{64}$'",
+}
+_GUID_FAMILIES = {"entra-user", "entra-device", "entra-session", "oauth-client",
+                  "service-principal", "email-message"}
 
-    endpoint = side.endpoint
-    steps = [endpoint.table]
+
+def _candidate_quality(family: str, sides: tuple[_Side, ...]) -> None:
+    """Derived new-table routes count only informative, family-shaped identifiers."""
+
+    shape = _FAMILY_SHAPES.get(family) or (
+        "isnotempty(toguid(__v))" if family in _GUID_FAMILIES else None
+    )
+    for side in sides:
+        side.value_filters.append(f"tolower(__v) !in {_PLACEHOLDERS}")
+        if shape:
+            side.value_filters.append(shape)
+
+
+def _key_expression(side: _Side, value: str) -> list[str]:
+    """Scoped keys count only when the identifier and every scope value are non-empty."""
+
+    steps = [f"extend __v = {value}"]
+    steps.extend(f"where {condition}" for condition in side.value_filters)
+    if not side.key_parts:
+        return [*steps, "extend __k = __v"]
+    names = []
+    for index, (_label, expression, preserve_case) in enumerate(side.key_parts):
+        value = f"trim(@'\\s', {expression})"
+        steps.append(f"extend __p{index} = {value if preserve_case else f'tolower({value})'}")
+        names.append(f"__p{index}")
+    empty = " or ".join(f"isempty({name})" for name in ["__v", *names])
+    joined = ", '|', ".join([*names, "__v"])
+    steps.append(f"extend __k = iff({empty}, '', strcat({joined}))")
+    return steps
+
+
+def _side_pipeline(side: _Side, normalizer: str, time_column: str | None,
+                   lookback: str, cap: int) -> list[str]:
+    """Build one endpoint pipeline; rows are capped before any aggregation."""
+
+    steps = [side.endpoint.table]
     if time_column:
         steps.append(f"where {time_column} > ago({lookback})")
     steps.extend(side.pre)
     # Most-recent rows keep repeated validations comparable; `take` is arbitrary.
     steps.append(f"top {cap} by {time_column} desc" if time_column else f"take {cap}")
+    steps.extend(side.snapshot)
+    steps.extend(side.post)
     prefix = "__s" if side.role == "source" else "__t"
     extraction, raw = _extraction(side, prefix)
     steps.extend(extraction)
-    value = _value_expression(normalizer, raw)
-    if side.key_columns:
-        parts = [f"tolower(tostring({column}))" for column in side.key_columns]
-        steps.append(f"extend __v = {value}")
-        steps.append(
-            "extend __k = iff(isempty(__v), '', strcat(" + ", '|', ".join([*parts, "__v"]) + "))"
-        )
-    else:
-        steps.append(f"extend __k = {value}")
+    steps.extend(_key_expression(side, _value_expression(normalizer, raw)))
     steps.append("where isnotempty(__k)")
     return steps
 
@@ -269,8 +347,9 @@ def compile_reference_query(
 ) -> CompiledReferenceQuery:
     """Compile one aggregate overlap check, or raise ``ReferenceQueryUnsupported``.
 
-    Every table read is row-capped: ``row_limit`` for source sampling and the
-    target presence sample, ``scan_row_limit`` for the target membership scan.
+    Every table read is row-capped before any aggregation: ``row_limit`` for
+    source sampling, ``scan_row_limit`` for the single materialized target read
+    that serves both the presence count and membership.
     The result reports ``ScanCapped`` so a no-overlap under the cap stays
     inconclusive instead of reading as a contradiction.
     """
@@ -307,9 +386,10 @@ def compile_reference_query(
     ):
         normalizer = "trim-base64-padding"
         constraints.append("both-sides:trim-trailing-base64-padding")
-    _apply_conditions(route, source, target, tables, constraints, warnings)
     source_time = _time_column(tables, route.source, "source", warnings)
     target_time = _time_column(tables, route.target, "target", warnings)
+    _apply_conditions(route, source, target, tables,
+                      {"source": source_time, "target": target_time}, constraints, warnings)
     if source.order_column and target_time is None:
         raise ReferenceQueryUnsupported("time-column-unavailable", "ordering needs target time")
     time_policy = {
@@ -317,31 +397,30 @@ def compile_reference_query(
         "source": source_time or "snapshot-capped",
         "target": target_time or "snapshot-capped",
     }
-    source_steps = _side_pipeline(source, tables, normalizer, source_time, lookback, row_limit)
+    source_steps = _side_pipeline(source, normalizer, source_time, lookback, row_limit)
     order = source.order_column
     source_steps.append(
         f"summarize __o = min({order}) by __k" if order else "summarize by __k"
     )
     source_steps.append(f"top {samples} by hash(__k) asc")
-    target_sample = _side_pipeline(target, tables, normalizer, target_time, lookback, row_limit)
-    target_scan = _side_pipeline(
-        target, tables, normalizer, target_time, lookback, scan_row_limit
-    )
-    target_scan.append("where __k in ((SourceKeys | project __k))")
+    # One capped, sorted target read serves both the presence count and membership.
+    target_rows = _side_pipeline(target, normalizer, target_time, lookback, scan_row_limit)
+    target_rows.append(f"project __k{', __tt = ' + target_time if order else ''}")
+    target_scan = ["TargetRows", "where __k in ((SourceKeys | project __k))"]
     if order:
         target_scan.append("join kind=inner (SourceKeys) on __k")
-        target_scan.append(f"where {target_time} >= __o")
-    # Counting window rows up to cap+1 detects whether the membership scan was truncated.
+        target_scan.append("where __tt >= __o")
+    # Raw window rows up to cap+1 (before snapshot aggregation) reveal truncation cheaply.
     window = [route.target.table]
     if target_time:
         window.append(f"where {target_time} > ago({lookback})")
     window.extend(target.pre)
     window.extend([f"take {scan_row_limit + 1}", "count"])
     target_scan.extend([
-        "summarize MatchRows = count(), MatchedSourceValues = dcount(__k)",
+        "summarize MatchRows = count(), MatchedSourceValues = count_distinct(__k)",
         f"extend RouteId = '{route.id}'",
         "extend SourceValues = toscalar(SourceKeys | count)",
-        "extend TargetValues = toscalar(TargetSample | count)",
+        f"extend TargetValues = toscalar(TargetRows | take {row_limit} | count)",
         # Graph hunting serializes KQL bool as SByte 0/1, so emit an explicit int.
         f"extend ScanCapped = toint(toscalar(TargetWindow) > {scan_row_limit})",
         "project RouteId, SourceValues, TargetValues, MatchedSourceValues, MatchRows, "
@@ -353,7 +432,7 @@ def compile_reference_query(
 
     query = (
         f"let SourceKeys = materialize(\n    {block(source_steps)});\n"
-        f"let TargetSample = \n    {block(target_sample)};\n"
+        f"let TargetRows = materialize(\n    {block(target_rows)});\n"
         f"let TargetWindow = \n    {block(window)};\n"
         f"{block(target_scan).replace(chr(10) + '    ', chr(10))}"
     )
@@ -367,8 +446,8 @@ def compile_reference_query(
         constraints_applied=tuple(constraints),
         warnings=tuple(warnings),
         scope={
-            "source_key_columns": list(source.key_columns),
-            "target_key_columns": list(target.key_columns),
+            "source_key_columns": [label for label, *_ in source.key_parts],
+            "target_key_columns": [label for label, *_ in target.key_parts],
             "samples": samples,
             "row_limit": row_limit,
             "scan_row_limit": scan_row_limit,

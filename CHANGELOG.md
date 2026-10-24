@@ -42,6 +42,15 @@ for the current checks.
 
 ### Fixed
 
+- Require authoritative physical-column evidence, complete conditional scopes,
+  process timing and STIX feed/latest-snapshot semantics before exposing routes.
+- Bind saved reference matches to the running compiler; retain failed-check
+  suppression across refreshes, protect active validation evidence from pruning,
+  and preserve authentication and artifact exit classes.
+- Return partial success for failed new-table checks. Prevent standalone observe
+  from persisting orphaned imported IDs, and report older orphan observations
+  without blocking unrelated pivots.
+
 - Report unsupported source normalizers, currently including IP canonicalization,
   as `SCHEMA_SOURCE_NOT_PROBEABLE` (exit 13) before authentication, instead of an
   internal error. Constrained sources report `SCHEMA_SOURCE_CONSTRAINED`, retaining

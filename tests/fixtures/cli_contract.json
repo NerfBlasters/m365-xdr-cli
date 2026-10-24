@@ -4019,7 +4019,7 @@
       ]
     },
     "results prune": {
-      "help": "Delete old results; retire automatic evidence and preserve explicit pins. Example: `xdr results prune --older-than 90 --yes` Automatic discovery references are retired at the cutoff before deleting bytes. Explicit observations and extant candidate proposals retain their evidence. A proposal mismatch stops pruning. Retire explicit observations with schema prune-evidence and delete merged or abandoned proposal drafts before pruning their evidence.",
+      "help": "Delete old results; retire automatic evidence and preserve explicit pins. Example: `xdr results prune --older-than 90 --yes` Automatic discovery references are retired at the cutoff before deleting bytes. Explicit observations and extant candidate proposals retain their evidence. Current reference validation ledgers and live scope pointers also retain their verified evidence across all local tenants. An active evidence mismatch stops pruning. Retire explicit observations with schema prune-evidence and delete merged or abandoned proposal drafts before pruning their evidence.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,

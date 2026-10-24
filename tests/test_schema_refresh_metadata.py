@@ -75,7 +75,10 @@ def test_merge_never_caches_a_listed_but_unresolved_table():
     rows, facts = merge_portal_rows(probed, portal_schema_tables(PORTAL_TABLES))
     keys = {(row["TableName"], row["ColumnName"]): row for row in rows}
     assert ("BrandNewDefenderTable", "DeviceId") not in keys
-    assert keys[("DeviceInfo", "PortalOnlyColumn")]["Sources"] == ["portal-schema"]
+    # A listed column getschema did not return is reported, never cached as queryable.
+    assert ("DeviceInfo", "PortalOnlyColumn") not in keys
+    assert facts["portal_only_columns"] == 1
+    assert facts["portal_only_column_examples"] == ["DeviceInfo.PortalOnlyColumn"]
     assert keys[("DeviceInfo", "Timestamp")]["Sources"] == ["getschema", "portal-schema"]
     # getschema wins on type conflicts; the disagreement is recorded, value-free.
     assert keys[("DeviceInfo", "DeviceId")]["ColumnType"] == "long"
@@ -366,3 +369,76 @@ def test_portal_entity_tag_suggests_family_for_unfamiliar_column_name():
     }
     assert all(r.record["evidence"] == "portal-entity-tag" for r in routes)
     assert new_table_candidate_routes(rows, snapshot, ["NewTable"]) == []
+
+
+def test_legacy_metadata_only_rows_never_authorize_fields():
+    from xdr_cli.schema_graph.physical import physical_field_rows, queryable_rows
+
+    rows = [
+        {"TableName": "DeviceInfo", "ColumnName": "DeviceId", "ColumnType": "string"},
+        {"TableName": "DeviceInfo", "ColumnName": "Timestamp", "ColumnType": "datetime",
+         "Sources": ["getschema", "portal-schema"]},
+        {"TableName": "DeviceInfo", "ColumnName": "Ghost", "ColumnType": "string",
+         "Sources": ["portal-schema"]},
+    ]
+    assert [r["ColumnName"] for r in queryable_rows(rows)] == ["DeviceId", "Timestamp"]
+    assert ("DeviceInfo", "Ghost") not in physical_field_rows(rows)
+
+
+def test_load_cache_filters_metadata_only_rows_from_earlier_caches(config_dir):
+    from xdr_cli.commands.schema_cmd import _active_cache_paths, _load_cache
+
+    _refresh(config_dir, _FakePortal(PORTAL_TABLES))
+    data_path, _meta_path = _active_cache_paths("t1")
+    # Simulate a cache written by c6e44c1, which stored portal-only rows.
+    ghost = {"TableName": "DeviceInfo", "ColumnName": "Ghost", "ColumnType": "string",
+             "Sources": ["portal-schema"]}
+    raw = data_path.read_text() + json.dumps(ghost, separators=(",", ":")) + "\n"
+    _rewrite_cache(data_path, raw)
+    rows, _cache = _load_cache(AppContext(config=Config(tenant_id="t1")))
+    assert "Ghost" not in {row["ColumnName"] for row in rows}
+
+
+def _rewrite_cache(data_path, raw: str) -> None:
+    """Replace cache rows and rebind their digest, as an older writer would have."""
+
+    import hashlib
+
+    meta_path = data_path.with_name(data_path.name.replace(".jsonl", ".meta.json"))
+    meta = json.loads(meta_path.read_text())
+    data_path.write_text(raw, newline="\n")
+    meta["data_sha256"] = hashlib.sha256(raw.encode()).hexdigest()
+    meta["data_bytes"] = len(raw.encode())
+    meta["row_count"] = len(raw.splitlines())
+    meta_path.write_text(json.dumps(meta, separators=(",", ":")) + "\n")
+
+
+def test_user_probe_override_is_honored_over_dynamic_rendering(config_dir):
+    from xdr_cli.hunting_tables import render_schema_probe
+
+    (config_dir / "queries" / "sys_schema_probe.kql").write_text(
+        render_schema_probe(["DeviceInfo"]), encoding="utf-8"
+    )
+    query, meta, _data, emitted, _error = _refresh(config_dir, _FakePortal(PORTAL_TABLES))
+    assert "(BrandNewDefenderTable | getschema" not in query
+    assert meta["coverage"]["probe_tables"] == ["DeviceInfo"]
+
+
+def test_dynamic_probe_does_not_claim_the_catalog_entry(config_dir):
+    _query, _meta, _data, emitted, _error = _refresh(config_dir, _FakePortal(PORTAL_TABLES))
+    metadata = emitted[0].metadata
+    assert "library_entry" in metadata and metadata["library_entry"] is None
+    assert "source_hash" in metadata and metadata["source_hash"] is None
+
+
+def test_plain_refresh_uses_local_reference_names_for_new_tables(config_dir):
+    from types import SimpleNamespace
+
+    snapshot = SimpleNamespace(table_names=("BrandNewDefenderTable",))
+    with patch("xdr_cli.schema_graph.reference.load_snapshot", return_value=snapshot):
+        _query, meta, *_ = _refresh(config_dir, _FakePortal(PORTAL_TABLES))
+    assert meta["coverage"]["new_tables"] == []
+
+
+def test_leading_underscore_names_are_not_probe_names():
+    assert "_Hidden" not in probe_table_names(["_Hidden"])

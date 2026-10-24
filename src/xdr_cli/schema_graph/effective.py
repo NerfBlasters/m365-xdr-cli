@@ -50,6 +50,7 @@ def unobserved_availability(table: str, coverage: dict | None) -> FieldAvailabil
 class EffectiveGraph:
     graph: Graph
     field_availability: dict[str, FieldAvailability]
+    observation_gaps: tuple[dict, ...] = ()
 
     @property
     def queryable_fields(self) -> set[str]:
@@ -60,6 +61,19 @@ class EffectiveGraph:
             for field_id, state in self.field_availability.items()
             if state in QUERYABLE_AVAILABILITY
         }
+
+
+def observation_dependency_gaps(canonical, overlays, observations) -> tuple[dict, ...]:
+    known = set(canonical.interpretations)
+    for overlay in overlays:
+        known.update(overlay.interpretations)
+    return tuple(
+        {"observation_id": item.observation_id, "reason": "missing-interpretation-contract"}
+        for item in observations
+        if any(endpoint not in known for endpoint in (
+            item.source_interpretation, item.target_interpretation,
+        ))
+    )
 
 
 def merge_graphs(*graphs: Graph) -> Graph:

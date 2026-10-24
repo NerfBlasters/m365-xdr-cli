@@ -97,6 +97,8 @@ def exhaustive_probe_targets(
     schema_rows: list[dict],
     graph: Graph,
     source: InterpretationRecord,
+    *,
+    excluded_interpretation_ids: frozenset[str] = frozenset(),
 ) -> tuple[tuple[ProbeTarget, ...], Graph]:
     """Plan every eligible locator under one reviewed source interpretation.
 
@@ -142,7 +144,8 @@ def exhaustive_probe_targets(
             and item.normalizer == source.normalizer
         ]
         compatible = sorted(
-            (item for item in applicable if not item.constraints),
+            (item for item in applicable if not item.constraints
+             and item.id not in excluded_interpretation_ids),
             key=lambda item: item.id,
         )
         if compatible:
@@ -155,7 +158,7 @@ def exhaustive_probe_targets(
                 for item in compatible
             )
             continue
-        if applicable:
+        if any(item.constraints for item in applicable):
             # A reviewed constrained interpretation is evidence that this
             # field is polymorphic. Creating an unconstrained provisional copy
             # would bypass the constraint and misclassify sibling-dependent

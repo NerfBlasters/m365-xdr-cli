@@ -9,14 +9,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from xdr_cli.api.hunting import run_query
-from xdr_cli.exceptions import QueryError, XDRError
-from xdr_cli.results import write_result
-from xdr_cli.schema_graph.reference import ReferenceSnapshot
+from xdr_cli.exceptions import NetworkError, QueryError, RateLimitError, XDRError
+from xdr_cli.exceptions import TimeoutError as XDRTimeoutError
+from xdr_cli.schema_graph.reference import ReferenceError, ReferenceSnapshot
 from xdr_cli.schema_graph.reference_query import ReferenceQueryUnsupported, compile_reference_query
 from xdr_cli.schema_graph.reference_state import (
     load_validation_state,
     physical_schema_digest,
+    publish_validation_record,
     save_validation_state,
+    validation_contract_matches,
     verify_validation_record,
 )
 
@@ -65,10 +67,15 @@ async def validate_reference(
     """
     options = {"lookback": lookback, "samples": samples, "row_limit": row_limit}
     schema_digest = physical_schema_digest(schema_rows)
-    previous = None if revalidate else load_validation_state(
-        home, tenant_id, reference_digest=snapshot.digest, schema_digest=schema_digest,
-        options=options,
-    )
+    try:
+        previous = load_validation_state(
+            home, tenant_id, reference_digest=snapshot.digest, schema_digest=schema_digest,
+            options=options, allow_schema_mismatch=True,
+        )
+    except ReferenceError:
+        if not revalidate:
+            raise
+        previous = None
     records = dict(previous["routes"]) if previous else {}
     queries = reused = 0
     stopped = None
@@ -79,30 +86,41 @@ async def validate_reference(
             compiled = compile_reference_query(route, schema_rows, **options)
         except ReferenceQueryUnsupported as exc:
             records[route.id] = {
-                "status": "schema-unavailable" if exc.reason.endswith((
-                    "table-unavailable", "column-unavailable",
-                )) else "unsupported", "reason": exc.reason, "detail": exc.detail,
+                "status": "schema-unavailable" if exc.reason in {
+                    "source-table-unavailable", "target-table-unavailable",
+                    "source-column-unavailable", "target-column-unavailable",
+                } else "unsupported", "reason": exc.reason, "detail": exc.detail,
             }
             continue
         query_hash = hashlib.sha256(compiled.query.encode()).hexdigest()
         old = records.get(route.id, {})
-        if (not revalidate and old.get("status") in {
-            "matched", "no-source-data", "no-target-data", "no-overlap",
-        } and old.get("query_sha256") == query_hash and _fresh(old)
-                and verify_validation_record(home, tenant_id, route.id, old)):
-            reused += 1
-            continue
         base = {"query_sha256": query_hash, "reference_digest": snapshot.digest,
                 "schema_digest": schema_digest, "options": options,
                 "constraints_applied": list(compiled.constraints_applied),
                 "warnings": list(compiled.warnings), "time_policy": compiled.time_policy,
                 "validation_scope": compiled.scope}
+        if any(value.startswith("condition-unverifiable:")
+               for value in compiled.constraints_applied):
+            records[route.id] = {**base, "status": "unsupported",
+                                 "reason": "reference-context-required"}
+            continue
+        if (not revalidate and old.get("status") in {
+            "matched", "no-source-data", "no-target-data", "no-overlap",
+        } and validation_contract_matches(old, base) and _fresh(old)
+                and verify_validation_record(home, tenant_id, route.id, old)):
+            reused += 1
+            continue
         if plan_only:
             records[route.id] = {**base, "status": "planned"}
             pending += 1
             continue
         if queries >= max_queries or stopped:
-            records[route.id] = {**base, "status": "pending"}
+            if (old.get("status") == "query-failed"
+                    and validation_contract_matches(old, base, allow_old_failure_schema=True)
+                    and verify_validation_record(home, tenant_id, route.id, old)):
+                records[route.id] = {**old, "revalidation_pending": True}
+            else:
+                records[route.id] = {**base, "status": "pending"}
             pending += 1
             continue
         if on_progress:
@@ -127,33 +145,32 @@ async def validate_reference(
                 if row["ScanCapped"]:
                     base["warnings"] = [*base["warnings"],
                                         "Target membership scan reached its row cap"]
-            artifact = write_result(
-                [counts], command="schema init validation", tenant_id=tenant_id,
-                query=compiled.query, preview_rows=0, server_truncation_state="known-complete",
-                extra_metadata={"reference_validation": {
-                    "reference_id": route.id, **base,
-                    "execution_surface": result.metadata.get("execution_surface", "unknown"),
-                }},
+            publish_validation_record(
+                home, tenant_id, route_id=route.id, counts=counts, query=compiled.query,
+                record={**base, "status": status,
+                        "execution_surface": result.metadata.get("execution_surface", "unknown")},
+                routes=records,
             )
-            records[route.id] = {**base, "status": status, "counts": counts,
-                                 "run_id": artifact.receipt.run_id,
-                                 "validated_at": datetime.now(UTC).isoformat()}
         except QueryError as exc:
             counts = {"RouteId": route.id, "ErrorCode": exc.error_code}
-            artifact = write_result(
-                [counts], command="schema init validation", tenant_id=tenant_id,
-                query=compiled.query, preview_rows=0,
-                extra_metadata={"reference_validation": {"reference_id": route.id, **base}},
+            publish_validation_record(
+                home, tenant_id, route_id=route.id, counts=counts, query=compiled.query,
+                record={**base, "status": "query-failed", "error_code": exc.error_code},
+                routes=records,
             )
-            records[route.id] = {**base, "status": "query-failed", "counts": counts,
-                                 "run_id": artifact.receipt.run_id, "error_code": exc.error_code,
-                                 "validated_at": datetime.now(UTC).isoformat()}
         except ValueError as exc:
             records[route.id] = {**base, "status": "invalid-shape", "reason": str(exc)}
         except XDRError as exc:
-            stopped = {"error_code": exc.error_code, "exit_code": int(exc.exit_code),
+            failure = {"error_code": exc.error_code, "exit_code": int(exc.exit_code),
                        "retry_after_seconds": exc.retry_after_seconds}
-            records[route.id] = {**base, "status": "pending", "failure": stopped}
+            records[route.id] = {**base, "status": "pending", "failure": failure}
+            if not isinstance(exc, (RateLimitError, XDRTimeoutError, NetworkError)):
+                save_validation_state(
+                    home, tenant_id, reference_digest=snapshot.digest,
+                    schema_digest=schema_digest, options=options, routes=records,
+                )
+                raise
+            stopped = failure
             pending += 1
         save_validation_state(
             home, tenant_id, reference_digest=snapshot.digest, schema_digest=schema_digest,

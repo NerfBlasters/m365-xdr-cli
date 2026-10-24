@@ -360,7 +360,8 @@ def test_new_table_routes_need_empirical_overlap_and_never_inherit_reference_tru
     assert not gaps["unmapped_new_tables"]
     candidate_snapshot = replace(snapshot, routes=candidates)
     state = {candidates[0].id: {"status": "matched" if matches else "no-overlap",
-                              "counts": {"MatchedSourceValues": matches}}}
+                              "counts": {"MatchedSourceValues": matches},
+                              "constraints_applied": ["candidate-identifier-quality:v1"]}}
     catalog = reference_catalog(candidate_snapshot, rows, state)
     assert catalog[0]["ReferenceTrusted"] is False
     effective = compose_reference_routes(
