@@ -19,6 +19,10 @@ from xdr_cli.live_response.catalog import PINNED
 from xdr_cli.live_response.models import LRCommandSpec, LRPlatform, LRRisk, ParsedCommand
 
 _ALWAYS_FORBIDDEN = {"\n": "newline", "\r": "carriage return", "\0": "NUL", "`": "backtick"}
+# Other line and page separators a remote parser might honour, even inside quotes.
+_SEPARATORS = frozenset("\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029")
+# Characters that need quoting in the canonical line so it re-parses identically.
+_QUOTE_CHARS = frozenset(";|&<>")
 _COMPOUND = {";", "|"}
 _INPUT_REDIRECT = {"<"}
 # Background marker and local output redirection; separate tokens even unspaced.
@@ -52,6 +56,8 @@ def tokenize(text: str) -> list[_Token]:
     for char, label in _ALWAYS_FORBIDDEN.items():
         if char in text:
             raise _fail("compound_syntax", f"Console text must not contain a {label}.")
+    if any(char in _SEPARATORS or (ord(char) < 0x20 and char != "\t") for char in text):
+        raise _fail("compound_syntax", "Console text must not contain control characters.")
     tokens: list[_Token] = []
     index, length = 0, len(text)
     while index < length:
@@ -169,17 +175,20 @@ def _validate(spec: LRCommandSpec, values: dict[str, str]) -> None:
             raise _fail("invalid_param", f"{param.param_id} must not be empty.",
                         param=param.param_id)
         if param.choices is not None:
-            if value.lower() not in param.choices:
+            # Match case-insensitively but keep the definition's own spelling.
+            canonical = next((c for c in param.choices if c.lower() == value.lower()), None)
+            if canonical is None:
                 raise _fail("invalid_param", f"{param.param_id} must be one of the allowed values.",
                             param=param.param_id, allowed=list(param.choices))
-            values[param.param_id] = value.lower()
+            values[param.param_id] = canonical
     if spec.name == "run" and _SCRIPT_PARAMETER_FORBIDDEN & set(values.get("parameters", "")):
         raise _fail("forbidden_parameter_chars",
                     "Script parameters must not contain ; & | ! or $.", param="parameters")
 
 
 def _quote(value: str) -> str:
-    if value and not any(char.isspace() for char in value) and value[0] not in '-&>':
+    if (value and not any(char.isspace() or char in _QUOTE_CHARS for char in value)
+            and value[0] != "-"):
         return value
     return f'"{value}"'
 

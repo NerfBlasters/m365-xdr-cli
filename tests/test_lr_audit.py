@@ -157,6 +157,32 @@ def test_refused_invocations_persist_no_values(tmp_path, monkeypatch, args):
     assert "live-response" in persisted and R in persisted
 
 
+@pytest.mark.parametrize("args", [
+    ["device", "live-respnse", "exec", SESSION, "--command", SENTINEL],
+    # A later real device verb must not re-route the unknown path past the fallback.
+    ["device", "live-respnse", "exec", SESSION, "--command", SENTINEL, "scan"],
+    ["device", "Live-Response", "run", SESSION, f"{SENTINEL}.ps1", "show"],
+])
+def test_mistyped_device_paths_persist_no_values(tmp_path, monkeypatch, args):
+    from xdr_cli.main import _resolve_invocation
+
+    assert _resolve_invocation(args)[1] == "device"
+    home = tmp_path / ".xdr-cli"
+    (home / "sessions").mkdir(parents=True, mode=0o700)
+    monkeypatch.setenv("XDR_CLI_HOME", str(home))
+    monkeypatch.delenv("XDR_SESSION", raising=False)
+    monkeypatch.setattr("xdr_cli.sessions.resolve_operator_upn", lambda **kwargs: "op@x.test")
+    monkeypatch.setattr("xdr_cli.commands.session_cmd.resolve_operator_upn",
+                        lambda **kwargs: "op@x.test")
+    assert runner.invoke(app, ["session", "start"]).exit_code == 0
+    monkeypatch.setattr("sys.argv", ["xdr", "--no-interactive", *args])
+    with contextlib.suppress(SystemExit):
+        main_module.run()
+    persisted = _persisted_text(home)
+    assert SENTINEL not in persisted
+    assert R in persisted
+
+
 def test_other_chains_keep_existing_redaction():
     argv = ["device", "timeline", "host", "--refresh-token", "tok", "--days", "2"]
     assert _redact_argv(argv, "device timeline") == [
@@ -206,3 +232,14 @@ def test_dry_run_is_audited_at_dispatch_but_not_classified(tmp_path, monkeypatch
     assert [line for line in lines if line.startswith("CMD: ")] == [
         f"CMD: device live-response exec {SESSION} --command {R} --dry-run"]
     assert not [line for line in lines if line.startswith("LR: ")]
+
+def test_mistyped_live_response_group_fails_closed():
+    argv = ["device", "live-respnse", "exec", "CLR1", "--command", "run s.ps1 secret"]
+    out = _redact_argv(argv)
+    assert "secret" not in " ".join(out) and "run s.ps1 secret" not in out
+    assert out[0] == "device"
+
+
+def test_resolved_device_commands_keep_existing_redaction():
+    argv = ["device", "show", "WS-01"]
+    assert _redact_argv(argv) == argv

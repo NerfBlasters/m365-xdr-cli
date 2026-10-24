@@ -125,7 +125,8 @@ read-like console commands:
 - `xdr device live-response batch submit` / `cancel`
 
 For these: print the exact command, explain the effect in one sentence, then ask the human to run it themselves.
-Their `--dry-run` forms are local and safe. The Live Response `catalog`,
+Where one of these offers `--dry-run`, that form is local and safe; dry-runs do
+not validate identifiers against the tenant. The Live Response `catalog`,
 `sessions`, `show`, `status`, `history`, `output`, `download`, `library
 list/show/download` and `batch status/output/download` commands read existing
 state and may be used, as may `xdr device tags list`, `xdr device

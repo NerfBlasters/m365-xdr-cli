@@ -219,3 +219,45 @@ def test_session_definitions_govern_syntax_but_not_risk():
     assert _kind("memorysnap", commands=commands) == "unknown_command"
     assert parse_console_line("help", commands=commands).risk is LRRisk.LOCAL
     assert parse_console_line("connect", commands=commands).risk is LRRisk.LOCAL
+
+
+@pytest.mark.parametrize("value", ["a&b", "C:\\A;B", "x|y", "a<b", "c>d", "-k"])
+def test_canonical_line_quotes_operator_characters_and_reparses(value):
+    parsed = build_command("findfile", params={"name": value})
+    assert parsed.console_line == f'findfile "{value}"'
+    assert parse_console_line(parsed.console_line).params == (("name", value),)
+
+
+@pytest.mark.parametrize("char", ["\x0b", "\x0c", "\x85", "\u2028", "\u2029", "\x1b"])
+def test_other_separators_and_controls_are_rejected_even_quoted(char):
+    assert _kind(f'findfile "a{char}b"') == "compound_syntax"
+    assert parse_console_line('findfile "a\tb"').param("name") == "a\tb"
+
+
+def test_choice_values_keep_the_definitions_canonical_case():
+    definitions = [{
+        "command_definition_id": "remediate", "default_alias": "remediate", "aliases": [],
+        "params": [
+            {"param_id": "type", "name": "EntityType", "optional": False, "is_path": False,
+             "isHidden": False, "is_pii": False, "valid_values": ["File", "Process", "List"]},
+            {"param_id": "id", "name": "EntityKey", "optional": True, "is_path": False,
+             "isHidden": False, "is_pii": True, "valid_values": None}],
+        "flags": None,
+    }]
+    commands, _ = merge_definitions(definitions)
+    parsed = parse_console_line("remediate list", commands=commands)
+    assert parsed.param("type") == "List" and parsed.risk is LRRisk.READ
+    assert parse_console_line("remediate FILE x", commands=commands).risk is LRRisk.EXECUTE
+
+
+def test_server_alias_collisions_are_an_upstream_error():
+    from xdr_cli.exceptions import APIError
+
+    definitions = [
+        {"command_definition_id": name, "default_alias": name, "aliases": ["shared"],
+         "params": None, "flags": None}
+        for name in ("drivers", "services")
+    ]
+    with pytest.raises(APIError) as caught:
+        merge_definitions(definitions)
+    assert caught.value.exit_code == 3

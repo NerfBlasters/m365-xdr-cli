@@ -149,6 +149,8 @@ class LRCommandState:
     # still carry errors. None when the response does not say.
     error_count: int | None = None
     raw: dict = field(default_factory=dict, repr=False)
+    # Read-only status stays usable when local cwd bookkeeping cannot be updated.
+    directory_tracking: str | None = None
 
     @property
     def succeeded(self) -> bool:

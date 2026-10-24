@@ -14,6 +14,7 @@ import time
 import click
 
 from xdr_cli import __version__
+from xdr_cli._debug_logging import PrivateDebugFormatter, URLRedactionFilter
 from xdr_cli.backend_selection import select_backend
 from xdr_cli.backends import APIBackend
 from xdr_cli.cli_params import EnumValueChoice
@@ -178,7 +179,11 @@ def _resolve_invocation(argv: list[str]) -> tuple[list[click.Command], str | Non
                 index += 1
         else:
             current = commands[-1]
-            if isinstance(current, click.Group) and arg in current.commands:
+            if isinstance(current, click.Group):
+                if arg not in current.commands:
+                    # Click stops here with a usage error; so does resolution, so a
+                    # later real command word cannot re-route an unknown path.
+                    break
                 commands.append(current.commands[arg])
                 names.append(arg)
                 options_done = False
@@ -259,6 +264,11 @@ def _redact_argv(argv: list[str], chain: str | None = None) -> list[str]:
     if chain is None:
         _, chain = _resolve_invocation(argv)
     if _is_live_response(chain):
+        return _redact_live_response_argv(argv, chain)
+    if chain == "device":
+        # The path stopped at the device group, e.g. a mistyped
+        # `device live-respnse exec ...` that never dispatches. Fail closed
+        # rather than record console text or paths in the session log.
         return _redact_live_response_argv(argv, chain)
     redacted: list[str] = []
     redact_next = False
@@ -421,10 +431,14 @@ def _setup_audit_log() -> logging.Logger:
 def _setup_debug_logging() -> None:
     """Configure httpx and msal loggers to DEBUG level on stderr."""
     handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s"))
+    # Signed download URLs carry tokens in their query; never print them.
+    handler.setFormatter(
+        PrivateDebugFormatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s"))
+    handler.addFilter(URLRedactionFilter())
     for name in ("httpx", "msal", "xdr_cli"):
         log = logging.getLogger(name)
         log.setLevel(logging.DEBUG)
+        log.addFilter(URLRedactionFilter())
         log.addHandler(handler)
 
 

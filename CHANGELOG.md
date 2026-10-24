@@ -77,6 +77,17 @@ for the current checks.
   submission adds one value-free `LR:` classification line.
 - Submissions are never replayed after a timeout or transport loss. The error
   reports `OUTCOME_UNKNOWN` with a recovery command to inspect history first.
+  A server error (5xx) on a Live Response request that changes state is also
+  reported as `OUTCOME_UNKNOWN`, never as a rejection.
+- Once a Live Response command, session or batch action is accepted, a failure
+  in a later step (polling, saving `> FILE`, the `getfile --output` download)
+  keeps its exit code but is `retryable: false`. It names the accepted ID and
+  the read-only commands that follow it, so it never invites a duplicate run on
+  the device.
+- `--debug` logging removes URL query strings, fragments and user info, so
+  signed download tokens never reach stderr.
+- A mistyped `device` subcommand is redacted like a Live Response command in
+  the session log. `output` and `batch output` print no preview rows.
 - AGENTS.md: Live Response commands that run on an endpoint are guidance-only
   for agents.
 

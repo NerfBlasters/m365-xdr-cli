@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from enum import Enum
 from pathlib import Path
 
@@ -13,6 +15,7 @@ import httpx
 from xdr_cli._bounded_http import read_bounded_response
 from xdr_cli.exceptions import (
     APIError,
+    ArtifactError,
     ConflictError,
     ForbiddenError,
     NetworkError,
@@ -21,6 +24,7 @@ from xdr_cli.exceptions import (
     RateLimitError,
     TimeoutError,
     UsageError,
+    XDRError,
     parse_retry_after,
 )
 
@@ -111,6 +115,56 @@ def _platform(value) -> LRPlatform | None:
 
 
 class PortalLiveResponse(UnsupportedLiveResponse):
+    @staticmethod
+    def _lr_uncertain(error: XDRError, route: LRRoute, *, params=None, body=None):
+        """A failed mutation response is not evidence that the request did not run."""
+        message = (
+            "Live Response request may have been accepted. Outcome unknown; "
+            "inspect its state before resubmitting."
+        )
+        error.message = message
+        error.args = (message,)
+        error.error_code = "OUTCOME_UNKNOWN"
+        error.retryable = False
+        error.suggested_fix = "Do not repeat the mutation; use the recovery command to inspect it."
+        error.invalid = None
+        error.allowed = []
+        error.suggestions = []
+        error.corrected_argv = None
+        status = getattr(error, "status_code", None)
+        error.original = {"type": type(error).__name__, "status": status} if status else None
+        if hasattr(error, "detail"):
+            error.detail = None
+        session_id = (params or {}).get("session_id") or (body or {}).get("session_id")
+        if session_id:
+            verb = "show" if route is LRRoute.CLOSE else "history"
+            error.help_command = (
+                f"xdr --backend portal-cookie device live-response {verb} {session_id}"
+            )
+        elif route in (LRRoute.UPLOAD, LRRoute.DELETE):
+            error.help_command = "xdr --backend portal-cookie device live-response library list"
+        else:
+            error.suggested_fix = "Inspect the device's Live Response session in Defender."
+        return error
+
+    @staticmethod
+    def _lr_local_directory_failure(error, command: LRCommandState):
+        """Expose the accepted job when private cwd upkeep fails after submission."""
+        recovery = (
+            "xdr --backend portal-cookie device live-response status "
+            f"{command.session_id} {command.command_id}"
+        )
+        failure = ArtifactError(
+            f"Command {command.command_id} was submitted, but local working-directory "
+            "tracking failed. Do not repeat the submission; inspect the accepted command.",
+            help_command=recovery,
+        )
+        failure.error_code = "ACCEPTED_COMMAND_LOCAL_STATE_FAILED"
+        failure.suggested_fix = (
+            "Inspect the command and use absolute paths until tracking recovers."
+        )
+        return failure
+
     async def _lr_bounded_response(self, request: httpx.Request) -> httpx.Response:
         return await read_bounded_response(self._client, request, max_bytes=_MAX_METADATA_BYTES)
 
@@ -140,25 +194,14 @@ class PortalLiveResponse(UnsupportedLiveResponse):
             response = await self._lr_bounded_response(request)
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             cls = TimeoutError if isinstance(exc, httpx.TimeoutException) else NetworkError
-            error = cls(
-                "Live Response request failed."
-                + (
-                    " Outcome unknown; inspect session history before retrying." if mutating else ""
-                ),
-                retryable=not mutating,
-            )
+            error = cls("Live Response request failed.", retryable=not mutating)
             if mutating:
-                error.error_code = "OUTCOME_UNKNOWN"
-                session_id = (params or {}).get("session_id") or (body or {}).get("session_id")
-                if session_id:
-                    error.help_command = f"xdr device live-response history {session_id}"
-                elif route in (LRRoute.UPLOAD, LRRoute.DELETE):
-                    error.help_command = "xdr device live-response library list"
-                else:
-                    error.suggested_fix = (
-                        "Inspect the device's Live Response session "
-                        "in Defender before resubmitting."
-                    )
+                self._lr_uncertain(error, route, params=params, body=body)
+            raise error from None
+        except APIError as error:
+            # Bounded decoding can fail after the server has already accepted a write.
+            if mutating:
+                self._lr_uncertain(error, route, params=params, body=body)
             raise error from None
         if response.status_code in (401, 440) or response.is_redirect:
             raise NotAuthenticatedError("Portal Live Response authentication requires renewal.")
@@ -172,18 +215,32 @@ class PortalLiveResponse(UnsupportedLiveResponse):
             )
         if response.status_code == 429:
             raise RateLimitError(parse_retry_after(response.headers.get("Retry-After")))
-        if "text/html" in response.headers.get("content-type", "").lower():
-            raise NotAuthenticatedError("Portal Live Response returned a sign-in page.")
         if not response.is_success:
-            raise APIError("Live Response request was rejected.", status_code=response.status_code)
+            error = APIError(
+                "Live Response request was rejected.", status_code=response.status_code
+            )
+            if mutating and response.status_code >= 500:
+                self._lr_uncertain(error, route, params=params, body=body)
+            raise error
+        if "text/html" in response.headers.get("content-type", "").lower():
+            error = NotAuthenticatedError("Portal Live Response returned a sign-in page.")
+            if mutating:
+                self._lr_uncertain(error, route, params=params, body=body)
+            raise error
         if not response.content:
             return None
         if len(response.content) > 64 * 1024**2:
-            raise APIError("Live Response metadata response exceeds its local size bound.")
+            error = APIError("Live Response metadata response exceeds its local size bound.")
+            if mutating:
+                self._lr_uncertain(error, route, params=params, body=body)
+            raise error
         try:
             value = response.json()
         except ValueError:
-            raise APIError("Live Response returned malformed JSON.") from None
+            error = APIError("Live Response returned malformed JSON.")
+            if mutating:
+                self._lr_uncertain(error, route, params=params, body=body)
+            raise error from None
         if value == "OK" and route in (
             LRRoute.CLOSE,
             LRRoute.CANCEL,
@@ -192,9 +249,15 @@ class PortalLiveResponse(UnsupportedLiveResponse):
         ):
             return None
         if not isinstance(value, (dict, list)):
-            raise APIError("Live Response returned an unexpected response shape.")
+            error = APIError("Live Response returned an unexpected response shape.")
+            if mutating:
+                self._lr_uncertain(error, route, params=params, body=body)
+            raise error
         if isinstance(value, dict) and any(value.get(k) for k in ("error", "Error")):
-            raise APIError("Live Response returned an application error.")
+            error = APIError("Live Response returned an application error.")
+            if mutating:
+                self._lr_uncertain(error, route, params=params, body=body)
+            raise error
         return value
 
     def _lr_session(self, value, expected_id=None, expected_machine=None) -> LRSession:
@@ -232,7 +295,17 @@ class PortalLiveResponse(UnsupportedLiveResponse):
             created_at=value.get("start_date"),
             raw=value,
         )
-        remember_session(self._tenant_id, "portal-cookie", result)
+        try:
+            remember_session(self._tenant_id, "portal-cookie", result)
+        except (ArtifactError, OSError):
+            error = ArtifactError(
+                f"Session {identity} exists, but its private local state could not be saved.",
+                help_command=(
+                    f"xdr --backend portal-cookie device live-response show {identity}"
+                ),
+            )
+            error.suggested_fix = "Check the private Live Response handle directory permissions."
+            raise error from None
         return result
 
     async def lr_capabilities(self, machine_id: str) -> dict:
@@ -264,7 +337,13 @@ class PortalLiveResponse(UnsupportedLiveResponse):
                 "start_date": None,
             },
         )
-        return self._lr_session(value, expected_machine=machine_id)
+        try:
+            return self._lr_session(value, expected_machine=machine_id)
+        except (XDRError, OSError) as error:
+            failure = error if isinstance(error, XDRError) else ArtifactError(
+                "Could not save the accepted Live Response session."
+            )
+            raise self._lr_uncertain(failure, LRRoute.OPEN) from None
 
     async def lr_get_session(self, session_id: str) -> LRSession:
         validate_session_id(session_id)
@@ -291,7 +370,12 @@ class PortalLiveResponse(UnsupportedLiveResponse):
     async def lr_close_session(self, session_id: str) -> LRSession:
         self._lr_known(session_id)
         await self._lr_request(LRRoute.CLOSE, body={"session_id": session_id})
-        return await self.lr_get_session(session_id)
+        try:
+            return await self.lr_get_session(session_id)
+        except XDRError as error:
+            raise self._lr_uncertain(
+                error, LRRoute.CLOSE, body={"session_id": session_id}
+            ) from None
 
     async def lr_command_definitions(self, session_id: str) -> list[dict]:
         validate_session_id(session_id)
@@ -409,16 +493,24 @@ class PortalLiveResponse(UnsupportedLiveResponse):
                 "background_mode": command.background,
             },
         )
-        result = self._lr_command(value, session)
+        try:
+            result = self._lr_command(value, session)
+        except XDRError as error:
+            raise self._lr_uncertain(
+                error, LRRoute.SUBMIT, params={"session_id": session_id}
+            ) from None
         if command.verb == "cd":
-            mark_directory_submission(
-                self._tenant_id,
-                "portal-cookie",
-                session_id,
-                result.command_id,
-                value.get("created_time"),
-            )
-            self._lr_apply_directory(result)
+            try:
+                mark_directory_submission(
+                    self._tenant_id,
+                    "portal-cookie",
+                    session_id,
+                    result.command_id,
+                    value.get("created_time"),
+                )
+                self._lr_apply_directory(result)
+            except (ArtifactError, OSError) as error:
+                raise self._lr_local_directory_failure(error, result) from None
         return result
 
     async def lr_get_command(self, session_id: str | None, command_id: str) -> LRCommandState:
@@ -428,7 +520,13 @@ class PortalLiveResponse(UnsupportedLiveResponse):
             LRRoute.COMMAND, identifier=command_id, params={"session_id": session_id}
         )
         result = self._lr_command(value, local, command_id)
-        self._lr_apply_directory(result)
+        try:
+            self._lr_apply_directory(result)
+        except (ArtifactError, OSError):
+            logging.getLogger(__name__).warning(
+                "Local working-directory tracking is unavailable; use absolute paths."
+            )
+            return replace(result, directory_tracking="unavailable")
         return result
 
     async def lr_iter_commands(self, session_id: str):
@@ -448,7 +546,12 @@ class PortalLiveResponse(UnsupportedLiveResponse):
         await self._lr_request(
             LRRoute.CANCEL, identifier=command_id, params={"session_id": session_id}
         )
-        return await self.lr_get_command(session_id, command_id)
+        try:
+            return await self.lr_get_command(session_id, command_id)
+        except XDRError as error:
+            raise self._lr_uncertain(
+                error, LRRoute.CANCEL, params={"session_id": session_id}
+            ) from None
 
     async def lr_iter_output(self, session_id: str | None, command_id: str):
         command = await self.lr_get_command(session_id, command_id)
@@ -583,7 +686,10 @@ class PortalLiveResponse(UnsupportedLiveResponse):
                 files={"file[]": (path.name, source, "application/octet-stream")},
                 data={"file_fields": json.dumps(fields)},
             )
-        return self._lr_library_file(value)
+        try:
+            return self._lr_library_file(value)
+        except XDRError as error:
+            raise self._lr_uncertain(error, LRRoute.UPLOAD) from None
 
     async def lr_delete_library(self, name: str) -> None:
         _filename(name)

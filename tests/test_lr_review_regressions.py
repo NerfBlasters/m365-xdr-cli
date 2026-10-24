@@ -33,9 +33,206 @@ from xdr_cli.live_response.handles import (
 )
 from xdr_cli.live_response.models import LRSession
 from xdr_cli.live_response.parser import parse_console_line
+from xdr_cli.live_response.portal import LRRoute
 from xdr_cli.live_response.transfer import download_transfer, open_library_source
 from xdr_cli.official_backend import OfficialBackend
 from xdr_cli.portal_client import CookieAuth
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [500, 502, 503, 504])
+@pytest.mark.parametrize("html", [False, True])
+async def test_portal_mutation_server_failure_has_recovery_and_is_never_replayed(status, html):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        if html:
+            return httpx.Response(
+                status, text=SECRET, headers={"content-type": "text/html"}
+            )
+        return httpx.Response(status, json={"error": SECRET})
+
+    client = portal(handler)
+    try:
+        with pytest.raises(APIError) as caught:
+            await client._lr_request(LRRoute.SUBMIT, params={"session_id": SESSION}, body={})
+        error = caught.value
+        assert error.error_code == "OUTCOME_UNKNOWN" and not error.retryable
+        assert error.status_code == status
+        assert error.help_command.endswith(f"history {SESSION}")
+        assert "rejected" not in str(error).lower()
+        assert SECRET not in str(error) and len(calls) == 1
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_portal_mutation_unreadable_success_body_does_not_imply_rejection():
+    client = portal(lambda request: httpx.Response(200, content=SECRET.encode()))
+    try:
+        with pytest.raises(APIError) as caught:
+            await client._lr_request(LRRoute.SUBMIT, params={"session_id": SESSION}, body={})
+        assert caught.value.error_code == "OUTCOME_UNKNOWN" and not caught.value.retryable
+        assert caught.value.help_command.endswith(f"history {SESSION}")
+        assert SECRET not in str(caught.value)
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_portal_post_acceptance_command_validation_preserves_unknown_outcome(private_home):
+    response = cd_result(NEW, r"C:\Temp")
+    response["status"] = "invalid"
+    client = portal(lambda request: httpx.Response(200, json=response))
+    client.lr_get_session = AsyncMock(return_value=LRSession(SESSION, DEVICE, "running"))
+    client.lr_command_definitions = AsyncMock(return_value=[{
+        "command_definition_id": "cd", "params": [{"param_id": "id"}], "flags": [],
+    }])
+    try:
+        with pytest.raises(APIError) as caught:
+            await client.lr_submit(SESSION, parse_console_line(r"cd C:\Temp"))
+        assert caught.value.error_code == "OUTCOME_UNKNOWN" and not caught.value.retryable
+        assert caught.value.help_command.endswith(f"history {SESSION}")
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["timestamp", "lock"])
+async def test_accepted_cd_local_tracking_failure_keeps_exact_recovery_id(
+    private_home, monkeypatch, failure
+):
+    response = cd_result(NEW, r"C:\Temp")
+    if failure == "timestamp":
+        response.pop("created_time")
+    else:
+        def locked(*args, **kwargs):
+            raise OSError(SECRET)
+
+        monkeypatch.setattr("xdr_cli.live_response.portal.mark_directory_submission", locked)
+    posts = []
+
+    def handler(request):
+        posts.append(request)
+        return httpx.Response(200, json=response)
+
+    client = portal(handler)
+    client.lr_get_session = AsyncMock(return_value=LRSession(SESSION, DEVICE, "running"))
+    client.lr_command_definitions = AsyncMock(return_value=[{
+        "command_definition_id": "cd", "params": [{"param_id": "id"}], "flags": [],
+    }])
+    try:
+        with pytest.raises(ArtifactError) as caught:
+            await client.lr_submit(SESSION, parse_console_line(r"cd C:\Temp"))
+        error = caught.value
+        assert error.error_code == "ACCEPTED_COMMAND_LOCAL_STATE_FAILED"
+        assert not error.retryable and error.help_command.endswith(f"status {SESSION} {NEW}")
+        assert NEW in str(error) and SECRET not in str(error)
+        assert len(posts) == 1
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["malformed-directory", "local-io"])
+async def test_cd_status_and_output_remain_readable_when_directory_tracking_fails(
+    private_home, monkeypatch, failure
+):
+    set_current_directory(TENANT, "portal-cookie", SESSION, r"C:\old")
+    mark_directory_submission(TENANT, "portal-cookie", SESSION, NEW, "2026-10-24T00:00:00Z")
+    response = cd_result(NEW, "\0invalid" if failure == "malformed-directory" else r"C:\new")
+    response["outputs"] = [{"line": "completed"}]
+    if failure == "local-io":
+        def unavailable(*args, **kwargs):
+            raise OSError(SECRET)
+
+        monkeypatch.setattr("xdr_cli.live_response.portal.apply_directory_completion", unavailable)
+    client = portal(lambda request: httpx.Response(200, json=response))
+    try:
+        first = await client.lr_get_command(SESSION, NEW)
+        second = await client.lr_get_command(SESSION, NEW)
+        assert first.succeeded and second.succeeded
+        assert first.directory_tracking == second.directory_tracking == "unavailable"
+        rows = [row async for row in client.lr_iter_output(SESSION, NEW)]
+        assert rows[0]["line"] == "completed"
+        assert get_current_directory(TENANT, "portal-cookie", SESSION) == r"C:\old"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_accepted_close_followup_read_failure_does_not_invite_repeating_close(private_home):
+    posts = []
+
+    def handler(request):
+        if request.method == "POST":
+            posts.append(request)
+            return httpx.Response(200, json="OK")
+        raise httpx.ReadError(SECRET)
+
+    client = portal(handler)
+    try:
+        with pytest.raises(NetworkError) as caught:
+            await client.lr_close_session(SESSION)
+        assert caught.value.error_code == "OUTCOME_UNKNOWN" and not caught.value.retryable
+        assert caught.value.help_command.endswith(f"show {SESSION}")
+        assert len(posts) == 1 and SECRET not in str(caught.value)
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_accepted_open_local_failure_keeps_verified_session_id(private_home, monkeypatch):
+    response = {"session_id": SESSION, "machine_id": DEVICE, "session_status": 0}
+    client = portal(lambda request: httpx.Response(200, json=response))
+    client.get_device = AsyncMock(return_value={"lastSeen": "2026-10-24T00:00:00Z"})
+
+    def unavailable(*args, **kwargs):
+        raise ArtifactError(SECRET)
+
+    monkeypatch.setattr("xdr_cli.live_response.portal.remember_session", unavailable)
+    try:
+        with pytest.raises(ArtifactError) as caught:
+            await client.lr_open_session(DEVICE, comment="reason")
+        assert caught.value.error_code == "OUTCOME_UNKNOWN" and not caught.value.retryable
+        assert caught.value.help_command.endswith(f"show {SESSION}")
+        assert SECRET not in str(caught.value)
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [200, 500, 502, 503, 504])
+async def test_official_ambiguous_mutation_failure_is_not_retryable(status):
+    backend = OfficialBackend.__new__(OfficialBackend)
+    backend.transport = AsyncMock()
+    backend.transport.post.side_effect = APIError(SECRET, status_code=status, detail=SECRET)
+    with pytest.raises(APIError) as caught:
+        await backend.lr_submit_batch(
+            DEVICE, [parse_console_line(r"getfile C:\Temp\file.txt")], comment="reason"
+        )
+    error = caught.value
+    assert error.error_code == "OUTCOME_UNKNOWN" and not error.retryable
+    assert error.help_command.endswith(f"action-history {DEVICE}")
+    assert SECRET not in str(error) and SECRET not in str(error.original)
+    assert error.detail is None and backend.transport.post.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_official_post_acceptance_invalid_action_has_device_history_recovery():
+    backend = OfficialBackend.__new__(OfficialBackend)
+    backend.transport = AsyncMock()
+    backend.transport.post.return_value = {
+        "id": NEW, "type": "LiveResponse", "machineId": DEVICE, "status": None,
+    }
+    with pytest.raises(APIError) as caught:
+        await backend.lr_submit_batch(
+            DEVICE, [parse_console_line(r"getfile C:\Temp\file.txt")], comment="reason"
+        )
+    assert caught.value.error_code == "OUTCOME_UNKNOWN" and not caught.value.retryable
+    assert caught.value.help_command.endswith(f"action-history {DEVICE}")
+    assert backend.transport.post.await_count == 1
 
 SESSION = "CLR00000000-0000-0000-0000-000000000001"
 OLD = "00000000-0000-0000-0000-000000000002"

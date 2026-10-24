@@ -9,13 +9,15 @@ Submissions are never replayed after a timeout or transport loss.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
 import os
+import re
 import sys
 import tempfile
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from dataclasses import asdict
 from pathlib import Path
 from time import monotonic
@@ -27,7 +29,7 @@ from xdr_cli.backend_contract import Backend, UnsupportedBackendCapability
 from xdr_cli.backends import create_client
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
-from xdr_cli.exceptions import ArtifactError, ConflictError, NotFoundError, UsageError
+from xdr_cli.exceptions import ArtifactError, ConflictError, NotFoundError, UsageError, XDRError
 from xdr_cli.live_response.catalog import LIBRARY_NAME_PATTERN, PINNED, catalog, merge_definitions
 from xdr_cli.live_response.models import (
     CONFIRM_RISKS,
@@ -57,6 +59,8 @@ library_app = click.Group(
 live_response_app.add_command(library_app)
 
 _PREFIX = "xdr device live-response"
+_PORTAL_PREFIX = "xdr --backend portal-cookie device live-response"
+_OFFICIAL_PREFIX = "xdr --backend official device live-response"
 _POLL_SECONDS = 2.0
 # Console text read from a file or stdin; one command, so a small cap suffices.
 _MAX_COMMAND_BYTES = 64 * 1024
@@ -74,12 +78,31 @@ _session_argument = click.argument("session_id", type=str, required=True)
 _command_id_argument = click.argument("command_id", type=str, required=True)
 _output_path = click.Path(path_type=Path, dir_okay=False, allow_dash=False)
 
+# Identifier shapes, checked locally so a dry-run fails for IDs the real call rejects.
+_ID_SHAPES = {
+    "machine_id": (re.compile(r"[0-9a-fA-F]{40}"), "a 40-character MachineId"),
+    "session_id": (re.compile(r"CLR[A-Za-z0-9_-]{1,125}"), "a V3 session ID starting with CLR"),
+    "command_id": (re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"),
+                   "a command GUID"),
+    "action_id": (re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"),
+                  "an action GUID"),
+}
+
 
 def _get_client(ctx: AppContext) -> Backend:
     return create_client(
         ctx.config, timeout=ctx.config.api_timeout,
         auth_factory=AuthManager, client_factory=XDRClient,
     )
+
+
+def _emit_dry_run(ctx: AppContext, data: dict) -> None:
+    for key, value in data.items():
+        shape = _ID_SHAPES.get(key)
+        if shape is not None and not shape[0].fullmatch(str(value)):
+            raise UsageError(f"{key} must be {shape[1]}.", invalid={"kind": "identifier",
+                                                                     "param": key})
+    _emit(ctx, {"dry_run": True, **data})
 
 
 def _formatter(ctx: AppContext) -> OutputFormatter:
@@ -177,7 +200,8 @@ def _read_text(text: str | None, path: Path | None, stdin: bool, *, what: str) -
         raise UsageError(f"The {what} is larger than {_MAX_COMMAND_BYTES} bytes.",
                          invalid={"kind": "too_large"})
     try:
-        decoded = data.decode("utf-8")
+        # Windows editors often prepend a BOM; it is never part of the command.
+        decoded = data.decode("utf-8-sig")
     except UnicodeDecodeError:
         raise UsageError(f"The {what} must be UTF-8 text.", invalid={"kind": "encoding"}) from None
     # A single trailing newline from a file or pipe is not part of the command.
@@ -218,8 +242,8 @@ def _spec_row(spec) -> dict:
 
 
 def _dry_run(ctx: AppContext, parsed: ParsedCommand, target: str) -> None:
-    _emit(ctx, {
-        "dry_run": True, "target": target, **parsed.redacted_summary(),
+    _emit_dry_run(ctx, {
+        "session_id": target, **parsed.redacted_summary(),
         "requires_confirmation": parsed.risk in CONFIRM_RISKS,
         "validated_against": "pinned-catalog",
     })
@@ -239,12 +263,12 @@ def _audit_submission(ctx: AppContext, target: str, parsed: ParsedCommand) -> No
 def _state_record(state: LRCommandState, *, waited: bool) -> dict:
     record = _record(state)
     session = state.session_id or "-"
-    record["status_command"] = f"{_PREFIX} status {session} {state.command_id} --wait 60"
+    record["status_command"] = f"{_PORTAL_PREFIX} status {session} {state.command_id} --wait 60"
     if state.has_output is not False:
-        record["output_command"] = f"{_PREFIX} output {session} {state.command_id}"
+        record["output_command"] = f"{_PORTAL_PREFIX} output {session} {state.command_id}"
     if state.has_download:
         record["download_command"] = (
-            f"{_PREFIX} download {session} {state.command_id} --output PATH")
+            f"{_PORTAL_PREFIX} download {session} {state.command_id} --output PATH")
     record["waited"] = waited
     return record
 
@@ -257,6 +281,56 @@ async def _poll(client: Backend, session_id: str | None, state: LRCommandState,
         await asyncio.sleep(min(_POLL_SECONDS, max(0.0, deadline - monotonic())))
         state = await client.lr_get_command(session_id, state.command_id)
     return state
+
+
+@contextlib.contextmanager
+def _accepted(kind: str, identifier: str, recovery: list[str], *,
+              completed: bool = False) -> Iterator[None]:
+    """Report follow-up failures after the service accepted a submission.
+
+    The job already exists, so whatever fails afterwards (polling, output
+    saving, download) must never read as a failure that is safe to repeat:
+    it keeps its own exit class but is not retryable, and names the accepted
+    identifier and the read-only commands that follow it.
+    """
+    acceptance = f"{kind.capitalize()} {identifier} was accepted"
+    if completed:
+        acceptance += " and completed"
+    try:
+        yield
+    except XDRError as error:
+        error.retryable = False
+        error.help_command = recovery[0]
+        error.message = (f"{acceptance}, but a follow-up step "
+                         f"failed: {error.message} Do not resubmit.")
+        error.args = (error.message,)
+        # Any generic "retry" advice would mean resubmitting; the recovery commands replace
+        # it. retry_after_seconds stays: it still paces the read-only follow-up.
+        error.suggested_fix = None
+        error.suggestions = [{
+            "reason": "submission_accepted", "confidence": "exact",
+            "message": f"The {kind} was accepted; follow it instead of resubmitting.",
+            "accepted_id": identifier, "commands": recovery,
+        }, *error.suggestions]
+        raise
+    except OSError as error:
+        raise ArtifactError(
+            f"{acceptance}, but saving its result locally "
+            "failed. Do not resubmit.",
+            help_command=recovery[0],
+            suggestions=[{"reason": "submission_accepted", "confidence": "exact",
+                          "accepted_id": identifier, "commands": recovery}],
+        ) from error
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        err_console.print(f"Interrupted: {acceptance}; do not "
+                          f"resubmit. Follow it with: {recovery[0]}")
+        raise
+
+
+def _command_recovery(session_id: str, command_id: str) -> list[str]:
+    return [f"{_PORTAL_PREFIX} status {session_id} {command_id} --wait 60",
+            f"{_PORTAL_PREFIX} output {session_id} {command_id}",
+            f"{_PORTAL_PREFIX} history {session_id}"]
 
 
 def _write_local_output(path: Path, rows: list[dict], *, force: bool) -> dict:
@@ -293,7 +367,8 @@ def _write_local_output(path: Path, rows: list[dict], *, force: bool) -> dict:
 
 
 async def _submit(ctx: AppContext, client: Backend, session_id: str, parsed_from: Callable,
-                  *, yes: bool, wait_seconds: int, force: bool = False) -> LRCommandState | None:
+                  *, yes: bool, wait_seconds: int, force: bool = False,
+                  emit_record: bool = True) -> LRCommandState | None:
     """Validate against the session's live definitions, confirm, submit once and poll."""
     session = await client.lr_get_session(session_id)
     commands, _ = merge_definitions(await client.lr_command_definitions(session_id))
@@ -311,19 +386,21 @@ async def _submit(ctx: AppContext, client: Backend, session_id: str, parsed_from
         ctx.config.check_mutation_backend()
     _audit_submission(ctx, session_id, parsed)
     state = await client.lr_submit(session_id, parsed)
-    state = await _poll(client, session_id, state, wait_seconds)
-    record = _state_record(state, waited=wait_seconds > 0)
-    record.update(risk=parsed.risk.value, background=parsed.background)
-    if parsed.output_to is not None:
-        if state.succeeded:
-            rows = await _collect(client.lr_iter_output(session_id, state.command_id))
-            record["local_output"] = _write_local_output(
-                Path(parsed.output_to), rows, force=force)
-        else:
-            record["local_output"] = None
-            err_console.print("Command has not completed without errors; local output was "
-                              "not saved. Inspect it with the output command.")
-    _emit(ctx, record)
+    with _accepted("command", state.command_id, _command_recovery(session_id, state.command_id)):
+        state = await _poll(client, session_id, state, wait_seconds)
+        record = _state_record(state, waited=wait_seconds > 0)
+        record.update(risk=parsed.risk.value, background=parsed.background)
+        if parsed.output_to is not None:
+            if state.succeeded:
+                rows = await _collect(client.lr_iter_output(session_id, state.command_id))
+                record["local_output"] = _write_local_output(
+                    Path(parsed.output_to), rows, force=force)
+            else:
+                record["local_output"] = None
+                err_console.print("Command has not completed without errors; local output was "
+                                  "not saved. Inspect it with the output command.")
+    if emit_record:
+        _emit(ctx, record)
     return state
 
 
@@ -370,7 +447,7 @@ def lr_connect(ctx: AppContext, machine_id: str, comment: str | None, wait_secon
     disconnect when finished; idle sessions end after 30 minutes.
     """
     if dry_run:
-        _emit(ctx, {"dry_run": True, "action": "connect", "machine_id": machine_id})
+        _emit_dry_run(ctx, {"action": "connect", "machine_id": machine_id})
         return
     _require_sessions(ctx)
     _confirm_text(ctx, "open a Live Response session", f"device {machine_id}", yes)
@@ -378,13 +455,16 @@ def lr_connect(ctx: AppContext, machine_id: str, comment: str | None, wait_secon
 
     async def work(client: Backend) -> None:
         session = await client.lr_open_session(machine_id, comment=comment)
-        deadline = monotonic() + wait_seconds
-        while session.state == "pending" and monotonic() < deadline:
-            await asyncio.sleep(min(_POLL_SECONDS, max(0.0, deadline - monotonic())))
-            session = await client.lr_get_session(session.session_id)
+        recovery = [f"{_PORTAL_PREFIX} show {session.session_id}",
+                    f"{_PORTAL_PREFIX} disconnect {session.session_id}"]
+        with _accepted("session", session.session_id, recovery):
+            deadline = monotonic() + wait_seconds
+            while session.state == "pending" and monotonic() < deadline:
+                await asyncio.sleep(min(_POLL_SECONDS, max(0.0, deadline - monotonic())))
+                session = await client.lr_get_session(session.session_id)
         record = _record(session)
-        record["next_command"] = f"{_PREFIX} exec {session.session_id} --command-stdin"
-        record["disconnect_command"] = f"{_PREFIX} disconnect {session.session_id}"
+        record["next_command"] = f"{_PORTAL_PREFIX} exec {session.session_id} --command-stdin"
+        record["disconnect_command"] = f"{_PORTAL_PREFIX} disconnect {session.session_id}"
         _emit(ctx, record)
 
     _with_client(ctx, work)
@@ -425,7 +505,7 @@ def lr_show(ctx: AppContext, session_id: str) -> None:
 def lr_disconnect(ctx: AppContext, session_id: str, yes: bool, dry_run: bool) -> None:
     """Close a Live Response session. Running commands may be stopped by the service."""
     if dry_run:
-        _emit(ctx, {"dry_run": True, "action": "disconnect", "session_id": session_id})
+        _emit_dry_run(ctx, {"action": "disconnect", "session_id": session_id})
         return
     _require_sessions(ctx)
     _confirm_text(ctx, "close the Live Response session", session_id, yes)
@@ -562,6 +642,8 @@ def lr_getfile(ctx: AppContext, session_id: str, path: str, output: Path | None,
                max_bytes: int, background: bool, upload_only: bool, wait_seconds: int,
                yes: bool, dry_run: bool) -> None:
     """Fetch a file from the device (collect). Downloads are private and never opened."""
+    if upload_only and output is not None:
+        raise UsageError("--upload-only cannot be combined with --output.")
     flags = frozenset({"upload"}) if upload_only else frozenset()
     builder = _sugar("getfile", {"path": path}, flags, background)
     if output is not None and not dry_run:
@@ -573,17 +655,27 @@ def lr_getfile(ctx: AppContext, session_id: str, path: str, output: Path | None,
 
     async def work(client: Backend) -> None:
         state = await _submit(ctx, client, session_id, builder, yes=yes,
-                              wait_seconds=wait_seconds)
+                              wait_seconds=wait_seconds, emit_record=output is None)
         if state is None or output is None:
             return
         if not state.succeeded:
+            skipped = "not_terminal" if state.terminal is not True else (
+                "completed_with_errors" if state.state == "completed" else "failed"
+            )
+            _emit(ctx, {**_state_record(state, waited=wait_seconds > 0),
+                        "risk": LRRisk.COLLECT.value, "background": background,
+                        "downloaded": False, "download_skipped_reason": skipped})
             err_console.print("getfile has not completed without errors; nothing was "
                               "downloaded. Check status and output before using download.")
             return
-        transfer = await client.lr_result_transfer(session_id, state.command_id)
-        receipt = await download_transfer(transfer, output, force=force, max_bytes=max_bytes,
-                                          timeout=ctx.config.api_timeout)
-        _emit(ctx, {**receipt, "session_id": session_id, "command_id": state.command_id})
+        recovery = _command_recovery(session_id, state.command_id)
+        with _accepted("command", state.command_id, recovery, completed=True):
+            transfer = await client.lr_result_transfer(session_id, state.command_id)
+            receipt = await download_transfer(transfer, output, force=force,
+                                              max_bytes=max_bytes,
+                                              timeout=ctx.config.api_timeout)
+        _emit(ctx, {**_state_record(state, waited=wait_seconds > 0), **receipt,
+                    "risk": LRRisk.COLLECT.value, "background": background, "downloaded": True})
 
     _with_client(ctx, work)
 
@@ -679,9 +771,15 @@ def lr_output(ctx: AppContext, session_id: str, command_id: str) -> None:
 @_session_argument
 @_command_id_argument
 @_yes_option
+@_dry_run_option
 @click.pass_obj
-def lr_cancel(ctx: AppContext, session_id: str, command_id: str, yes: bool) -> None:
+def lr_cancel(ctx: AppContext, session_id: str, command_id: str, yes: bool,
+              dry_run: bool) -> None:
     """Cancel a command in the portal. The device may still finish it."""
+    if dry_run:
+        _emit_dry_run(ctx, {"action": "cancel", "session_id": session_id,
+                            "command_id": command_id})
+        return
     _require_sessions(ctx)
     _confirm_text(ctx, f"cancel command {command_id}", f"session {session_id}", yes)
     ctx.config.check_mutation_backend()
@@ -849,7 +947,9 @@ batch_app = click.Group(
     name="batch",
     help=(
         "Official API Live Response machine actions: PutFile, RunScript and GetFile in one "
-        "request, without an interactive session."
+        "request, without an interactive session.\n\n"
+        "Tested with synthetic API responses only; not yet verified against a live tenant. "
+        "See docs/live_response_coverage.md."
     ),
     no_args_is_help=True,
 )
@@ -881,8 +981,8 @@ def _batch_commands(texts: list[str]) -> list[ParsedCommand]:
 
 def _action_record(state: LRCommandState) -> dict:
     record = _record(state)
-    record["status_command"] = f"{_PREFIX} batch status {state.command_id} --wait 60"
-    record["output_command"] = f"{_PREFIX} batch output {state.command_id}"
+    record["status_command"] = f"{_OFFICIAL_PREFIX} batch status {state.command_id} --wait 60"
+    record["output_command"] = f"{_OFFICIAL_PREFIX} batch output {state.command_id}"
     return record
 
 
@@ -907,8 +1007,8 @@ def batch_submit(ctx: AppContext, machine_id: str, command_texts: tuple[str, ...
         texts.extend(from_file.splitlines())
     parsed = _batch_commands(texts)
     if dry_run:
-        _emit(ctx, {"dry_run": True, "machine_id": machine_id,
-                    "commands": [command.redacted_summary() for command in parsed]})
+        _emit_dry_run(ctx, {"machine_id": machine_id,
+                            "commands": [command.redacted_summary() for command in parsed]})
         return
     _require_batch(ctx)
     risks = ", ".join(sorted({command.risk.value for command in parsed}))
@@ -919,7 +1019,10 @@ def batch_submit(ctx: AppContext, machine_id: str, command_texts: tuple[str, ...
         for command in parsed:
             _audit_submission(ctx, machine_id, command)
         state = await client.lr_submit_batch(machine_id, parsed, comment=comment)
-        state = await _poll(client, None, state, wait_seconds)
+        recovery = [f"{_OFFICIAL_PREFIX} batch status {state.command_id} --wait 60",
+                    f"{_OFFICIAL_PREFIX} batch output {state.command_id}"]
+        with _accepted("batch action", state.command_id, recovery):
+            state = await _poll(client, None, state, wait_seconds)
         _emit(ctx, _action_record(state))
 
     _with_client(ctx, work)
@@ -949,7 +1052,8 @@ def batch_output(ctx: AppContext, action_id: str) -> None:
 
     async def work(client: Backend) -> None:
         rows = await _collect(client.lr_iter_output(None, action_id))
-        _emit_rows(ctx, rows, context={"action_id": action_id})
+        # Native error text can repeat script arguments and paths: no previews.
+        _emit_rows(ctx, rows, context={"action_id": action_id}, preview_rows=0)
 
     _with_client(ctx, work)
 
@@ -981,9 +1085,13 @@ def batch_download(ctx: AppContext, action_id: str, index: int, output: Path, fo
 @batch_app.command("cancel")
 @click.argument("action_id", type=str, required=True)
 @_yes_option
+@_dry_run_option
 @click.pass_obj
-def batch_cancel(ctx: AppContext, action_id: str, yes: bool) -> None:
+def batch_cancel(ctx: AppContext, action_id: str, yes: bool, dry_run: bool) -> None:
     """Cancel a pending batch action. Commands already running may still finish."""
+    if dry_run:
+        _emit_dry_run(ctx, {"action": "batch cancel", "action_id": action_id})
+        return
     _require_batch(ctx)
     _confirm_text(ctx, f"cancel batch action {action_id}", "the tenant", yes)
     ctx.config.check_mutation_backend()

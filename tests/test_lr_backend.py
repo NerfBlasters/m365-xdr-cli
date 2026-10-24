@@ -108,8 +108,10 @@ async def test_session_identity_mismatch_never_installs_handle(portal):
 async def test_create_other_device_does_not_install_wrong_locator(portal):
     portal.get_device = AsyncMock(return_value={"LastSeen": "2026-10-24T00:00:00Z"})
     route = respx.post(BASE + "/create_session").respond(json=session(machine="b" * 40))
-    with pytest.raises(APIError, match="another device"):
+    with pytest.raises(APIError) as caught:
         await portal.lr_open_session(DEVICE, comment="synthetic")
+    assert caught.value.error_code == "OUTCOME_UNKNOWN"
+    assert not caught.value.retryable
     assert route.call_count == 1
     assert load_session(TENANT, "portal-cookie", SESSION) is None
     await portal.close()

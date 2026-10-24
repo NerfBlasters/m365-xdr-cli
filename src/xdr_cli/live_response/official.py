@@ -39,17 +39,41 @@ def _filename(value):
 
 
 class OfficialLiveResponse(UnsupportedLiveResponse):
-    async def _lr_call(self, operation, *, mutating=False):
+    @staticmethod
+    def _lr_uncertain(error: XDRError, help_command: str | None):
+        """Keep a failed mutation response distinct from a confirmed rejection."""
+        message = (
+            "Official Live Response request may have been accepted. Outcome unknown; "
+            "inspect its state before resubmitting."
+        )
+        status = getattr(error, "status_code", None)
+        error.message = message
+        error.args = (message,)
+        error.error_code = "OUTCOME_UNKNOWN"
+        error.retryable = False
+        error.help_command = help_command
+        error.suggested_fix = "Do not repeat the mutation; inspect the existing action or library."
+        error.original = {"type": type(error).__name__, "status": status} if status else None
+        if hasattr(error, "detail"):
+            error.detail = None
+        error.invalid = None
+        error.allowed = []
+        error.suggestions = []
+        error.corrected_argv = None
+        return error
+
+    async def _lr_call(self, operation, *, mutating=False, help_command=None):
         try:
             return await operation
         except XDRError as error:
             status = (error.original or {}).get("status")
-            unknown = mutating and isinstance(error, (TimeoutError, NetworkError))
-            message = (
-                "Live Response request outcome unknown; inspect action status before retrying."
-                if unknown
-                else "Official Live Response operation failed."
+            unknown = mutating and (
+                isinstance(error, (TimeoutError, NetworkError))
+                or (isinstance(status, int) and (status >= 500 or 200 <= status < 300))
             )
+            if unknown:
+                raise self._lr_uncertain(error, help_command) from None
+            message = "Official Live Response operation failed."
             error.message = message
             error.args = (message,)
             error.original = {"type": type(error).__name__, "status": status} if status else None
@@ -59,13 +83,10 @@ class OfficialLiveResponse(UnsupportedLiveResponse):
             error.allowed = []
             error.suggestions = []
             error.corrected_argv = None
-            if unknown:
-                error.retryable = False
-                error.error_code = "OUTCOME_UNKNOWN"
             raise error from None
 
-    async def _lr_once(self, operation):
-        return await self._lr_call(operation, mutating=True)
+    async def _lr_once(self, operation, *, help_command=None):
+        return await self._lr_call(operation, mutating=True, help_command=help_command)
 
     def _lr_action(self, value, expected_id=None):
         if not isinstance(value, dict) or value.get("type") != "LiveResponse":
@@ -157,17 +178,22 @@ class OfficialLiveResponse(UnsupportedLiveResponse):
                     "Official Live Response batch command is missing its file or script argument."
                 )
             body.append({"type": kind, "params": params})
+        recovery = f"xdr --backend official device action-history {machine_id}"
         value = await self._lr_once(
             self.transport.post(
                 APISurface.MDE,
                 f"machines/{machine_id}/runliveresponse",
                 json={"Commands": body, "Comment": comment},
-            )
+            ),
+            help_command=recovery,
         )
-        result = self._lr_action(value)
-        if result.machine_id.lower() != machine_id.lower():
-            raise APIError("Official Live Response batch response device mismatch.")
-        return result
+        try:
+            result = self._lr_action(value)
+            if result.machine_id.lower() != machine_id.lower():
+                raise APIError("Official Live Response batch response device mismatch.")
+            return result
+        except XDRError as error:
+            raise self._lr_uncertain(error, recovery) from None
 
     async def lr_get_command(self, session_id, command_id):
         if session_id is not None:
@@ -182,14 +208,19 @@ class OfficialLiveResponse(UnsupportedLiveResponse):
 
     async def lr_cancel(self, session_id, command_id):
         await self.lr_get_command(session_id, command_id)
+        recovery = f"xdr --backend official device live-response batch status {command_id}"
         value = await self._lr_once(
             self.transport.post(
                 APISurface.MDE,
                 f"machineactions/{command_id}/cancel",
                 json={"Comment": "Cancelled by xdr-cli operator"},
-            )
+            ),
+            help_command=recovery,
         )
-        return self._lr_action(value, command_id)
+        try:
+            return self._lr_action(value, command_id)
+        except XDRError as error:
+            raise self._lr_uncertain(error, recovery) from None
 
     async def lr_result_transfer(self, session_id, command_id, *, index=0):
         action = await self.lr_get_command(session_id, command_id)
@@ -273,10 +304,19 @@ class OfficialLiveResponse(UnsupportedLiveResponse):
         }
         with open_library_source(path) as source:
             value = await self._lr_once(
-                self.transport.upload_live_response_library(source, path.name, fields)
+                self.transport.upload_live_response_library(source, path.name, fields),
+                help_command="xdr --backend official device live-response library list",
             )
-        return self._lr_library_file(value)
+        try:
+            return self._lr_library_file(value)
+        except XDRError as error:
+            raise self._lr_uncertain(
+                error, "xdr --backend official device live-response library list"
+            ) from None
 
     async def lr_delete_library(self, name):
         _filename(name)
-        await self._lr_once(self.transport.delete_live_response_library(quote(name, safe="")))
+        await self._lr_once(
+            self.transport.delete_live_response_library(quote(name, safe="")),
+            help_command="xdr --backend official device live-response library list",
+        )

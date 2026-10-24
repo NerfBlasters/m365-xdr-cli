@@ -77,7 +77,8 @@ supplies the class:
 | `library-write` | library upload, library delete | yes |
 
 Confirmation-class commands prompt, or need `--yes` when non-interactive.
-`--dry-run` validates against the pinned catalog and prints the verb, class and
+Command files and stdin are read as UTF-8, and a leading byte-order mark is
+ignored. `--dry-run` validates against the pinned catalog and prints the verb, class and
 parameter names without authentication or network activity. Commands that a
 session's definitions do not offer, and server commands without a pinned class,
 are refused.
@@ -119,12 +120,37 @@ atomically, and reports its size and SHA-256. It never opens or extracts the
 file, and treats downloaded content as hostile. `cancel` cancels in the portal
 only. The device may still finish the command (`device_outcome: "unknown"`).
 
-`output` prints a receipt with zero preview rows so script transcripts and
-potentially large command output stay in the private artifact. Follow the
-receipt's results command or inspect its JSONL locally to read the content.
+`output` and `batch output` print a receipt with zero preview rows, so script
+transcripts, native error text and potentially large command output stay in
+the private artifact. Follow the receipt's results command, or inspect its
+JSONL locally, to read the content.
 
 A submission that times out or loses its connection is **not** retried. The
 error carries a recovery command. Check `history` before resubmitting.
+
+Once the service has accepted a command, session or batch action, a failure in
+a later step (polling with `--wait`, saving `> FILE`, or the `getfile
+--output` download) keeps its own exit code but is reported with
+`retryable: false`. The message names the accepted ID. `help_command` and the
+first suggestion (`reason: "submission_accepted"`) give the read-only status,
+output or download commands that follow the existing job. Do not resubmit: the
+job is already running or finished on the device.
+
+`getfile --output` emits one result: command state plus the transfer receipt
+when downloaded, or `downloaded: false` with `download_skipped_reason` when
+the job is pending, failed, or completed with errors. A download failure
+emits only its error record and points to the existing command's status; it
+never reports an intermediate download success. `--upload-only` and
+`--output` cannot be combined.
+
+If local directory upkeep fails on a status read, the native result stays
+readable and reports `directory_tracking: "unavailable"`. Use absolute
+paths until the local directory state can be updated.
+
+Downloads and `> FILE` saves publish with a hard link so they never replace a
+file that appears concurrently. File systems without hard links (FAT32, exFAT,
+some network shares) therefore need `--force`, or a destination on a file
+system that supports them.
 
 ## Library
 
@@ -143,13 +169,17 @@ from the portal console requires the **Manage Security Settings** permission.
 
 ## Official batch actions
 
+The official batch path is tested with synthetic API responses only and has
+not yet been run against a live tenant; see
+[the coverage matrix](live_response_coverage.md).
+
 ```bash
 xdr --backend official device live-response batch submit <machine-id> \
     --command-file batch.txt --comment 'IR-42' --yes
-xdr device live-response batch status <action-id> --wait 120
-xdr device live-response batch output <action-id>
-xdr device live-response batch download <action-id> --index 2 --output result.zip
-xdr device live-response batch cancel <action-id> --yes
+xdr --backend official device live-response batch status <action-id> --wait 120
+xdr --backend official device live-response batch output <action-id>
+xdr --backend official device live-response batch download <action-id> --index 2 --output result.zip
+xdr --backend official device live-response batch cancel <action-id> --yes
 ```
 
 `batch.txt` holds one command per line, in the order putfile, run, getfile.

@@ -13,6 +13,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
 
+from xdr_cli.exceptions import APIError
 from xdr_cli.live_response.models import (
     ALL_PLATFORMS,
     LRCommandSpec,
@@ -190,7 +191,7 @@ def _definition_spec(pinned: LRCommandSpec, definition: Mapping) -> LRCommandSpe
         choices = raw.get("valid_values")
         params.append(LRParamSpec(
             str(raw["param_id"]), required=not raw.get("optional", True),
-            choices=tuple(str(c).lower() for c in choices) if choices else None,
+            choices=tuple(str(c) for c in choices) if choices else None,
             label=raw.get("name"), is_path=bool(raw.get("is_path")),
         ))
     flags = tuple(
@@ -223,4 +224,11 @@ def merge_definitions(
             unclassified.append(command_id)
         elif command_id not in local_names:
             specs.append(_definition_spec(pinned, definition))
-    return build_alias_index(specs), tuple(sorted(unclassified))
+    try:
+        index = build_alias_index(specs)
+    except ValueError:
+        raise APIError(
+            "Live Response command definitions are inconsistent: two commands share an "
+            "alias. No command was sent.",
+        ) from None
+    return index, tuple(sorted(unclassified))

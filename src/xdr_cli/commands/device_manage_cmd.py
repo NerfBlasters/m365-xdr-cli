@@ -8,6 +8,7 @@ replace it; a concurrent portal edit can still race them.
 from __future__ import annotations
 
 import asyncio
+import re
 import shlex
 from collections.abc import Awaitable, Callable
 
@@ -38,7 +39,25 @@ def _get_client(ctx: AppContext) -> Backend:
     )
 
 
+# Identifier shapes checked before a dry-run reports success.
+_DRY_RUN_IDS = {
+    "machine_id": (re.compile(r"[0-9a-fA-F]{40}"), "a 40-character MachineId"),
+    "device_id": (re.compile(r"[0-9a-fA-F]{40}"), "a 40-character MachineId"),
+    "action_id": (re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"),
+                  "an action GUID"),
+}
+
+
+def _check_dry_run_ids(data: dict) -> None:
+    for key, (pattern, description) in _DRY_RUN_IDS.items():
+        if key in data and not pattern.fullmatch(str(data[key])):
+            raise UsageError(f"{key} must be {description}.",
+                             invalid={"kind": "identifier", "param": key})
+
+
 def _emit(ctx: AppContext, data: dict) -> None:
+    if data.get("dry_run") is True:
+        _check_dry_run_ids(data)
     fmt = OutputFormatter(session_id=ctx.session_id, session_label=ctx.session_label)
     click.echo(fmt.format_output(data))
 
@@ -110,6 +129,7 @@ def tags_set(ctx: AppContext, machine_id: str, tags: tuple[str, ...],
     The current manual tags must match --expect (or --expect-none); otherwise
     nothing is sent. System tags are never sent. The service offers no atomic
     compare-and-swap, so a concurrent portal edit can still be overwritten.
+    Whole-set replacement is tested with synthetic responses only.
     """
     if bool(expected) == expect_none:
         raise UsageError(
@@ -190,6 +210,7 @@ def cancel_action(ctx: AppContext, action_id: str, device_id: str, comment: str,
     Only pending or in-progress isolation, package collection, scan,
     app-restriction and log-collection requests are eligible. Cancellation
     does not confirm any rollback on the device; check action-status afterwards.
+    Not yet verified against a live tenant; see docs/live_response_coverage.md.
     """
     if dry_run:
         _emit(ctx, {"dry_run": True, "action": "cancel-action", "action_id": action_id,
@@ -226,12 +247,14 @@ def _containment(name: str, summary: str) -> click.Command:
 contain = _containment(
     "contain",
     "Contain an unmanaged device so Defender-onboarded devices stop talking to it "
-    "(portal-cookie). Refused for onboarded or unknown-state devices; use isolate for those.",
+    "(portal-cookie). Refused for onboarded or unknown-state devices; use isolate for those. "
+    "Not yet verified against a live tenant; see docs/live_response_coverage.md.",
 )
 uncontain = _containment(
     "uncontain",
     "Release containment of an unmanaged device (portal-cookie). Requires exactly one "
-    "matching containment action on record; anything ambiguous is refused.",
+    "matching containment action on record; anything ambiguous is refused. "
+    "Not yet verified against a live tenant; see docs/live_response_coverage.md.",
 )
 
 
@@ -249,6 +272,7 @@ def start_investigation(ctx: AppContext, machine_id: str, comment: str, yes: boo
     The portal-cookie backend selects the tenant's investigation protocol from
     fresh tenant features and sends exactly one request. The result reports
     request acceptance only; follow the investigation in Defender.
+    Not yet verified against a live tenant; see docs/live_response_coverage.md.
     """
     if dry_run:
         _emit(ctx, {"dry_run": True, "action": "start-investigation", "machine_id": machine_id})
@@ -309,7 +333,8 @@ def collect_support_logs(ctx: AppContext, machine_id: str, comment: str, yes: bo
     """Request a Defender support-log collection from a device (portal-cookie).
 
     Follow the request with action-status. Downloading the collected logs is
-    not available from the CLI yet; use Defender for that.
+    not available from the CLI yet; use Defender for that. No collection has
+    completed against a live tenant; see docs/live_response_coverage.md.
     """
     if dry_run:
         _emit(ctx, {"dry_run": True, "action": "collect-support-logs", "machine_id": machine_id})
@@ -335,7 +360,7 @@ def troubleshoot(ctx: AppContext, machine_id: str, enabled: bool, comment: str, 
 
     On starts the portal's fixed four-hour window; off ends the one active
     window. Acceptance does not confirm the device changed state; check
-    action-status.
+    action-status. Not yet verified against a live tenant; see docs/live_response_coverage.md.
     """
     action = "troubleshoot --on" if enabled else "troubleshoot --off"
     if dry_run:

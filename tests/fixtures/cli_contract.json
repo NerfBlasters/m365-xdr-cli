@@ -259,16 +259,24 @@
       },
       "yes": true
     },
+    "device live-response batch cancel:--dry-run": {
+      "action_id": "sample",
+      "dry_run": true,
+      "yes": false
+    },
     "device live-response batch cancel:--yes": {
       "action_id": "sample",
+      "dry_run": false,
       "yes": true
     },
     "device live-response batch cancel:required": {
       "action_id": "sample",
+      "dry_run": false,
       "yes": false
     },
     "device live-response batch cancel:supplied": {
       "action_id": "sample",
+      "dry_run": true,
       "yes": true
     },
     "device live-response batch download:--force": {
@@ -361,18 +369,27 @@
       "wait_seconds": 1,
       "yes": true
     },
+    "device live-response cancel:--dry-run": {
+      "command_id": "sample",
+      "dry_run": true,
+      "session_id": "sample",
+      "yes": false
+    },
     "device live-response cancel:--yes": {
       "command_id": "sample",
+      "dry_run": false,
       "session_id": "sample",
       "yes": true
     },
     "device live-response cancel:required": {
       "command_id": "sample",
+      "dry_run": false,
       "session_id": "sample",
       "yes": false
     },
     "device live-response cancel:supplied": {
       "command_id": "sample",
+      "dry_run": true,
       "session_id": "sample",
       "yes": true
     },
@@ -2954,7 +2971,7 @@
       ]
     },
     "device cancel-action": {
-      "help": "Cancel a pending device response action (portal-cookie). Only pending or in-progress isolation, package collection, scan, app-restriction and log-collection requests are eligible. Cancellation does not confirm any rollback on the device; check action-status afterwards.",
+      "help": "Cancel a pending device response action (portal-cookie). Only pending or in-progress isolation, package collection, scan, app-restriction and log-collection requests are eligible. Cancellation does not confirm any rollback on the device; check action-status afterwards. Not yet verified against a live tenant; see docs/live_response_coverage.md.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,
@@ -3163,7 +3180,7 @@
       ]
     },
     "device collect-support-logs": {
-      "help": "Request a Defender support-log collection from a device (portal-cookie). Follow the request with action-status. Downloading the collected logs is not available from the CLI yet; use Defender for that.",
+      "help": "Request a Defender support-log collection from a device (portal-cookie). Follow the request with action-status. Downloading the collected logs is not available from the CLI yet; use Defender for that. No collection has completed against a live tenant; see docs/live_response_coverage.md.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,
@@ -3257,7 +3274,7 @@
       ]
     },
     "device contain": {
-      "help": "Contain an unmanaged device so Defender-onboarded devices stop talking to it (portal-cookie). Refused for onboarded or unknown-state devices; use isolate for those.",
+      "help": "Contain an unmanaged device so Defender-onboarded devices stop talking to it (portal-cookie). Refused for onboarded or unknown-state devices; use isolate for those. Not yet verified against a live tenant; see docs/live_response_coverage.md.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,
@@ -3605,7 +3622,7 @@
       "params": []
     },
     "device live-response batch": {
-      "help": "Official API Live Response machine actions: PutFile, RunScript and GetFile in one request, without an interactive session.",
+      "help": "Official API Live Response machine actions: PutFile, RunScript and GetFile in one request, without an interactive session. Tested with synthetic API responses only; not yet verified against a live tenant. See docs/live_response_coverage.md.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": true,
@@ -3653,6 +3670,27 @@
           "opts": [
             "--yes",
             "-y"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
           ],
           "required": false,
           "secondary_opts": [],
@@ -4111,6 +4149,27 @@
           "opts": [
             "--yes",
             "-y"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
           ],
           "required": false,
           "secondary_opts": [],
@@ -6411,7 +6470,7 @@
       ]
     },
     "device start-investigation": {
-      "help": "Start an automated investigation on a device. The portal-cookie backend selects the tenant's investigation protocol from fresh tenant features and sends exactly one request. The result reports request acceptance only; follow the investigation in Defender.",
+      "help": "Start an automated investigation on a device. The portal-cookie backend selects the tenant's investigation protocol from fresh tenant features and sends exactly one request. The result reports request acceptance only; follow the investigation in Defender. Not yet verified against a live tenant; see docs/live_response_coverage.md.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,
@@ -6727,7 +6786,7 @@
       ]
     },
     "device tags set": {
-      "help": "Replace a device's whole manual tag set (portal-cookie). The current manual tags must match --expect (or --expect-none); otherwise nothing is sent. System tags are never sent. The service offers no atomic compare-and-swap, so a concurrent portal edit can still be overwritten.",
+      "help": "Replace a device's whole manual tag set (portal-cookie). The current manual tags must match --expect (or --expect-none); otherwise nothing is sent. System tags are never sent. The service offers no atomic compare-and-swap, so a concurrent portal edit can still be overwritten. Whole-set replacement is tested with synthetic responses only.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,
@@ -7122,7 +7181,7 @@
       ]
     },
     "device troubleshoot": {
-      "help": "Turn Defender troubleshooting mode on or off for a device (portal-cookie). On starts the portal's fixed four-hour window; off ends the one active window. Acceptance does not confirm the device changed state; check action-status.",
+      "help": "Turn Defender troubleshooting mode on or off for a device (portal-cookie). On starts the portal's fixed four-hour window; off ends the one active window. Acceptance does not confirm the device changed state; check action-status. Not yet verified against a live tenant; see docs/live_response_coverage.md.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,
@@ -7239,7 +7298,7 @@
       ]
     },
     "device uncontain": {
-      "help": "Release containment of an unmanaged device (portal-cookie). Requires exactly one matching containment action on record; anything ambiguous is refused.",
+      "help": "Release containment of an unmanaged device (portal-cookie). Requires exactly one matching containment action on record; anything ambiguous is refused. Not yet verified against a live tenant; see docs/live_response_coverage.md.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,

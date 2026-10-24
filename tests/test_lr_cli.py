@@ -183,18 +183,28 @@ def test_getfile_downloads_after_completion(fake, tmp_path, monkeypatch):
     out = tmp_path / "sample.bin"
     result = _invoke("getfile", SESSION, "C:\\Temp\\sample.bin", "--output", str(out), "--yes")
     assert result.exit_code == 0, result.output
-    state, receipt = (line["data"] for line in _json_lines(result))
+    (record,) = _json_lines(result)
+    state = receipt = record["data"]
     assert state["has_download"] is True and receipt["command_id"] == "7"
     assert captured == {"dest": out, "force": False}
     assert fake.submitted[0].console_line == "getfile C:\\Temp\\sample.bin"
 
 
-def test_getfile_does_not_download_an_incomplete_command(fake, tmp_path):
-    fake.states = ["running"]
+@pytest.mark.parametrize("state,errors,reason", [
+    ("running", 0, "not_terminal"),
+    ("failed", 0, "failed"),
+    ("completed", 1, "completed_with_errors"),
+])
+def test_getfile_does_not_download_an_unsuccessful_command(fake, tmp_path, state, errors, reason):
+    fake.states, fake.error_count = [state], errors
     result = _invoke("getfile", SESSION, "C:\\a", "--output", str(tmp_path / "a"), "--yes",
                      "--wait", "0")
     assert result.exit_code == 0
     assert "transfer" not in fake.calls
+    (record,) = _json_lines(result)
+    assert record["data"]["state"] == state
+    assert record["data"]["downloaded"] is False
+    assert record["data"]["download_skipped_reason"] == reason
 
 
 def test_completed_with_errors_neither_downloads_nor_saves(fake, tmp_path):
@@ -220,6 +230,18 @@ def test_unknown_error_count_still_allows_download(fake, tmp_path, monkeypatch):
     result = _invoke("getfile", SESSION, "C:\\a", "--output", str(tmp_path / "a"), "--yes")
     assert result.exit_code == 0, result.output
     assert "transfer" in fake.calls
+    (record,) = _json_lines(result)
+    assert record["data"]["state"] == "completed"
+    assert record["data"]["bytes"] == 1
+    assert record["data"]["downloaded"] is True
+
+
+def test_getfile_without_destination_emits_one_state_and_does_not_download(fake):
+    result = _invoke("getfile", SESSION, "C:\\a", "--yes")
+    assert result.exit_code == 0, result.output
+    (record,) = _json_lines(result)
+    assert record["data"]["state"] == "completed"
+    assert "transfer" not in fake.calls
 
 
 def test_submit_timeout_is_not_replayed(fake):
@@ -347,3 +369,129 @@ def test_batch_dry_run_is_value_free(no_client):
     assert result.exit_code == 0
     assert _json_lines(result)[0]["data"]["commands"][0]["risk"] == "execute"
     assert "hunter2" not in result.output
+
+
+# --- Failures after the service accepted a submission (adversarial review M1) ---
+
+
+def _accepted_error(result, accepted_id):
+    error = _json_lines(result)[-1]["error"]
+    assert error["retryable"] is False
+    assert accepted_id in error["message"] and "Do not resubmit" in error["message"]
+    first = error["suggestions"][0]
+    assert first["reason"] == "submission_accepted" and first["accepted_id"] == accepted_id
+    assert error["help_command"] == first["commands"][0]
+    return error
+
+
+@pytest.mark.parametrize("failure", ["network", "rate-limit"])
+def test_poll_failure_after_acceptance_is_not_retryable(fake, monkeypatch, failure):
+    from xdr_cli.exceptions import NetworkError, RateLimitError
+
+    async def broken(self, session_id, command_id):
+        error = NetworkError("lost") if failure == "network" else RateLimitError("slow")
+        error.retryable = True
+        raise error
+
+    monkeypatch.setattr(FakeLRBackend, "lr_get_command", broken)
+    result = _invoke("run", SESSION, "fix.ps1", "--yes", "--wait", "30")
+    assert result.exit_code == (11 if failure == "network" else 9)
+    error = _accepted_error(result, "7")
+    assert error["help_command"] == (
+        f"xdr --backend portal-cookie device live-response status {SESSION} 7 --wait 60")
+    assert fake.calls.count("submit") == 1
+
+
+def test_local_output_failure_after_acceptance_names_the_command(fake, tmp_path, monkeypatch):
+    def broken(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(f"{_MODULE}._write_local_output", broken)
+    result = _invoke("exec", SESSION, "--command", f"processes > {tmp_path / 'p.txt'}",
+                     "--wait", "5")
+    assert result.exit_code == 12
+    _accepted_error(result, "7")
+
+
+def test_getfile_download_failure_has_one_error_and_safe_status_recovery(fake, tmp_path,
+                                                                      monkeypatch):
+    from xdr_cli.exceptions import NetworkError
+
+    async def broken(*args, **kwargs):
+        raise NetworkError("reset")
+
+    monkeypatch.setattr(f"{_MODULE}.download_transfer", broken)
+    result = _invoke("getfile", SESSION, "C:\\a", "--output", str(tmp_path / "a"), "--yes")
+    assert result.exit_code == 11
+    (record,) = _json_lines(result)
+    assert record["status"] == "error"
+    error = _accepted_error(result, "7")
+    assert error["help_command"].startswith(
+        f"xdr --backend portal-cookie device live-response status {SESSION} 7")
+    assert "PATH" not in error["help_command"]
+    assert "completed" in error["message"]
+    assert fake.calls.count("submit") == 1
+
+
+def test_getfile_upload_only_refuses_a_download_destination_without_client(no_client, tmp_path):
+    result = _invoke("getfile", SESSION, "C:\\a", "--upload-only", "--output", str(tmp_path / "a"),
+                     "--yes")
+    assert result.exit_code == 6
+    no_client.assert_not_called()
+
+
+def test_connect_wait_failure_keeps_the_session_id(fake, monkeypatch):
+    from xdr_cli.exceptions import NetworkError
+
+    async def broken(self, session_id):
+        raise NetworkError("lost")
+
+    monkeypatch.setattr(FakeLRBackend, "lr_open_session", _session_with("pending"))
+    monkeypatch.setattr(FakeLRBackend, "lr_get_session", broken)
+    result = _invoke("connect", MACHINE, "--yes", "--wait", "10")
+    error = _accepted_error(result, SESSION)
+    assert error["suggestions"][0]["commands"][1].endswith(f"disconnect {SESSION}")
+
+
+def test_batch_wait_failure_keeps_the_action_id(fake, monkeypatch):
+    from xdr_cli.exceptions import NetworkError
+
+    async def broken(self, session_id, command_id):
+        raise NetworkError("lost")
+
+    monkeypatch.setattr(FakeLRBackend, "lr_get_command", broken)
+    result = _official("submit", MACHINE, "--command", "getfile C:\\x", "--comment", "IR",
+                       "--yes", "--wait", "10")
+    error = _accepted_error(result, "act-1")
+    assert error["help_command"] == (
+        "xdr --backend official device live-response batch status act-1 --wait 60")
+
+
+# --- Remaining review findings ---
+
+
+def test_batch_output_has_no_stdout_previews(fake):
+    fake.output = [{"command_index": 0, "errors": [{"message": "SYNTHETIC_SCRIPT_TOKEN"}]}]
+    result = _official("output", "act-1")
+    assert result.exit_code == 0, result.output
+    assert "SYNTHETIC_SCRIPT_TOKEN" not in result.stdout
+    (receipt,) = _json_lines(result)
+    assert receipt["context"]["shown"] == 0
+    saved = Path(receipt["data_path"]).read_text().splitlines()
+    assert [json.loads(line) for line in saved] == fake.output
+
+
+def test_cancel_dry_runs_are_local(no_client):
+    guid = "0f8fad5b-d9cb-469f-a165-70867728950e"
+    assert _invoke("cancel", SESSION, guid, "--dry-run").exit_code == 0
+    assert _official("cancel", guid, "--dry-run").exit_code == 0
+    # Dry-runs validate identifier shapes locally, still without a client.
+    assert _invoke("cancel", SESSION, "7", "--dry-run").exit_code == 6
+    assert _official("cancel", "act-1", "--dry-run").exit_code == 6
+
+
+def test_command_file_byte_order_mark_is_ignored(fake, tmp_path):
+    path = tmp_path / "cmd.txt"
+    path.write_bytes(b"\xef\xbb\xbfdir C:\\\r\n")
+    assert _invoke("exec", SESSION, "--command-file", str(path)).exit_code == 0
+    assert fake.submitted[0].console_line == "dir C:\\"
