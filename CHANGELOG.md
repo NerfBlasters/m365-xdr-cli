@@ -14,6 +14,24 @@ for the current checks.
 
 ### Added
 
+- Automatic capture-first `schema collect --explore`: recent private source data,
+  up to 25,000 recent rows per table, labelled inventory samples, verifiable
+  selected-row completeness and resumable resource budgets,
+  local graph discovery and focused follow-up validation. Complete captures from
+  the same job establish observed overlaps without redundant live queries; other
+  pairs validate in table batches with exact counts for each identifier cohort.
+  Capture overlap never asserts join safety or live-query validation. Query capacity is
+  reserved for validation; bounded rate-limit waits resume saved validation
+  progress automatically. Local indexing and evidence reads honor the job
+  deadline without publishing incomplete replacement graphs. Ordinary saved-result
+  collection and existing investigation artifacts remain supported.
+- Historical v1 capture artifacts remain verifiable after the collection policy
+  changes. Existing result files stay intact; automatic claims that fail current
+  query/provenance contracts are retired from the active graph and verified
+  overlaps are rederived.
+- Capture evidence pins protect unfinished collection and local-discovery handoff
+  during explicit result pruning.
+
 - `schema init` downloads a content-bound XDRInternals reference, compares all
   mappings to the tenant schema, and saves bounded live validation with resumable
   query budgets. Trusted reference routes and empirical matches remain distinct.

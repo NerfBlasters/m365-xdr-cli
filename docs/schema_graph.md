@@ -295,73 +295,105 @@ attributed to a raw column when a probe cannot reproduce that transformation.
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--plan-only` | off | Index and plan only; no tenant queries, no overlay write |
-| `--local-only` | off | Publish saved-result overlaps; no tenant queries |
-| `--explore` | off | Active discovery of saved identifiers in new fields |
-| `--source Table.Column` | none | Restrict exploration seeds; repeatable |
-| `--lookback` | `30d` | Time window for validation and discovery queries |
+| `--plan-only` | off | Preview cached capture/local work without tenant queries or observations |
+| `--local-only` | off | Publish saved-result overlaps without tenant queries |
+| `--explore` | off | Automatically capture recent data, correlate locally and validate focused pairs |
+| `--source Table.Column` | none | Restrict identifiers for gap-filling follow-up queries; repeatable |
+| `--lookback` | `24h` with explore, otherwise `30d` | Capture horizon and validation window |
 | `--samples` | 5 | Identifiers per local-overlap validation (1-100) |
 | `--batch-size` | 20 | Target fields per validation query (1-50) |
-| `--seed-batch-size` | 20 | Identifiers per discovery query (1-100) |
-| `--max-json-depth` | 6 | Nested JSON expansion levels (0-12) |
-| `--discovery-row-limit` | 2000 | Result rows per discovery query (1-10000) |
-| `--max-queries-per-page` | 20 | Total query budget this invocation (1-1000) |
-| `--timeout` | 120 | HTTP timeout per tenant query, seconds (1-3600) |
+| `--seed-batch-size` | 20 | Identifiers per gap-filling query (1-100) |
+| `--max-json-depth` | 6 | Gap-filling JSON expansion levels (0-12) |
+| `--discovery-row-limit` | 2000 | Rows per gap-filling result (1-10000); does not cap raw capture |
+| `--max-queries` | 300 | Overall exploration query budget, including capture and validation |
+| `--max-rows` | 2000000 | Overall captured row budget |
+| `--max-bytes` | 2147483648 | Overall serialized capture byte budget |
+| `--deadline` | 1200 | Overall exploration deadline, seconds |
+| `--max-queries-per-page` | 20 | Local validation budget; explicit use with explore overrides max-queries |
+| `--timeout` | 120 | Per-query timeout, seconds (1-3600) |
 
 `--local-only` and `--explore` are mutually exclusive. `--source` requires
-`--explore`. `--samples` and `--batch-size` shape focused validation and are
-ignored by `--explore`; the seed, depth, and row-limit flags shape exploration
-only. `--max-queries-per-page` and `--timeout` apply to both modes.
-
-Collection receipts distinguish pending work from excluded scope. Cached
-tables without a usable time column, unavailable targets, and unsupported
-property paths are recorded in `excluded_scope`. Completing eligible work can
-return success while reporting those exclusions. Budget exhaustion, output
-truncation, depth limits, and upstream failures remain partial. A valid
-source selector with no saved identifiers returns not-found. Completion
-history outlives the one-day refresh interval: never-tested cohorts run
-first, followed by the oldest verified cohorts. Earlier evidence can guide
-scheduling without satisfying the 30-day freshness requirement for promotion.
+`--explore` and does not restrict table capture. Supplying both query-budget flags
+explicitly is a usage error. Capturing more rows does not establish semantic
+review or join safety. Concrete identifiers remain in private artifacts; the
+tenant graph stores value-free evidence and provenance.
 
 ## Explicit active exploration
 
-`schema collect --explore` takes eligible identifiers from every supported saved
-hunt/library artifact. There is no fixed starter-field matrix or target-field
-sweep. Searches use cached tables with `Timestamp` or `TimeGenerated` and report
-tables excluded for lacking a time column. Refresh stale physical availability
-explicitly with `schema refresh`.
-
-Each query searches a batch of identifiers across a group of tables, expands
-nested JSON containers, and returns explicit table, column, path, matched value,
-and count fields. Substring matching narrows the scan; only exact normalized
-leaf-value matches become observations. Unsupported paths, depth limits, and
-result caps are reported as coverage gaps, never evidence of absence. Concrete
-values and query text stay in private artifacts.
-
-Optionally restrict which saved fields supply identifiers:
-
 ```bash
-xdr schema collect --explore \
-  --source DeviceNetworkEvents.DeviceId \
-  --source IdentityInfo.AccountObjectId
+xdr schema collect --explore --plan-only
+xdr schema collect --explore
+xdr schema collect --explore --lookback 2h --max-queries 100
 ```
 
-Defaults are a 30-day lookback, 20 identifiers per query batch, six JSON expansion
-levels, 2,000 result rows per query, a 120-second timeout, and 20 queries per
-invocation. Tables are grouped into batches of at most 100. Batching and the
-invocation budget divide work; they do not silently discard the remaining
-identifiers or eligible tables. `--samples` controls focused local validation,
-not active discovery. Use `--max-json-depth` (up to 12) or
-`--discovery-row-limit` (up to 10,000) when the receipt reports those gaps.
+`--explore` starts with recent tenant data even when no hunt results have been
+saved. It refreshes missing/stale physical metadata, selects getschema-queryable
+tables and verified datetime columns, and fixes one half-open capture interval.
+Timed inventory tables are labelled separately from events. Untimed tables are
+explicit capped state samples; the lookback does not bound them. Global
+knowledge-base tables are excluded. The plan and coverage report retain reasons
+for skipped or unsupported work.
 
-```bash
-xdr schema collect --explore --seed-batch-size 20 --max-queries-per-page 10
-```
+Each table gets one capped query, normally up to 25,000 rows. Timed tables
+select the newest rows in the requested interval. When capped, the actual
+observed span is shorter and its oldest timestamp can be only partly sampled;
+rows tied at that boundary are retained. Untimed inventory/state tables use a
+capped sample. The result reports the requested window, observed boundary,
+sample/cap flags and source counts separately. Counts from a separate source
+scan are informational. Samples never establish absence elsewhere in the table.
 
-Saved search evidence is verified against its originating artifacts before reuse.
-A successful search can directly add an observed pivot to a previously unknown
-field, without a redundant follow-up probe. With no eligible saved identifiers,
-exploration reports no work rather than starting a blind scan.
+A same-query control packet counts the exact materialized selected rows.
+Matching full payload counts prove transport completeness; a cap-plus-one
+sentinel distinguishes a complete source window from a sample. Size, runtime or
+transport-truncation failures automatically reduce the row cap and retry, down
+to a bounded minimum. No manual window selection is needed. Multiple requests
+do not provide a single transactional tenant snapshot.
+
+Full selected rows are saved as private capture artifacts with exact query,
+compiler, tenant, source, interval, coverage and proof bindings. Bulk rows are
+not printed. The existing local index mines identifiers and nested paths,
+publishes conservative overlap evidence and runs focused validation. When both
+sides are verified complete captures from the same job, tenant, schema, execution
+surface and interval, it uses their saved overlap without a redundant tenant query.
+At least three distinct eligible shared identifiers produce the distinct
+`capture-overlap-complete` observed stage. Weaker overlaps remain candidates;
+private-address-only overlaps do not meet the threshold. This stage is historical
+presence evidence, never live-query validation, absence evidence or a join assertion.
+
+Pairs involving sampled/capped captures or ordinary saved hunt/library results
+remain eligible for live validation. Scalar targets share a single scan per target
+table and bounded chunk, even when source fields, normalizers or identifier cohorts
+differ. Each pair keeps its own cohort and exact match counts; another pair's
+identifiers cannot strengthen its result. Array paths are isolated to preserve
+expansion semantics. Distinct-target and query-byte limits can split large batches.
+Receipts distinguish complete-capture skips, below-threshold pairs, planned live
+pairs and queries, and completed queries. Identifier searches remain available for failed/incomplete timed tables. The seed/depth/
+result-limit flags apply to that follow-up stage. Inventory co-occurrence
+remains historical evidence when a time-bounded live validation cannot be
+compiled; it does not become a join assertion.
+
+Exploration reserves 20% of its remaining query budget, up to 50 queries, for
+focused validation when at least two queries remain. Large inventory capture
+therefore cannot consume the validation allocation. Unused validation capacity
+does not trigger a broad identifier sweep.
+
+One invocation advances ordinary batches automatically and honors bounded retry
+and quota delays. Validation honors Retry-After with at most 10 retries, 120 seconds
+per delay and 600 seconds of total waiting across capture and validation, within
+the same deadline and query budget. Completed fresh validations are reused.
+A true query/row/byte/deadline limit or cancellation saves a
+checkpoint; rerunning resumes verified unfinished work instead of recapturing
+completed tables. Intentional samples can complete the collection policy while
+remaining nonexhaustive; partial success is reserved for unfinished work or failures. Inspect the final receipt and private table-coverage records:
+partial coverage returns exit 14, with retry timing when applicable. No background
+scheduler is installed. Parsing, evidence reads and SQLite correlation check the
+same foreground deadline; unfinished indexing retains capture evidence and does
+not publish an incomplete replacement graph. Existing hunt/library results remain intact and continue
+to contribute local evidence. Older automatic claims are reverified under current
+query/provenance contracts; incompatible claims can leave the active graph while
+their source results remain under normal retention. Saved overlaps are rederived
+from verified artifacts. Active capture evidence is retained during result
+pruning until its handoff is durable.
 
 ## How observe compiles and crawls
 
@@ -1099,7 +1131,7 @@ Shared entities are row evidence; a structural route alone is not.
 | `schema collect --plan-only` | No | Index saved results and preview focused validation |
 | `schema collect --local-only` | No | Publish saved-result overlaps |
 | `schema collect` | When candidates exist | Mine saved results and validate focused targets |
-| `schema collect --explore` | When work remains | Find saved identifiers in new fields and nested paths |
+| `schema collect --explore` | When work remains | Capture recent tenant data and discover pivots locally |
 | `schema observe --plan-only` | No | Preview one source's targets and request estimate |
 | `schema observe` | Yes | Sample/reuse identifiers and crawl target tables |
 | `schema discoveries` | No | Report observed/validated routes and policy decisions |

@@ -15,6 +15,7 @@ import os
 import re
 import secrets
 import sqlite3
+import time
 from collections import Counter
 from contextlib import closing
 from dataclasses import dataclass
@@ -23,14 +24,34 @@ from pathlib import Path
 
 from xdr_cli._lock import exclusive_lock
 from xdr_cli.json_expansion import JSON_STRING_COLUMNS
-from xdr_cli.schema_graph.evidence_cache import cached_evidence
-from xdr_cli.schema_graph.lineage import UnsupportedLineage, recover_field_origins
+from xdr_cli.schema_graph.capture_artifacts import SOURCE_COMMANDS, source_origins
+from xdr_cli.schema_graph.evidence_cache import cached_evidence, check_evidence_deadline
+from xdr_cli.schema_graph.lineage import UnsupportedLineage
 from xdr_cli.schema_graph.model import FieldLocator, GraphValidationError
 from xdr_cli.schema_graph.normalize import NormalizationError, normalize_value
 
 POLICY = "local-overlap-v4-bounded-physical-json"
 MAX_VALUE_BYTES = 2048
 MAX_VALUE_FIELDS = 100
+
+
+class _IndexDeadline(Exception):
+    pass
+
+
+def _check_index_deadline(deadline):
+    if deadline is not None and time.monotonic() >= deadline:
+        raise _IndexDeadline
+
+
+def _index_paused(coverage, required_runs):
+    return [], dict(
+        coverage,
+        complete=False,
+        pause_reason="deadline",
+        required_sources=len(set(required_runs)),
+        required_sources_complete=False,
+    )
 
 
 def identifier(value: object) -> tuple[str, str] | None:
@@ -172,15 +193,19 @@ def row_identifiers(row: dict, origins, coverage: Counter, tenant_fingerprint=No
                     coverage["unsupported_normalization_cells"] += 1
                 coverage["non_identifier_cells"] += 1
                 continue
-            if tenant_fingerprint and normalized[0] == "guid-lower" and (
-                hashlib.sha256(normalized[1].encode()).hexdigest() == tenant_fingerprint
+            if (
+                tenant_fingerprint
+                and normalized[0] == "guid-lower"
+                and (hashlib.sha256(normalized[1].encode()).hexdigest() == tenant_fingerprint)
             ):
                 coverage["tenant_constant_cells_excluded"] += 1
                 continue
             yield str(locator), normalized[0], normalized[1]
 
 
-def artifact_metadata(path: Path, root: Path, tenant: str) -> tuple[dict, Path]:
+def artifact_metadata(
+    path: Path, root: Path, tenant: str, *, respect_retirement: bool = True
+) -> tuple[dict, Path]:
     """Validate registration and tenant binding before opening any data file."""
     meta = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(meta, dict):
@@ -198,7 +223,7 @@ def artifact_metadata(path: Path, root: Path, tenant: str) -> tuple[dict, Path]:
     from xdr_cli.schema_graph.retention import retirement_cutoff, timestamp
 
     cutoff = retirement_cutoff(root.parent / "schema" / tenant[:12])
-    if cutoff is not None and timestamp(created) < cutoff:
+    if respect_retirement and cutoff is not None and timestamp(created) < cutoff:
         raise ValueError("retired-discovery-evidence")
     binding = meta.get("tenant_binding") or {}
     if not isinstance(binding, dict):
@@ -228,8 +253,9 @@ def artifact_metadata(path: Path, root: Path, tenant: str) -> tuple[dict, Path]:
 
 def verified_values(meta_path: Path, root: Path, tenant: str, *, tenant_id: str | None = None):
     """Stream a verified artifact; caller must discard yields if validation fails."""
+    check_evidence_deadline()
     meta, data = artifact_metadata(meta_path, root, tenant)
-    origins = recover_field_origins(meta["query"])
+    origins = source_origins(meta)
     coverage: Counter = Counter()
     constant_fingerprint = (
         hashlib.sha256(tenant_id.strip().lower().encode()).hexdigest() if tenant_id else tenant
@@ -238,6 +264,8 @@ def verified_values(meta_path: Path, root: Path, tenant: str, *, tenant_id: str 
     rows = 0
     with data.open("rb") as stream:
         for line in stream:
+            if rows % 1000 == 0:
+                check_evidence_deadline()
             digest.update(line)
             if not line.strip():
                 continue
@@ -249,6 +277,7 @@ def verified_values(meta_path: Path, root: Path, tenant: str, *, tenant_id: str 
                 raise ValueError("non-object-row")
             rows += 1
             yield from row_identifiers(row, origins, coverage, constant_fingerprint)
+    check_evidence_deadline()
     if digest.hexdigest() != meta.get("data_sha256") or rows != meta.get("row_count"):
         raise ValueError("invalid-data-digest-or-count")
 
@@ -301,6 +330,8 @@ def discover_local(
     tenant_id: str,
     *,
     max_artifacts: int | None = None,
+    required_runs: tuple[str, ...] = (),
+    deadline: float | None = None,
 ) -> tuple[list[LocalPair], dict]:
     """Incrementally index artifacts and return cross-table shared identifiers.
 
@@ -308,6 +339,8 @@ def discover_local(
     scans return no publishable pairs, so incomplete retraction cannot activate
     stale evidence. The next call resumes unchanged completed artifacts.
     """
+    if deadline is not None and time.monotonic() >= deadline:
+        return _index_paused(Counter(), required_runs)
     tenant = hashlib.sha256(tenant_id.strip().encode()).hexdigest()
     index_root.mkdir(parents=True, exist_ok=True, mode=0o700)
     if os.name == "posix":
@@ -349,15 +382,13 @@ def discover_local(
             seen = set()
             for path in sorted(root.glob("*/*.meta.json")):
                 try:
+                    _check_index_deadline(deadline)
                     header = json.loads(path.read_text(encoding="utf-8"))
-                    if isinstance(header, dict) and header.get("command") not in {
-                        "hunt run",
-                        "library run",
-                    }:
+                    if isinstance(header, dict) and header.get("command") not in SOURCE_COMMANDS:
                         coverage["other_command_artifacts"] += 1
                         continue
                     meta, data = artifact_metadata(path, root, tenant)
-                    if meta.get("command") not in {"hunt run", "library run"}:
+                    if meta.get("command") not in SOURCE_COMMANDS:
                         continue
                     run = meta["run_id"]
                     seen.add(run)
@@ -397,7 +428,7 @@ def discover_local(
                     ):
                         return [], dict(coverage, complete=False)
                     local: Counter = Counter()
-                    origins = recover_field_origins(meta["query"])
+                    origins = source_origins(meta)
                     digest = hashlib.sha256()
                     rows = 0
                     with db:
@@ -411,9 +442,13 @@ def discover_local(
                                 if not isinstance(row, dict):
                                     raise ValueError("non-object-row")
                                 rows += 1
+                                if rows % 1000 == 0:
+                                    _check_index_deadline(deadline)
                                 for locator, normalizer, value in row_identifiers(
-                                    row, origins, local,
-                                    hashlib.sha256(tenant_id.strip().lower().encode()).hexdigest()
+                                    row,
+                                    origins,
+                                    local,
+                                    hashlib.sha256(tenant_id.strip().lower().encode()).hexdigest(),
                                 ):
                                     fingerprint = hmac.new(
                                         key, (normalizer + "\0" + value).encode(), hashlib.sha256
@@ -422,6 +457,7 @@ def discover_local(
                                         "INSERT OR IGNORE INTO identifiers VALUES (?,?,?,?)",
                                         (run, locator, normalizer, fingerprint),
                                     )
+                        _check_index_deadline(deadline)
                         if digest.hexdigest() != meta.get("data_sha256") or rows != meta.get(
                             "row_count"
                         ):
@@ -441,6 +477,8 @@ def discover_local(
                     coverage["processed_artifacts"] += 1
                     coverage["bytes_read"] += stat.st_size
                     coverage.update(local)
+                except _IndexDeadline:
+                    return _index_paused(coverage, required_runs)
                 except (OSError, ValueError, KeyError, TypeError, RecursionError) as exc:
                     # Registration/tenant errors also remove previously indexed
                     # artifacts at sweep time. Never keep an old row after error.
@@ -479,19 +517,44 @@ def discover_local(
                 GROUP BY a.locator,b.locator,a.normalizer,a.run,b.run
                 ORDER BY COUNT(DISTINCT a.fingerprint) DESC,a.locator,b.locator,a.run,b.run
             """
-            pairs = [
-                LocalPair(*row)
-                for row in db.execute(query, (MAX_VALUE_FIELDS,))
-                if FieldLocator.parse(row[0]).table != FieldLocator.parse(row[1]).table
-            ]
-            coverage["suppressed_frequent_values"] = db.execute(
-                """
-                SELECT count(*) FROM (
-                    SELECT 1 FROM identifiers GROUP BY normalizer,fingerprint
-                    HAVING count(DISTINCT locator)>?)""",
-                (MAX_VALUE_FIELDS,),
-            ).fetchone()[0]
-            return pairs, dict(coverage, complete=True, candidate_evidence_pairs=len(pairs))
+            if deadline is not None:
+                db.set_progress_handler(lambda: int(time.monotonic() >= deadline), 10000)
+            try:
+                _check_index_deadline(deadline)
+                pairs = [
+                    LocalPair(*row)
+                    for row in db.execute(query, (MAX_VALUE_FIELDS,))
+                    if FieldLocator.parse(row[0]).table != FieldLocator.parse(row[1]).table
+                ]
+                coverage["suppressed_frequent_values"] = db.execute(
+                    """
+                    SELECT count(*) FROM (
+                        SELECT 1 FROM identifiers GROUP BY normalizer,fingerprint
+                        HAVING count(DISTINCT locator)>?)""",
+                    (MAX_VALUE_FIELDS,),
+                ).fetchone()[0]
+                indexed_runs = {row[0] for row in db.execute("SELECT run FROM artifacts")}
+                missing_required = len(set(required_runs) - indexed_runs)
+                return pairs, dict(
+                    coverage,
+                    complete=True,
+                    candidate_evidence_pairs=len(pairs),
+                    required_sources=len(set(required_runs)),
+                    unindexed_required_sources=missing_required,
+                    required_sources_complete=missing_required == 0,
+                )
+            except _IndexDeadline:
+                return _index_paused(coverage, required_runs)
+            except sqlite3.OperationalError as exc:
+                if (
+                    deadline is not None
+                    and time.monotonic() >= deadline
+                    and "interrupted" in str(exc)
+                ):
+                    return _index_paused(coverage, required_runs)
+                raise
+            finally:
+                db.set_progress_handler(None, 0)
 
 
 def pair_values(pair: LocalPair, root: Path, tenant_id: str) -> list[str]:

@@ -15,6 +15,7 @@ from xdr_cli.client import XDRClient
 from xdr_cli.config import get_config_home
 from xdr_cli.exceptions import ArtifactError, AuthError, PartialSuccessError
 from xdr_cli.results import write_result
+from xdr_cli.schema_graph.capture_artifacts import SOURCE_COMMANDS
 from xdr_cli.schema_graph.evidence_cache import cached_evidence
 from xdr_cli.schema_graph.local_discovery import (
     LocalPair,
@@ -44,7 +45,7 @@ def saved_seeds(tenant_id, sources=()):
     for path in sorted(root.glob("*/*.meta.json")):
         try:
             header = json.loads(path.read_text())
-            if header.get("command") not in {"hunt run", "library run"}:
+            if header.get("command") not in SOURCE_COMMANDS:
                 continue
             meta, _ = artifact_metadata(path, root, tenant)
             values = original_values(meta["run_id"], tenant_id)
@@ -79,7 +80,7 @@ def original_values(run, tenant_id):
         meta, _ = artifact_metadata(paths[0], root, tenant)
         if datetime.fromisoformat(meta["created_at"].replace("Z", "+00:00")) > datetime.now(UTC):
             raise ValueError("future-seed-evidence")
-        if meta["command"] not in {"hunt run", "library run"}:
+        if meta["command"] not in SOURCE_COMMANDS:
             raise ValueError("invalid-seed-origin-command")
         return set(verified_values(paths[0], root, tenant, tenant_id=tenant_id))
 
@@ -359,6 +360,7 @@ async def explore_saved_identifiers(
     sources=(),
     on_result=None,
     mark_complete=True,
+    target_tables=None,
 ):
     """Search every saved identifier; budgets pause work rather than cap its scope."""
     from xdr_cli.exceptions import LocalNotFoundError, UsageError, XDRError
@@ -396,6 +398,8 @@ async def explore_saved_identifiers(
             columns[row["TableName"]].add(row["ColumnName"])
         tables = defaultdict(list)
         for table in sorted(columns):
+            if target_tables is not None and table not in target_tables:
+                continue
             time_column = bounded_time_column(table, columns)
             if time_column is None:
                 coverage["tables_without_time_column"] = (
@@ -645,6 +649,7 @@ async def explore_saved_identifiers(
             failure_run_id=failure_run_id,
             queries_planned=len(tasks),
             queries_executed=executed,
+            queries_attempted=attempted,
             remaining_queries=remaining,
             observations_added=added,
             coverage=coverage,

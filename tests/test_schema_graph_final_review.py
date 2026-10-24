@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from tests.local_validation_fakes import keyed_validation_response
+
 from xdr_cli.commands.schema_cmd import _candidate_report, _compose_effective
 from xdr_cli.config import Config
 from xdr_cli.context import AppContext
@@ -75,6 +77,7 @@ async def test_existing_disjoint_evidence_survives_an_added_superset(ctx):
     left = [f"member-{n}@example.invalid" for n in range(3)]
     right = [f"member-{n}@example.invalid" for n in range(3, 6)]
 
+    @keyed_validation_response
     async def respond(_client, query):
         count = len(set(re.findall(r"member-[0-5]@example.invalid", query)))
         return SimpleNamespace(

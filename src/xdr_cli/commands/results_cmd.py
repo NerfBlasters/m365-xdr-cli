@@ -45,11 +45,12 @@ class _EvidenceReferences:
     proposal_paths: tuple[str, ...]
     legacy_proposal_paths: tuple[str, ...]
     reference_validation_run_ids: frozenset[str] = frozenset()
+    capture_run_ids: frozenset[str] = frozenset()
 
     @property
     def all_run_ids(self) -> frozenset[str]:
         return (self.overlay_run_ids | self.proposal_run_ids
-                | self.reference_validation_run_ids)
+                | self.reference_validation_run_ids | self.capture_run_ids)
 
 
 def _results_root() -> Path:
@@ -350,10 +351,12 @@ def _schema_evidence_references(cutoff: datetime | None = None) -> _EvidenceRefe
     from xdr_cli.schema_graph.retention import (
         index_result_metadata,
         retired_observation,
+        verified_capture_references,
         verified_reference_validation_references,
     )
 
     reference_validation_run_ids = verified_reference_validation_references(get_config_home())
+    capture_run_ids = verified_capture_references(get_config_home())
 
     metadata_paths = index_result_metadata(_results_root()) if cutoff else None
     overlay_run_ids: set[str] = set()
@@ -420,6 +423,7 @@ def _schema_evidence_references(cutoff: datetime | None = None) -> _EvidenceRefe
         proposal_paths=tuple(sorted(proposal_paths)),
         legacy_proposal_paths=tuple(sorted(legacy_proposal_paths)),
         reference_validation_run_ids=reference_validation_run_ids,
+        capture_run_ids=capture_run_ids,
     )
 
 
@@ -434,6 +438,7 @@ def _results_prune_plan(
     protected_overlay_bundles = 0
     protected_proposal_bundles = 0
     protected_reference_validation_bundles = 0
+    protected_capture_bundles = 0
     for meta_path in _metadata_paths():
         try:
             meta = _load_meta(meta_path)
@@ -449,6 +454,7 @@ def _results_prune_plan(
         run_id = meta.get("run_id")
         if run_id in references.all_run_ids:
             protected_bundles += 1
+            protected_capture_bundles += int(run_id in references.capture_run_ids)
             protected_overlay_bundles += int(run_id in references.overlay_run_ids)
             protected_proposal_bundles += int(run_id in references.proposal_run_ids)
             protected_reference_validation_bundles += int(
@@ -485,6 +491,7 @@ def _results_prune_plan(
         "overlay": protected_overlay_bundles,
         "proposal": protected_proposal_bundles,
         "reference_validation": protected_reference_validation_bundles,
+        "capture": protected_capture_bundles,
         "proposal_paths": list(references.proposal_paths),
         "legacy_proposal_paths": list(references.legacy_proposal_paths),
     }
@@ -1034,6 +1041,7 @@ def results_prune(
                 "protected_overlay_evidence_bundles": protected["overlay"],
                 "protected_candidate_proposal_bundles": protected["proposal"],
                 "protected_reference_validation_bundles": protected["reference_validation"],
+                "protected_capture_bundles": protected["capture"],
                 "protected_candidate_proposal_paths": protected["proposal_paths"],
                 "legacy_candidate_proposal_paths": protected[
                     "legacy_proposal_paths"

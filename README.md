@@ -418,7 +418,7 @@ xdr schema path DeviceNetworkEvents DeviceProcessEvents
 It starts from a reviewed graph shipped with the tool and grows from your own
 hunts: `xdr schema collect` mines the results you have already saved, recovers
 field origins from their KQL, and validates promising pairs with a few
-targeted queries; `--explore` searches for saved identifiers in other tables.
+targeted queries; `--explore` captures recent tenant data automatically and mines it locally.
 Shared values establish *correlation* evidence, never join safety.
 
 ```bash
@@ -426,7 +426,7 @@ xdr schema status                     # cache-only; prints the exact next_comman
 xdr schema collect --local-only       # mine saved results without tenant queries
 xdr schema collect --plan-only        # preview focused validation
 xdr schema collect                    # validate promising field pairs
-xdr schema collect --explore          # discover additional identifier locations
+xdr schema collect --explore          # capture recent data and discover pivots automatically
 xdr schema export-opengraph graph.json --include-tenant   # BloodHound import
 ```
 
@@ -454,7 +454,7 @@ query budgets, what session end does, BloodHound export, and portable bundles
 | `xdr domains list [--source all\|entra\|active-directory]` | Source-labelled Entra and observed AD domains (AD is cookie-only) |
 | `xdr results list / show / head / rows / query / shape / prune` | Browse and manage local result artifacts (`rows --type/--offset/--limit`) |
 | `xdr schema status` / `xdr schema diagnostics` | Cache-only state of the schema cache and semantic graph; `status` prints the exact `next_command` |
-| `xdr schema collect` [`--local-only` \| `--plan-only` \| `--explore`] | Mine saved results, validate focused pairs, or discover additional identifier locations; rerun to continue |
+| `xdr schema collect` [`--local-only` \| `--plan-only` \| `--explore`] | Mine saved results or automatically capture recent data and validate pivots; budgets preserve resumable progress |
 | `xdr schema pivot FIELD` / `xdr schema path A B` / `xdr schema discoveries` | Explain reviewed and empirical identifier routes |
 | `xdr schema init` | Initialize reference mappings and validate them for this tenant |
 | `xdr schema refresh` / `tables` / `show TABLE` | Refresh and query the physical table/column cache (`--search`) |

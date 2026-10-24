@@ -50,7 +50,7 @@ async def _maintain(ctx, *, on_result):
         _schema_refresh,
         _semantic_graph,
     )
-    from xdr_cli.schema_graph.discovery import explore_saved_identifiers
+    from xdr_cli.schema_graph.capture_orchestration import explore_recent_data
     from xdr_cli.schema_graph.local_collection import collect_local
 
     stages = {}
@@ -149,10 +149,11 @@ async def _maintain(ctx, *, on_result):
         active_stage = "exploration"
         if ctx.config.schema_explore_on_session_end:
             await run_stage(
-                explore_saved_identifiers,
-                schema_rows=schema_rows,
+                explore_recent_data,
                 canonical=canonical,
                 max_queries=ctx.config.schema_explore_max_queries,
+                deadline=max(1, remaining_time()),
+                refresh_schema=False,
                 timeout=min(ctx.config.api_timeout, remaining_time()),
                 on_result=capture("exploration"),
                 mark_complete=False,
@@ -180,7 +181,10 @@ async def _maintain(ctx, *, on_result):
             "mode": "session-maintenance",
             "stages": stages,
             "queries_executed": sum(
-                stage.get("result", {}).get("context", {}).get("queries_executed", 0)
+                stage.get("result", {}).get("context", {}).get(
+                    "queries_used",
+                    stage.get("result", {}).get("context", {}).get("queries_executed", 0)
+                )
                 for name, stage in stages.items() if name != "refresh"
             )
             + int("result" in stages["refresh"]),

@@ -1,4 +1,5 @@
 import json
+import re
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -13,6 +14,21 @@ from xdr_cli.schema_graph.loader import load_packaged_graph
 from xdr_cli.schema_graph.overlay import load_tenant_overlay
 
 runner = CliRunner()
+
+
+def route_response(results):
+    async def run(client, kql):
+        keys = {
+            locator: key
+            for key, locator in re.findall(r'"PairKey","([^"]+)","TargetLocator","([^"]+)"', kql)
+        }
+        return HuntingResult(
+            results=[{**row, "PairKey": keys[row["TargetLocator"]]} for row in results],
+            schema=[],
+            stats={},
+        )
+
+    return run
 
 
 @pytest.fixture
@@ -116,7 +132,7 @@ def test_live_collection_queries_only_the_discovered_target_and_reuses_validatio
         patch(
             "xdr_cli.schema_graph.local_collection.run_query",
             new_callable=AsyncMock,
-            return_value=response,
+            side_effect=route_response(response.results),
         ) as query,
     ):
         client.return_value.close = AsyncMock()
@@ -180,7 +196,7 @@ def test_compatible_targets_share_one_query_and_preserve_all_original_evidence(
         patch(
             "xdr_cli.schema_graph.local_collection.run_query",
             new_callable=AsyncMock,
-            return_value=HuntingResult(results=result_rows, schema=[], stats={}),
+            side_effect=route_response(result_rows),
         ) as query,
     ):
         client.return_value.close = AsyncMock()

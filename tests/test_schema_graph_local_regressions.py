@@ -4,6 +4,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+from tests.local_validation_fakes import keyed_validation_response, route_response
 from click.testing import CliRunner
 
 from xdr_cli.api.hunting import HuntingResult
@@ -104,7 +106,7 @@ async def test_changed_request_revalidates_window_and_sample_coverage(
         patch(
             "xdr_cli.schema_graph.local_collection.run_query",
             new_callable=AsyncMock,
-            return_value=response(),
+            side_effect=route_response(response().results),
         ) as query,
     ):
         await collect(ctx, rows, lookback=initial_window, samples=initial_samples)
@@ -157,7 +159,7 @@ async def test_bad_original_retracts_local_and_live_evidence(setup):
         patch(
             "xdr_cli.schema_graph.local_collection.run_query",
             new_callable=AsyncMock,
-            return_value=response(),
+            side_effect=route_response(response().results),
         ),
     ):
         await collect(ctx, rows)
@@ -172,6 +174,7 @@ async def test_concurrent_collectors_do_not_duplicate_queries(setup):
     ctx, artifacts, rows = setup
     reached, release = asyncio.Event(), asyncio.Event()
 
+    @keyed_validation_response
     async def query(client, kql):
         reached.set()
         await release.wait()
@@ -299,7 +302,7 @@ async def test_reused_route_does_not_hide_new_identifier_cohorts(setup):
         patch(
             "xdr_cli.schema_graph.local_collection.run_query",
             new_callable=AsyncMock,
-            return_value=response(),
+            side_effect=route_response(response().results),
         ) as query,
     ):
         await collect(ctx, rows)
@@ -314,9 +317,10 @@ async def test_reused_route_does_not_hide_new_identifier_cohorts(setup):
                     tenant_id=TENANT,
                 )
         await collect(ctx, rows, plan_only=True, on_result=captured.append)
-        assert captured[-1].receipt.context["validation_queries_planned"] == 2
+        assert captured[-1].receipt.context["validation_queries_planned"] == 1
+        assert captured[-1].receipt.context["validation_pairs_planned"] == 2
         await collect(ctx, rows, on_result=captured.append)
-        assert query.await_count == 3
+        assert query.await_count == 2
         assert captured[-1].receipt.context["remaining_queries"] == 0
         await collect(ctx, rows, plan_only=True, on_result=captured.append)
         assert captured[-1].receipt.context["validation_queries_planned"] == 0

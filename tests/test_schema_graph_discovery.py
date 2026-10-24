@@ -290,7 +290,7 @@ async def test_changed_source_bytes_invalidate_search_evidence(home):
         search_artifact(run, TENANT)
 
 
-def test_cli_routes_active_collection_to_identifier_discovery(home):
+def test_cli_routes_active_collection_to_capture_first(home):
     with (
         patch("xdr_cli.main.load_config", return_value=Config(tenant_id=TENANT)),
         patch(
@@ -298,7 +298,7 @@ def test_cli_routes_active_collection_to_identifier_discovery(home):
             return_value=(home[2], {}),
         ),
         patch(
-            "xdr_cli.schema_graph.discovery.explore_saved_identifiers", new_callable=AsyncMock
+            "xdr_cli.schema_graph.capture_orchestration.explore_recent_data", new_callable=AsyncMock
         ) as run,
     ):
         result = runner.invoke(app, ["schema", "collect", "--explore", "--plan-only"])

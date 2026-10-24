@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import json
+import time
 from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
@@ -25,7 +26,12 @@ from xdr_cli.exceptions import (
     XDRError,
 )
 from xdr_cli.results import emit_result, write_result
-from xdr_cli.schema_graph.evidence_cache import cached_evidence, with_evidence_snapshot
+from xdr_cli.schema_graph.evidence_cache import (
+    EvidenceDeadline,
+    cached_evidence,
+    evidence_deadline,
+    with_evidence_snapshot,
+)
 from xdr_cli.schema_graph.lineage import UnsupportedLineage
 from xdr_cli.schema_graph.local_discovery import LocalPair, discover_local, pair_values
 from xdr_cli.schema_graph.model import (
@@ -116,6 +122,56 @@ def local_observation(pair: LocalPair, interpretations, seeds=None) -> Observati
     )
 
 
+def complete_capture_pair(pair, tenant_id):
+    """Prove both raw cohorts came from complete selections in the same capture job."""
+    from xdr_cli.commands.schema_cmd import _verified_schema_artifact
+    from xdr_cli.schema_graph.capture_artifacts import capture_origins
+
+    specs = []
+    for run in (pair.source_run, pair.target_run):
+        bundle = _verified_schema_artifact(run, tenant_id=tenant_id)
+        if bundle is None or bundle[0].get("command") != "schema collect capture":
+            return False
+        meta = bundle[0]
+        try:
+            capture_origins(meta)
+        except ValueError:
+            return False
+        spec = meta["schema_capture"]
+        binding, interval = spec.get("binding"), spec.get("interval")
+        if not isinstance(binding, dict) or not isinstance(interval, dict):
+            return False
+        if binding.get("tenant_fingerprint") != hashlib.sha256(tenant_id.encode()).hexdigest():
+            return False
+        if any(
+            binding.get(key) != spec.get(key)
+            for key in ("schema_digest", "backend", "execution_surface")
+        ):
+            return False
+        from xdr_cli.schema_graph.capture_plan import parse_instant
+
+        try:
+            start, end = parse_instant(interval["start"]), parse_instant(interval["end"])
+            if (
+                not start < end
+                or end > parse_instant(spec["collected_at"])
+                or (end - start).total_seconds() != binding.get("horizon_seconds")
+            ):
+                return False
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return False
+        if spec.get("time_column") is not None and (
+            spec.get("start") != interval.get("start") or spec.get("end") != interval.get("end")
+        ):
+            return False
+        if spec.get("query_args", {}).get("compiler_version") != "capture-query/v2":
+            return False
+        if spec.get("coverage", {}).get("span_complete") is not True:
+            return False
+        specs.append(spec)
+    return all(specs[0][key] == specs[1][key] for key in ("job_id", "binding", "interval"))
+
+
 def verify_local_observation(graph, observation, tenant_id, *, require_fresh=True):
     # Retain the graph for this snapshot so object IDs cannot be recycled.
     cached_evidence("graph", id(graph), lambda: graph)
@@ -176,7 +232,11 @@ def _verify_local_observation(graph, observation, tenant_id, *, require_fresh=Tr
             return None
         if datetime.fromisoformat(pair.observed_at.replace("Z", "+00:00")) != min(original_times):
             return None
-        if observation.extra["evidence_stage"] == "local-overlap":
+        if observation.extra["evidence_stage"] in {"local-overlap", "capture-overlap-complete"}:
+            if observation.extra["evidence_stage"] == "capture-overlap-complete" and (
+                eligible_shared_values(seeds) < 3 or not complete_capture_pair(pair, tenant_id)
+            ):
+                return None
             if (
                 observation.target_artifact_run_id != pair.target_run
                 or observed != min(original_times)
@@ -195,6 +255,59 @@ def _verify_local_observation(graph, observation, tenant_id, *, require_fresh=Tr
         meta, rows = target
         stage = meta.get("local_validation", {})
         if observed != datetime.fromisoformat(meta["created_at"].replace("Z", "+00:00")):
+            return None
+        if stage.get("compiler_version") == "local-table/v2":
+            from xdr_cli.schema_graph.local_validation import ValidationTarget, compile_query
+
+            sample_limit = stage.get("samples")
+            if type(sample_limit) is not int or not 1 <= sample_limit <= 100:
+                return None
+            if asdict(pair) not in stage.get("pairs", []):
+                return None
+            targets = []
+            for item in stage["pairs"]:
+                candidate = LocalPair(**item)
+                target_locator = FieldLocator.parse(candidate.target)
+                interp = graph.interpretations[
+                    interpretation_id(target_locator, f"local-{candidate.normalizer}", "occurrence")
+                ]
+                cohort = tuple(
+                    pair_values(candidate, get_config_home() / "results", tenant_id)[:sample_limit]
+                )
+                targets.append(
+                    ValidationTarget(pair_key(candidate), interp, target_locator, cohort)
+                )
+            query = compile_query(
+                targets, lookback=observation.lookback, time_column=stage.get("time_column")
+            )
+            cohort = tuple(seeds[:sample_limit])
+            matching = [row for row in rows if row.get("PairKey") == pair_key(pair)]
+            if (
+                meta.get("query") != query
+                or len(matching) != 1
+                or len(cohort) != observation.distinct_seeds
+            ):
+                return None
+            row = matching[0]
+            if (
+                row.get("TargetLocator") != pair.target
+                or row.get("TargetInterpretation") != observation.target_interpretation
+                or type(row.get("MatchedSeeds")) is not int
+                or type(row.get("MatchRows")) is not int
+                or row["MatchedSeeds"] != observation.matched_seeds
+                or row["MatchRows"] != observation.matched_rows
+                or row["MatchRows"] < row["MatchedSeeds"]
+                or observation.extra.get("eligible_shared_values")
+                != max(
+                    0, observation.matched_seeds - (len(cohort) - eligible_shared_values(cohort))
+                )
+            ):
+                return None
+            return {
+                "sampled_cohort": frozenset(cohort),
+                "source_content_digest": originals[0][0]["data_sha256"],
+            }
+        if stage.get("compiler_version") is not None:
             return None
         if (
             asdict(pair) not in stage.get("pairs", [])
@@ -282,22 +395,56 @@ async def collect_local(
     canonical: Graph,
     on_result=None,
     mark_complete=True,
+    required_source_runs=(),
+    index_deadline=None,
 ) -> None:
     with collection_claim(ctx.config.tenant_id):
-        await _collect_local(
-            ctx,
-            plan_only=plan_only,
-            local_only=local_only,
-            lookback=lookback,
-            samples=samples,
-            max_queries=max_queries,
-            batch_size=batch_size,
-            timeout=timeout,
-            schema_rows=schema_rows,
-            canonical=canonical,
-            on_result=on_result,
-            mark_complete=mark_complete,
-        )
+        try:
+            with evidence_deadline(index_deadline):
+                await _collect_local(
+                    ctx,
+                    plan_only=plan_only,
+                    local_only=local_only,
+                    lookback=lookback,
+                    samples=samples,
+                    max_queries=max_queries,
+                    batch_size=batch_size,
+                    timeout=timeout,
+                    schema_rows=schema_rows,
+                    canonical=canonical,
+                    on_result=on_result,
+                    mark_complete=mark_complete,
+                    required_source_runs=required_source_runs,
+                    index_deadline=index_deadline,
+                )
+        except EvidenceDeadline as exc:
+            context = {
+                "mode": "index-paused",
+                "scope_complete": False,
+                "local_publication_complete": False,
+                "networked": False,
+                "local_coverage": {
+                    "complete": False,
+                    "required_sources_complete": False,
+                    "pause_reason": "deadline",
+                },
+                "next_command": "xdr schema collect",
+            }
+            (on_result or emit_result)(
+                write_result(
+                    [],
+                    command="schema collect",
+                    tenant_id=ctx.config.tenant_id,
+                    preview_rows=0,
+                    receipt_context=context,
+                    extra_metadata=context,
+                )
+            )
+            raise PartialSuccessError(
+                "Local evidence processing reached its deadline; completed derived work "
+                "was retained and capture evidence remains protected.",
+                help_command="xdr schema collect",
+            ) from exc
 
 
 @with_evidence_snapshot
@@ -315,11 +462,51 @@ async def _collect_local(
     canonical: Graph,
     on_result=None,
     mark_complete=True,
+    required_source_runs=(),
+    index_deadline=None,
 ) -> None:
     tenant = ctx.config.tenant_id
     root = get_config_home()
     index_root = root / "schema" / hashlib.sha256(tenant.encode()).hexdigest()[:12]
-    pairs, coverage = discover_local(root / "results", index_root, tenant)
+    pairs, coverage = discover_local(
+        root / "results",
+        index_root,
+        tenant,
+        required_runs=required_source_runs,
+        deadline=index_deadline,
+    )
+
+    def check_planning_deadline():
+        if coverage.get("complete") and (
+            index_deadline is None or time.monotonic() < index_deadline
+        ):
+            return
+        context = {
+            "mode": "index-paused",
+            "scope_complete": False,
+            "local_coverage": coverage,
+            "local_publication_complete": False,
+            "queries_executed": 0,
+            "networked": False,
+            "next_command": "xdr schema collect",
+        }
+        (on_result or emit_result)(
+            write_result(
+                [],
+                command="schema collect",
+                tenant_id=tenant,
+                preview_rows=0,
+                receipt_context=context,
+                extra_metadata=context,
+            )
+        )
+        raise PartialSuccessError(
+            "Local indexing or validation planning reached its deadline; derived work "
+            "was checkpointed and existing graph evidence remains unchanged.",
+            help_command="xdr schema collect",
+        )
+
+    check_planning_deadline()
     overlay = load_tenant_overlay(tenant)
     from xdr_cli.schema_graph.effective import merge_graphs
 
@@ -327,6 +514,7 @@ async def _collect_local(
     physical = physical_field_rows(schema_rows)
     additions = Graph()
     observations = []
+    complete_capture_observations = set()
     tasks = []
     planned_routes = {}
     available: dict[str, set[str]] = {}
@@ -336,8 +524,9 @@ async def _collect_local(
     fresh_routes = {}
     tested_routes = {}
     for observation in overlay.observations:
+        check_planning_deadline()
         stage = observation.extra.get("evidence_stage")
-        if stage == "local-overlap":
+        if stage in {"local-overlap", "capture-overlap-complete"}:
             continue
         if stage == "identifier-search":
             from xdr_cli.schema_graph.discovery import verify_search_observation
@@ -399,6 +588,7 @@ async def _collect_local(
             route = (pair["source"], pair["target"], observation.transform)
             fresh_routes.setdefault(route, []).append(evidence["sampled_cohort"])
     for pair in pairs:
+        check_planning_deadline()
         try:
             graph, interpretations = pair_graph(pair, known)
             values = pair_values(pair, root / "results", tenant)
@@ -406,6 +596,24 @@ async def _collect_local(
             additions = merge_graphs(additions, graph)
         except (GraphValidationError, ValueError, UnsupportedLineage):
             coverage["invalid_local_pairs"] = coverage.get("invalid_local_pairs", 0) + 1
+            continue
+        if complete_capture_pair(pair, tenant):
+            coverage["complete_capture_pairs"] = coverage.get("complete_capture_pairs", 0) + 1
+            if eligible_shared_values(values) >= 3:
+                complete_capture_observations.add(pair_key(pair))
+                observation = replace(
+                    observation,
+                    extra={
+                        **observation.extra,
+                        "evidence_stage": "capture-overlap-complete",
+                    },
+                    provenance=("capture-overlap-complete",),
+                )
+            else:
+                coverage["complete_capture_pairs_below_threshold"] = (
+                    coverage.get("complete_capture_pairs_below_threshold", 0) + 1
+                )
+            observations.append(observation)
             continue
         observations.append(observation)
         locator = FieldLocator.parse(pair.target)
@@ -453,36 +661,25 @@ async def _collect_local(
             continue
         planned_routes.setdefault(route, []).append(seeds)
         tasks.append((pair, interpretations, time_column))
+    from xdr_cli.schema_graph.local_validation import ValidationTarget, compile_batches
+
     grouped = {}
+    entries = {}
     for pair, interpretations, time_column in tasks:
-        seeds = tuple(pair_values(pair, root / "results", tenant)[:samples])
-        key = (
-            pair.source_run,
-            pair.source,
-            pair.normalizer,
-            FieldLocator.parse(pair.target).table,
-            seeds,
-            time_column,
+        cohort = tuple(pair_values(pair, root / "results", tenant)[:samples])
+        target = ValidationTarget(
+            pair_key(pair), interpretations[1], FieldLocator.parse(pair.target), cohort
         )
-        grouped.setdefault(key, []).append((pair, interpretations))
+        grouped.setdefault((target.locator.table, time_column), []).append(target)
+        entries[target.pair_key] = (pair, interpretations)
     batches = []
-    for key, items in grouped.items():
-        seeds, time_column = key[-2:]
-        compiled_batches = compile_target_probe_batches(
-            [(interps[1], FieldLocator.parse(pair.target)) for pair, interps in items],
-            list(seeds),
-            lookback=lookback,
-            batch_size=batch_size,
-            available_columns={key[3]: {time_column}},
-            expanded_paths=True,
-        )
-        for compiled in compiled_batches:
-            selected = [
-                (pair, interps)
-                for pair, interps in items
-                if pair.target in compiled.target_locators
-            ]
-            batches.append((compiled, selected, seeds, time_column))
+    for (_, time_column), targets in grouped.items():
+        for compiled in compile_batches(
+            targets, lookback=lookback, time_column=time_column, batch_size=batch_size
+        ):
+            items = [entries[target.pair_key] for target in compiled.targets]
+            cohorts = {target.pair_key: target.seeds for target in compiled.targets}
+            batches.append((compiled, items, cohorts, time_column))
     # Freshness controls reuse; completion history controls fairness. Unseen
     # cohorts run before stale ones, then refresh the oldest verified work.
     batches.sort(
@@ -493,13 +690,14 @@ async def _collect_local(
                     for cohort, when in tested_routes.get(
                         (pair.source, pair.target, pair.normalizer), []
                     )
-                    if set(batch[2]) <= cohort
+                    if set(batch[2][pair_key(pair)]) <= cohort
                 ),
                 default=0,
             )
             for pair, _ in batch[1]
         )
     )
+    check_planning_deadline()
     if not plan_only:
         published = publish_tenant_overlay(
             tenant,
@@ -515,11 +713,13 @@ async def _collect_local(
     failure = None
     if not plan_only and not local_only and batches:
         client = create_client(
-            ctx.config, timeout=timeout,
-            auth_factory=AuthManager, client_factory=XDRClient,
+            ctx.config,
+            timeout=timeout,
+            auth_factory=AuthManager,
+            client_factory=XDRClient,
         )
         try:
-            for compiled, items, seeds, time_column in batches[:max_queries]:
+            for compiled, items, cohorts, time_column in batches[:max_queries]:
                 attempted += 1
                 result = await run_query(client, compiled.kql)
                 artifact = write_result(
@@ -531,15 +731,25 @@ async def _collect_local(
                     extra_metadata={
                         "local_validation": {
                             "pairs": [asdict(pair) for pair, _ in items],
-                            "samples": len(seeds),
+                            "samples": samples,
+                            "compiler_version": "local-table/v2",
                             "time_column": time_column,
                             "expanded_paths": True,
                         }
                     },
                 )
+                expected_keys = {pair_key(pair) for pair, _ in items}
+                if (
+                    len(result.results) != len(expected_keys)
+                    or {row.get("PairKey") for row in result.results} != expected_keys
+                ):
+                    raise ArtifactError(
+                        "Local validation returned incomplete or duplicate route results."
+                    )
                 for pair, interpretations in items:
+                    seeds = cohorts[pair_key(pair)]
                     matching = [
-                        row for row in result.results if row.get("TargetLocator") == pair.target
+                        row for row in result.results if row.get("PairKey") == pair_key(pair)
                     ]
                     if len(matching) != 1:
                         raise ArtifactError("Local validation returned an unexpected result shape.")
@@ -596,6 +806,8 @@ async def _collect_local(
         if coverage.get(key)
     }
     gaps = {}
+    if coverage.get("unindexed_required_sources"):
+        gaps["unindexed_required_sources"] = coverage["unindexed_required_sources"]
     if (
         mark_complete
         and not plan_only
@@ -609,12 +821,17 @@ async def _collect_local(
         mark_collection_complete(tenant, {"mode": "local-first", "local_coverage": coverage})
     context = {
         "local_coverage": coverage,
+        "local_publication_complete": not plan_only,
         "coverage_gaps": gaps,
         "excluded_scope": excluded,
         "scope_complete": not remaining and not gaps and failure is None,
         "candidate_pairs": len(pairs),
         "validation_queries_planned": len(batches),
+        "validation_pairs_planned": len(tasks),
+        "validation_skipped_complete_capture_pairs": coverage.get("complete_capture_pairs", 0),
+        "observed_complete_capture_pairs": len(complete_capture_observations),
         "queries_executed": executed,
+        "queries_attempted": attempted,
         "remaining_queries": remaining,
         "networked": attempted > 0,
         "mode": "plan" if plan_only else "local-only" if local_only else "local-first",
@@ -623,7 +840,12 @@ async def _collect_local(
     }
     (on_result or emit_result)(
         write_result(
-            [pair.to_dict() for pair in pairs],
+            [
+                dict(pair.to_dict(), EvidenceStage="capture-overlap-complete")
+                if pair_key(pair) in complete_capture_observations
+                else pair.to_dict()
+                for pair in pairs
+            ],
             command="schema collect",
             tenant_id=tenant,
             receipt_context=context,
