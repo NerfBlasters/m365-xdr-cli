@@ -39,6 +39,8 @@ from xdr_cli.backend_contract import Backend
 from xdr_cli.backends import create_client
 from xdr_cli.cli_params import EnumValueChoice
 from xdr_cli.client import XDRClient
+from xdr_cli.commands import device_manage_cmd
+from xdr_cli.commands.live_response_cmd import live_response_app
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import (
     ArtifactError,
@@ -69,6 +71,8 @@ device_app = click.Group(
     help="Device info and response actions.",
     no_args_is_help=True,
 )
+device_app.add_command(live_response_app)
+device_manage_cmd.register(device_app)
 
 # A MachineId is a 40-char SHA1 hex digest. It needs no hostname resolution;
 # stored-cookie timeline runs still verify it against the configured tenant.

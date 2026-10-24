@@ -180,6 +180,8 @@ def bindings(application):
             elif p.is_flag:
                 supplied.append(p.opts[0])
                 flags.extend((p.opts[0], *p.secondary_opts))
+                if p.required:
+                    required.append(p.opts[0])
             else:
                 values = [p.opts[0], sample(p)]
                 if p.multiple:

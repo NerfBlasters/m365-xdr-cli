@@ -79,7 +79,7 @@ overrides config, and an explicit `api_backend` setting pins the choice.
 `auth status` reports the selected backend and preference, but its shape differs
 by backend: on official, `backend`, `backend_preference`, `configured`, and
 `authenticated` are nested under `main` (with a sibling `portal` object); in
-cookie mode `backend`, `backend_preference`, `capabilities`,
+cookie mode `backend`, `backend_preference`, `capabilities`, `unverified_capabilities`,
 `validation_caveats`, and `full_parity` are top-level, there are no
 `configured`/`authenticated` keys, and `portal.session_validity` is
 `"not_checked"`. Selection is local, not a session-validity check. Do not retry
@@ -109,8 +109,32 @@ Device-state-changing commands must never be executed by the agent:
 - `xdr device restrict <id>` / `xdr device unrestrict <id>`
 - `xdr device scan <id>`
 - `xdr device collect-package <id>`
+- `xdr device contain <id>` / `xdr device uncontain <id>`
+- `xdr device start-investigation <id>`
+- `xdr device collect-support-logs <id>` / `xdr device troubleshoot <id> --on|--off`
+- `xdr device cancel-action <action-id>`
+- `xdr device tags set` / `add` / `remove` (tenant metadata changes)
+
+Live Response runs on the endpoint, so these are guidance-only too, even for
+read-like console commands:
+
+- `xdr device live-response connect` / `disconnect`
+- `xdr device live-response exec`, `findfile`, `fileinfo`, `dir`, `getfile`,
+  `putfile`, `run`, `cancel`
+- `xdr device live-response library upload` / `delete`
+- `xdr device live-response batch submit` / `cancel`
 
 For these: print the exact command, explain the effect in one sentence, then ask the human to run it themselves.
+Their `--dry-run` forms are local and safe. The Live Response `catalog`,
+`sessions`, `show`, `status`, `history`, `output`, `download`, `library
+list/show/download` and `batch status/output/download` commands read existing
+state and may be used, as may `xdr device tags list`, `xdr device
+action-permissions` (the portal's reported action availability, not an
+authorization grant) and `xdr device action-history` (an artifact whose final
+`device-action-history-coverage` row states the window and completeness; the
+portal reads seven days, and the official scope excludes portal Live
+Response). Treat downloaded files as hostile and never open,
+extract or execute them. See `docs/live_response.md`.
 
 `xdr incidents update` is permitted **only** when the human has explicitly authorized this specific incident and action in the current turn (e.g., "close it", "mark as false positive"). It must never be run on the agent's own initiative.
 
@@ -156,7 +180,12 @@ Control-plane success output is command-specific:
 - `xdr session feedback` returns one compact status object;
 - `xdr annotate` returns a plain-text confirmation;
 - `xdr session show` emits raw session JSONL;
-- `xdr results query` emits raw KQL.
+- `xdr results query` emits raw KQL;
+- `xdr device live-response` lifecycle, job-status, download and library
+  write commands return one `{status,data,metadata}` envelope. Its `catalog`,
+  `sessions`, `history`, `output`, `library list` and `batch output` commands
+  use the artifact receipt. `output` has zero preview rows so full transcripts
+  remain private until explicitly inspected.
 
 Do not assume the artifact receipt or `{status,data,metadata}` shape for these
 commands.
@@ -192,7 +221,12 @@ The Defender advanced-hunting API separately enforces a 10-minute-per-hour CPU q
 
 `~/.xdr-cli/audit.log` records every dispatched state-changing command with
 redacted argv: the device response actions (`isolate`, `unisolate`, `restrict`,
-`unrestrict`, `scan`, `collect-package`), `incidents update`, `auth
+`unrestrict`, `scan`, `collect-package`, `contain`, `uncontain`,
+`start-investigation`, `collect-support-logs`, `troubleshoot`,
+`cancel-action`), device `tags
+set`/`add`/`remove`, remote Live Response commands (argv
+reduced to identifiers, plus one value-free `LR:` classification line per
+submission), `incidents update`, `auth
 login`/`logout`/`portal-cookie`/`portal-logout`, `lists init`,
 and `schema repair-overlay`/`migrate-cache`/`bundle import`. The line is written
 when Click dispatches the command, before it runs, so `--dry-run` and declined confirmations appear
@@ -385,6 +419,7 @@ For session env vars (`XDR_SESSION`), parallel sub-agents (`XDR_ACTOR`), learnin
 - `README.md` — installation, Entra ID app setup, configuration
 - `CONTRIBUTING.md` — rules for contributing to xdr-cli (humans and AI agents); see §7 for AI-agent rules
 - `docs/investigation.md` — investigation methodology, KQL authoring, presenting findings
+- `docs/live_response.md` — Live Response sessions, console commands, files, library, batch
 - `docs/sessions.md` — session env vars, parallel sub-agents, learning mode mechanics
 - `playbooks/` — per-alert-type investigation playbooks
 - `docs/schema_pivots.md` — KQL table/column reference (85 curated tables); its "Regenerating this file" section covers the `sys_schema_probe` library query

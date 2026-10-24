@@ -3,15 +3,25 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-from xdr_cli.backend_contract import OFFICIAL_PROFILE, Backend, ad_unavailable
+from xdr_cli.backend_contract import (
+    OFFICIAL_PROFILE,
+    Backend,
+    UnsupportedBackendCapability,
+    ad_unavailable,
+)
 from xdr_cli.client import APISurface, XDRClient
 from xdr_cli.continuation import validate_continuation
+from xdr_cli.device_diagnostics import OfficialDeviceDiagnostics
+from xdr_cli.device_management import OfficialDeviceManagement
 from xdr_cli.exceptions import APIError, ForbiddenError, NotFoundError, UsageError
 from xdr_cli.hunting_result import HuntingResult, _normalize_response
+from xdr_cli.live_response.official import OfficialLiveResponse
 from xdr_cli.output import err_console
 
 
-class OfficialBackend(Backend):
+class OfficialBackend(
+    OfficialLiveResponse, OfficialDeviceManagement, OfficialDeviceDiagnostics, Backend,
+):
     profile = OFFICIAL_PROFILE
 
     def __init__(self, transport: XDRClient) -> None:
@@ -119,6 +129,11 @@ class OfficialBackend(Backend):
     async def submit_device_action(
         self, device_id: str, action: str, *, comment: str, mode: str | None = None,
     ) -> dict:
+        if action in ("contain", "uncontain"):
+            raise UnsupportedBackendCapability(
+                "Explicit unmanaged-device containment requires the portal-cookie backend.",
+                suggested_fix="Use --backend portal-cookie for device contain/uncontain.",
+            )
         paths = {
             "isolate": "isolate", "unisolate": "unisolate", "scan": "runAntiVirusScan",
             "collect-package": "collectInvestigationPackage", "restrict": "restrictCodeExecution",

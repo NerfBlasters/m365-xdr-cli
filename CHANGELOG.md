@@ -10,6 +10,71 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.18.0] - 2026-10-24
+
+### Added
+
+- `xdr device live-response` for Microsoft Defender for Endpoint Live Response.
+  Interactive sessions on the portal-cookie backend cover connect (with
+  `--wait` for pending sessions), show, locally known sessions and disconnect.
+  `exec` sends one console command, and shortcuts cover findfile, fileinfo,
+  dir, getfile (with private download), putfile and run. Jobs are covered by
+  status `--wait`, history, output, download and cancel. The tenant file
+  library gets list, show, upload, download and delete.
+- Console commands are validated against each session's server definitions
+  and classified with a pinned local risk table (read, collect, place, execute,
+  device-action, library-write). Anything beyond a read needs confirmation or
+  `--yes`. `--dry-run` works without authentication or network. Compound
+  syntax and pipes are rejected. A trailing `&` requests background mode, and
+  `> FILE` saves rendered output to a private local file.
+- `xdr device live-response batch` exposes official-API one-shot
+  `runliveresponse` actions (PutFile, RunScript, GetFile) with status, output,
+  per-command download and cancel.
+- `xdr device tags list|set|add|remove`. On portal-cookie, `set` replaces the
+  whole manual tag set only when the current set matches `--expect`, and
+  verifies the result afterwards; the service offers no atomic
+  compare-and-swap. `add`/`remove` use the official tag API, or a guarded
+  replacement on portal-cookie.
+- `xdr device contain` and `xdr device uncontain` contain or release an
+  unmanaged device (portal-cookie). Onboarded devices, unknown management
+  state and ambiguous containment records are refused rather than guessed.
+- `xdr device start-investigation` starts an automated investigation. On
+  portal-cookie it selects the tenant's protocol from fresh tenant features and
+  sends one request; the comment is recorded only by the official API.
+- `xdr device action-history` saves response-action history as a private
+  artifact. Portal-cookie reads the last seven days of Action center history;
+  the official backend reads machine actions, which exclude portal Live
+  Response. A final coverage row reports native counts and completeness.
+- `xdr device collect-support-logs` requests a Defender support-log
+  collection, and `xdr device troubleshoot --on|--off` turns troubleshooting
+  mode on for the portal's fixed four-hour window or ends the active window
+  (portal-cookie). Acceptance is reported, not a confirmed device-state change.
+  Downloading support logs is not yet available.
+- Live Response command records report `error_count`. A command that completes
+  with errors is not downloaded or saved locally.
+- `xdr device action-permissions` shows the portal's reported response-action
+  availability, and `xdr device cancel-action` cancels an eligible pending
+  response action without claiming any device rollback (portal-cookie).
+- `xdr device live-response catalog` lists the pinned command catalog with
+  platform applicability and evidence, without authentication.
+- Portal Live Response uses the V3 `liveResponseApi` session, command,
+  definition, download and library routes. Native session and command states
+  are preserved, and unrecognized states are never reported as terminal.
+  Sessions opened by the CLI are tracked in a private local handle store bound
+  to tenant and backend. Downloads are size-bounded, staged privately and
+  published atomically with a SHA-256, and are never opened or extracted.
+
+### Security
+
+- Remote Live Response commands are always written to the audit log. Their
+  argv in the audit and session logs keeps only identifiers and fixed words,
+  so console text, paths, comments and script parameters are redacted. Each
+  submission adds one value-free `LR:` classification line.
+- Submissions are never replayed after a timeout or transport loss. The error
+  reports `OUTCOME_UNKNOWN` with a recovery command to inspect history first.
+- AGENTS.md: Live Response commands that run on an endpoint are guidance-only
+  for agents.
+
 ## [0.17.0] - 2026-10-23
 
 ### Added

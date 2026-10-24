@@ -23,7 +23,9 @@ from xdr_cli.backend_selection import select_backend
 from xdr_cli.client import XDRClient
 from xdr_cli.config import Config
 from xdr_cli.continuation import validate_continuation
+from xdr_cli.device_diagnostics import PortalDeviceDiagnostics
 from xdr_cli.device_fields import adapter_addresses, additional_device_fields, exclusion_reason
+from xdr_cli.device_management import PortalDeviceManagement
 from xdr_cli.exceptions import (
     APIError,
     ConfigError,
@@ -39,6 +41,7 @@ from xdr_cli.exceptions import (
     parse_retry_after,
 )
 from xdr_cli.hunting_result import HuntingResult, _normalize_response
+from xdr_cli.live_response.portal import PortalLiveResponse
 from xdr_cli.official_backend import OfficialBackend
 from xdr_cli.output import err_console
 from xdr_cli.portal_auth import load_portal_cookies
@@ -69,7 +72,7 @@ class _Operation(Enum):
     HUNTING_SCHEMA = ("GET", "/apiproxy/mtp/huntingService/schema")
 
 
-class PortalBackend(Backend):
+class PortalBackend(PortalLiveResponse, PortalDeviceManagement, PortalDeviceDiagnostics, Backend):
     """Named portal operations with authenticated tenant binding per client."""
 
     profile = PORTAL_PROFILE
@@ -544,6 +547,8 @@ class PortalBackend(Backend):
             "unrestrict": ("RestrictExecutionRequest", "UnrestrictCodeExecution"),
             "isolate": ("IsolationRequest", "Isolate"),
             "unisolate": ("IsolationRequest", "Unisolate"),
+            "contain": ("IsolationRequest", "Contain"),
+            "uncontain": ("IsolationRequest", "Uncontain"),
         }
         if action not in contracts:
             raise UnsupportedBackendCapability()
@@ -556,13 +561,19 @@ class PortalBackend(Backend):
             )
         device = await self.get_device(device_id, enrich=False)
         raw = device["portal_source"]["raw"]
-        if any(not isinstance(raw.get(k), str) or not raw[k]
-               for k in ("OsPlatform", "SenseClientVersion")):
+        containment = action in ("contain", "uncontain")
+        if containment and raw.get("IsManagedByMdatp") is not False:
+            raise ConflictError(
+                "Containment requires a device explicitly reported as unmanaged by Defender."
+            )
+        if not containment and any(not isinstance(raw.get(k), str) or not raw[k]
+                                  for k in ("OsPlatform", "SenseClientVersion")):
             raise APIError("Portal device lacks action prerequisite fields; no action was sent.")
         request_type, public_type = contracts[action]
         body = {
             "MachineId": device_id, "RequestorComment": comment, "Type": request_type,
-            "OsPlatform": raw["OsPlatform"], "SenseClientVersion": raw["SenseClientVersion"],
+            **{k: raw[k] for k in ("OsPlatform", "SenseClientVersion")
+               if isinstance(raw.get(k), str) and raw[k]},
         }
         if action == "scan":
             body["Params"] = {"ScanType": mode}
@@ -570,6 +581,27 @@ class PortalBackend(Backend):
             body.update(Action="Isolate", IsolationType=mode)
         elif action == "unisolate":
             body.update(Action="Unisolate")
+        elif action == "contain":
+            body.update(Action="Isolate", IsolationType="UnManagedDevice")
+        elif action == "uncontain":
+            rows = await self._request(_Operation.ACTION_STATUS, params={
+                "machineId": device_id, "tenantIds": "",
+            })
+            if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+                raise APIError("Portal containment state response has an invalid shape.")
+            previous = [row for row in rows if row.get("Type") == "IsolationResponse"
+                        and isinstance(row.get("MachineId"), str)
+                        and row["MachineId"].casefold() == device_id.casefold()]
+            if len(previous) != 1 or type(previous[0].get("IsolationType")) is not int or (
+                previous[0]["IsolationType"] != 2
+                or type(previous[0].get("Action")) is not int
+                or previous[0]["Action"] != 0
+                or previous[0].get("RequestStatus") != "Succeeded"
+            ):
+                raise ConflictError(
+                    "No unambiguous unmanaged-device containment state is available for release."
+                )
+            body.update(Action="Unisolate", IsolationType="UnManagedDevice")
         elif action in ("restrict", "unrestrict"):
             body.update(
                 PolicyType="Restrict" if action == "restrict" else "Unrestrict",
@@ -645,6 +677,8 @@ class PortalBackend(Backend):
         action_types = {
             "ScanResponse": "RunAntiVirusScan",
             "ForensicsResponse": "CollectInvestigationPackage",
+            "LogsCollectionResponse": "CollectSupportLogs",
+            "TroubleshootResponse": "TroubleshootingMode",
         }
         public_type = action_types.get(row.get("Type"))
         # Correlated portal/official outcomes from supervised action pairs

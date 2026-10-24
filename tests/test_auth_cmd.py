@@ -682,6 +682,12 @@ def test_cookie_only_setup_import_and_status_without_app_registration(auth_dir, 
     data = _parse_json_stdout(status)["data"]
     assert data["backend"] == "portal-cookie"
     assert data["portal"] == {"cookie_stored": True, "session_validity": "not_checked"}
+    assert "device-live-response-v3-sessions" in data["capabilities"]
+    assert "device-tags" in data["capabilities"]
+    assert "device-action-history" in data["capabilities"]
+    assert "device-collect-support-logs" in data["unverified_capabilities"]
+    assert set(data["capabilities"]).isdisjoint(data["unverified_capabilities"])
+    assert data["full_parity"] is False
 
 
 def test_cookie_import_missing_tenant_preserves_source_and_needs_no_msal(auth_dir, tmp_path):

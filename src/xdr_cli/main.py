@@ -7,6 +7,7 @@ import contextvars
 import functools
 import logging
 import os
+import re
 import sys
 import time
 
@@ -54,9 +55,38 @@ _TENANT_MUTATION_COMMANDS = frozenset(
         "device restrict",
         "device unrestrict",
         "incidents update",
+        "device live-response connect",
+        "device live-response disconnect",
+        "device live-response getfile",
+        "device live-response putfile",
+        "device live-response run",
+        "device live-response cancel",
+        "device live-response library upload",
+        "device live-response library delete",
+        "device live-response batch submit",
+        "device live-response batch cancel",
+        "device tags set",
+        "device tags add",
+        "device tags remove",
+        "device cancel-action",
+        "device contain",
+        "device uncontain",
+        "device start-investigation",
+        "device collect-support-logs",
+        "device troubleshoot",
     }
 )
-_WRITE_COMMANDS = _TENANT_MUTATION_COMMANDS | frozenset(
+# Live Response chains that start remote jobs whose risk depends on the console
+# text; always audited, and classified again after parsing.
+_LIVE_RESPONSE_JOB_COMMANDS = frozenset(
+    {
+        "device live-response exec",
+        "device live-response findfile",
+        "device live-response fileinfo",
+        "device live-response dir",
+    }
+)
+_WRITE_COMMANDS = _TENANT_MUTATION_COMMANDS | _LIVE_RESPONSE_JOB_COMMANDS | frozenset(
     {
         "auth login",
         "auth logout",
@@ -73,7 +103,7 @@ _WRITE_COMMANDS = _TENANT_MUTATION_COMMANDS | frozenset(
 def _audit_dispatched_command(chain: str | None, argv: list[str]) -> None:
     """Record a dispatched state-changing command, with secrets redacted."""
     if chain in _WRITE_COMMANDS:
-        logging.getLogger("xdr.audit").info("CMD: %s", " ".join(_redact_argv(argv)))
+        logging.getLogger("xdr.audit").info("CMD: %s", " ".join(_redact_argv(argv, chain)))
 
 
 # Flags whose value is a secret and must never reach the session Recorder
@@ -86,13 +116,150 @@ _SECRET_ARGV_FLAGS: frozenset[str] = frozenset({"--refresh-token"})
 _REDACTED_PLACEHOLDER = "***REDACTED***"
 
 
-def _redact_argv(argv: list[str]) -> list[str]:
+# Live Response argv carries console text, device paths, script parameters and
+# local file names as positional or option values. For those chains only
+# identifiers and fixed vocabulary survive; every other value is replaced.
+_LIVE_RESPONSE_PREFIX = "device live-response"
+_LIVE_RESPONSE_SAFE_VALUE = re.compile(
+    r"[a-fA-F0-9]{40}"            # MachineId
+    r"|CLR[A-Za-z0-9_-]{1,125}"   # V3 session ID
+    r"|[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}"  # command/action ID
+    r"|\d{1,20}"                  # command ID, --wait, --max-bytes
+)
+_LIVE_RESPONSE_SAFE_WORDS = frozenset(
+    {"device", "live-response", "library", "official", "portal-cookie", "auto",
+     "windows", "macos", "linux", "read", "collect", "place", "execute", "device-action",
+     "library-write", "local"}
+)
+
+
+def _live_response_value(value: str, words: frozenset[str]) -> str:
+    if value in words or _LIVE_RESPONSE_SAFE_VALUE.fullmatch(value):
+        return value
+    return _REDACTED_PLACEHOLDER
+
+
+# Value-taking Live Response options whose values are identifiers or fixed
+# vocabulary; the value is still kept only when it matches the safe patterns.
+# Every other option value is redacted regardless of its content.
+_LIVE_RESPONSE_SAFE_VALUE_OPTIONS = frozenset(
+    {"--wait", "--max-bytes", "--index", "--os", "--risk", "--backend", "--device"}
+)
+
+
+def _find_option(commands: list[click.Command], name: str) -> click.Parameter | None:
+    for command in reversed(commands):
+        for param in command.params:
+            if isinstance(param, click.Option) and name in (*param.opts, *param.secondary_opts):
+                return param
+    return None
+
+
+def _takes_value(option: click.Parameter) -> bool:
+    return not (getattr(option, "is_flag", False) or getattr(option, "count", False))
+
+
+def _resolve_invocation(argv: list[str]) -> tuple[list[click.Command], str | None]:
+    """Resolve the subcommand path from argv the way Click would, without running it."""
+    commands: list[click.Command] = [app]
+    names: list[str] = []
+    index = 0
+    options_done = False
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--" and not options_done:
+            options_done = True
+            index += 1
+            continue
+        if not options_done and arg.startswith("-") and len(arg) > 1:
+            name, sep, _ = arg.partition("=")
+            option = _find_option(commands, name)
+            if option is not None and not sep and _takes_value(option):
+                index += 1
+        else:
+            current = commands[-1]
+            if isinstance(current, click.Group) and arg in current.commands:
+                commands.append(current.commands[arg])
+                names.append(arg)
+                options_done = False
+        index += 1
+    return commands, " ".join(names) or None
+
+
+def _is_live_response(chain: str | None) -> bool:
+    return chain is not None and (chain + " ").startswith(_LIVE_RESPONSE_PREFIX + " ")
+
+
+def _redact_live_response_argv(argv: list[str], chain: str) -> list[str]:
+    """Keep option names Click defines, identifiers and fixed words; redact the rest."""
+    commands, _ = _resolve_invocation(argv)
+    words = _LIVE_RESPONSE_SAFE_WORDS | frozenset(chain.split())
+    redacted: list[str] = []
+    pending: str | None = None  # option whose separate value comes next
+    after_separator = False
+    current: click.Command = app
+    argument_index = 0
+    for arg in argv:
+        if pending is not None:
+            safe = pending in _LIVE_RESPONSE_SAFE_VALUE_OPTIONS
+            redacted.append(_live_response_value(arg, words) if safe else _REDACTED_PLACEHOLDER)
+            pending = None
+            continue
+        if after_separator or not arg.startswith("-") or len(arg) == 1:
+            if isinstance(current, click.Group) and arg in current.commands:
+                current = current.commands[arg]
+                argument_index = 0
+                after_separator = False
+                redacted.append(arg)
+                continue
+            arguments = [p for p in current.params if isinstance(p, click.Argument)]
+            role = arguments[argument_index].name if argument_index < len(arguments) else None
+            if role in {"machine_id", "session_id", "command_id", "action_id"}:
+                redacted.append(_live_response_value(arg, frozenset()))
+            else:
+                redacted.append(_REDACTED_PLACEHOLDER)
+            argument_index += 1
+            continue
+        if arg == "--":
+            redacted.append(arg)
+            after_separator = True
+            continue
+        name, sep, value = arg.partition("=")
+        option = None if name in _SECRET_ARGV_FLAGS else _find_option(commands, name)
+        if option is None:
+            # Unknown dashed tokens and secret flags may carry secrets themselves,
+            # and may consume the next token.
+            redacted.append(_REDACTED_PLACEHOLDER if name not in _SECRET_ARGV_FLAGS
+                            else (f"{name}={_REDACTED_PLACEHOLDER}" if sep else name))
+            if not sep:
+                pending = name
+            continue
+        if not _takes_value(option):
+            redacted.append(name if not sep else _REDACTED_PLACEHOLDER)
+        elif sep:
+            safe = name in _LIVE_RESPONSE_SAFE_VALUE_OPTIONS
+            redacted.append(
+                f"{name}={_live_response_value(value, words) if safe else _REDACTED_PLACEHOLDER}")
+        else:
+            redacted.append(name)
+            pending = name
+    return redacted
+
+
+def _redact_argv(argv: list[str], chain: str | None = None) -> list[str]:
     """Return a copy of ``argv`` with known secret flag values replaced.
 
     Handles both the space-separated form (``--refresh-token SECRET``) and
     the inline ``--refresh-token=SECRET`` form. Everything else — including
-    unrecognized flags and positional args — passes through unchanged.
+    unrecognized flags and positional args — passes through unchanged, except
+    for Live Response invocations, where only Click-defined option names,
+    identifiers and fixed vocabulary are kept. Without ``chain`` the invocation
+    is resolved from argv, so calls that fail before dispatch are covered too.
     """
+    if chain is None:
+        _, chain = _resolve_invocation(argv)
+    if _is_live_response(chain):
+        return _redact_live_response_argv(argv, chain)
     redacted: list[str] = []
     redact_next = False
     for arg in argv:
@@ -423,6 +590,8 @@ def _capture_chain_from_leaf() -> None:
     _audit_dispatched_command(chain, list(sys.argv[1:]))
     if app_ctx.recorder is not None:
         app_ctx.recorder.invoked_command = chain
+        if chain is not None and chain.startswith(_LIVE_RESPONSE_PREFIX):
+            app_ctx.recorder.argv = _redact_argv(list(sys.argv[1:]), chain)
         # Annotate --rationale unconditionally on every recorded invocation.
         # Recorder.flush is a no-op when session is None, so annotations on
         # no-session paths never reach disk. Whitespace-only rationale is
