@@ -49,7 +49,12 @@ for the current checks.
   collection, and `xdr device troubleshoot --on|--off` turns troubleshooting
   mode on for the portal's fixed four-hour window or ends the active window
   (portal-cookie). Acceptance is reported, not a confirmed device-state change.
-  Downloading support logs is not yet available.
+  Support-log collection first reads the tenant's feature settings and sends
+  nothing when collection is disabled (`TENANT_FEATURE_UNAVAILABLE`) or when the
+  tenant uses the newer diagnostic-package protocol, which is not implemented
+  (`BACKEND_CAPABILITY_UNAVAILABLE`). The portal's action-availability report
+  alone is not treated as permission. Downloading support logs is not yet
+  available.
 - Live Response command records report `error_count`. A command that completes
   with errors is not downloaded or saved locally.
 - `xdr device action-permissions` shows the portal's reported response-action

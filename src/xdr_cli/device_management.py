@@ -83,24 +83,22 @@ def _history_limit(value: object) -> int:
     return value
 
 
-def _autoir_feature(context: dict) -> bool:
+def _tenant_feature(context: dict, name: str) -> bool:
     """Match the frontend's EnabledFeatures-over-Features precedence, including []."""
     enabled = context.get("EnabledFeatures")
     if enabled is not None:
         if not isinstance(enabled, list) or any(not isinstance(item, str) for item in enabled):
             raise APIError("Tenant feature inventory has an invalid EnabledFeatures collection.")
-        return "UseDotnetAirsUiInvestigations" in enabled
+        return name in enabled
     features = context.get("Features")
     if not isinstance(features, dict):
         raise APIError(
-            "Tenant context lacks a usable feature inventory for automated investigation."
+            "Tenant context lacks a usable feature inventory."
         )
-    value = features.get("UseDotnetAirsUiInvestigations", False)
+    value = features.get(name, False)
     if type(value) is bool:
         return value
-    if type(value) is int and value in (0, 1):
-        return bool(value)
-    raise APIError("Automated-investigation feature state has an unsupported native value.")
+    raise APIError("Tenant feature state has an unsupported native value.")
 
 
 def _tag(value: object) -> str:
@@ -199,6 +197,20 @@ def _sanitize(error: XDRError, message: str, *, mutation: bool = False) -> XDREr
 
 
 class PortalDeviceManagement:
+    async def _dm_tenant_context(self) -> dict:
+        """Read fresh feature state bound to the configured tenant before selecting a protocol."""
+        context = await self._dm_request(_Route.TENANT_CONTEXT)
+        auth = context.get("AuthInfo") if isinstance(context, dict) else None
+        if (
+            not isinstance(auth, dict)
+            or not isinstance(auth.get("TenantId"), str)
+            or auth["TenantId"].casefold() != self._tenant_id.casefold()
+        ):
+            raise ConfigError(
+                "Device-management tenant context does not match the configured tenant."
+            )
+        return context
+
     async def _dm_request(
         self, route: _Route, *, params: dict | None = None, body: dict | None = None
     ):
@@ -382,17 +394,8 @@ class PortalDeviceManagement:
         """Choose one source-defined protocol from fresh tenant features; never probe writes."""
         _machine_id(machine_id)
         _comment(comment)
-        context = await self._dm_request(_Route.TENANT_CONTEXT)
-        auth = context.get("AuthInfo") if isinstance(context, dict) else None
-        if (
-            not isinstance(auth, dict)
-            or not isinstance(auth.get("TenantId"), str)
-            or auth["TenantId"].casefold() != self._tenant_id.casefold()
-        ):
-            raise ConfigError(
-                "Automated-investigation tenant context does not match the configured tenant."
-            )
-        dotnet = _autoir_feature(context)
+        context = await self._dm_tenant_context()
+        dotnet = _tenant_feature(context, "UseDotnetAirsUiInvestigations")
         route = _Route.START_INVESTIGATION_DOTNET if dotnet else _Route.START_INVESTIGATION
         field = "machine" if dotnet else "machine_id"
         value = await self._dm_request(

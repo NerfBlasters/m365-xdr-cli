@@ -12,7 +12,8 @@ from xdr_cli.backend_contract import UnsupportedBackendCapability
 from xdr_cli.backends import PortalBackend
 from xdr_cli.config import Config
 from xdr_cli.device_diagnostics import OfficialDeviceDiagnostics, PortalDeviceDiagnostics
-from xdr_cli.exceptions import APIError, ConflictError, NetworkError, UsageError
+from xdr_cli.device_management import PortalDeviceManagement
+from xdr_cli.exceptions import APIError, ConfigError, ConflictError, NetworkError, UsageError
 from xdr_cli.portal_auth import save_portal_cookies
 from xdr_cli.results import tenant_fingerprint
 
@@ -39,6 +40,9 @@ def portal(tmp_path, monkeypatch):
     )
     client = Portal(Config(tenant_id="test-tenant", api_backend="portal-cookie"), 5)
     client._verified = True
+    client._dm_tenant_context = AsyncMock(
+        return_value={"Features": {"LogsCollection": True}}
+    )
     client.get_device = AsyncMock(
         return_value={
             "id": DEVICE,
@@ -85,6 +89,100 @@ async def test_support_logs_exact_request_and_accepted_status(portal):
     assert result["type"] == "CollectSupportLogs" and result["status"] == "Pending"
     assert result["portal_source"]["device_association_saved"] is True
     assert "authorization" not in submit.calls[0].request.headers
+    await portal.close()
+
+
+@pytest.mark.asyncio
+@respx.mock
+@pytest.mark.parametrize(
+    "context,modern",
+    [
+        ({"Features": {"LogsCollection": False}}, False),
+        ({"Features": {}}, False),
+        ({"Features": {"LogsCollection": False, "EnableCollectDiagnosticPackage": True}}, False),
+        ({"EnabledFeatures": [], "Features": {"LogsCollection": True}}, False),
+        ({"Features": {"LogsCollection": True, "EnableCollectDiagnosticPackage": True}}, True),
+        ({"EnabledFeatures": ["LogsCollection", "EnableCollectDiagnosticPackage"]}, True),
+    ],
+)
+async def test_support_logs_feature_gates_prevent_lookup_and_submission(portal, context, modern):
+    portal._dm_tenant_context.return_value = context
+    submit = respx.post(BASE + "/create").respond(json=accepted())
+    expected = UnsupportedBackendCapability if modern else APIError
+    with pytest.raises(expected) as caught:
+        await portal.collect_device_support_logs(DEVICE, comment="reason")
+    if modern:
+        assert "modern diagnostic-package" in str(caught.value)
+    else:
+        assert caught.value.error_code == "TENANT_FEATURE_UNAVAILABLE"
+        assert "switch" not in caught.value.suggested_fix.lower()
+    portal._dm_tenant_context.assert_awaited_once()
+    portal.get_device.assert_not_called()
+    assert not submit.called
+    await portal.close()
+
+
+@pytest.mark.asyncio
+@respx.mock
+@pytest.mark.parametrize(
+    "context",
+    [
+        {},
+        {"EnabledFeatures": "LogsCollection"},
+        {"EnabledFeatures": [True]},
+        {"Features": []},
+        {"Features": {"LogsCollection": "true"}},
+        {"Features": {"LogsCollection": 1}},
+        {"Features": {"LogsCollection": True, "EnableCollectDiagnosticPackage": 0}},
+    ],
+)
+async def test_support_logs_invalid_feature_inventory_never_submits(portal, context):
+    portal._dm_tenant_context.return_value = context
+    submit = respx.post(BASE + "/create").respond(json=accepted())
+    with pytest.raises(APIError):
+        await portal.collect_device_support_logs(DEVICE, comment="reason")
+    portal.get_device.assert_not_called()
+    assert not submit.called
+    await portal.close()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_support_logs_feature_inventory_must_match_configured_tenant(portal):
+    portal._dm_tenant_context = PortalDeviceManagement._dm_tenant_context.__get__(portal)
+    respx.get("https://security.microsoft.com/apiproxy/mtp/sccManagement/mgmt/TenantContext").respond(
+        json={"AuthInfo": {"TenantId": "other-tenant"}, "Features": {"LogsCollection": True}}
+    )
+    submit = respx.post(BASE + "/create").respond(json=accepted())
+    with pytest.raises(ConfigError, match="configured tenant"):
+        await portal.collect_device_support_logs(DEVICE, comment="reason")
+    portal.get_device.assert_not_called()
+    assert not submit.called
+    await portal.close()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_support_logs_enabled_list_is_authoritative_and_context_is_fresh(portal):
+    portal._dm_tenant_context = PortalDeviceManagement._dm_tenant_context.__get__(portal)
+    context = respx.get(
+        "https://security.microsoft.com/apiproxy/mtp/sccManagement/mgmt/TenantContext"
+    ).mock(side_effect=[
+        httpx.Response(200, json={
+            "AuthInfo": {"TenantId": "test-tenant"},
+            "EnabledFeatures": ["LogsCollection"],
+            "Features": {"LogsCollection": False, "EnableCollectDiagnosticPackage": True},
+        }),
+        httpx.Response(200, json={
+            "AuthInfo": {"TenantId": "test-tenant"}, "EnabledFeatures": [],
+        }),
+    ])
+    submit = respx.post(BASE + "/create").respond(json=accepted())
+    await portal.collect_device_support_logs(DEVICE, comment="first request")
+    with pytest.raises(APIError) as caught:
+        await portal.collect_device_support_logs(DEVICE, comment="second request")
+    assert caught.value.error_code == "TENANT_FEATURE_UNAVAILABLE"
+    assert context.call_count == 2 and submit.call_count == 1
     await portal.close()
 
 

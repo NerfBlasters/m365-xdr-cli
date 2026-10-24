@@ -31,7 +31,7 @@ tenant settings, RBAC role, OS and sensor version.
 | dir | `live-response dir --wait`, `exec` | unavailable | cli-live, synthetic |
 | findfile | `live-response findfile --wait` | unavailable | cli-live, synthetic |
 | fileinfo | `live-response fileinfo` | unavailable | backend-live, synthetic |
-| getfile + download | `live-response getfile --output`, `download` | `batch` | backend-live (exact SHA-256 round trip), synthetic |
+| getfile + download | `live-response getfile --output`, `download` | `batch` | cli-live for `getfile --output` (360,448-byte system binary, independent SHA-256 matches receipt, local copy removed, session closed); backend-live (37-byte test file, exact SHA-256 round trip); standalone `download`: synthetic CLI |
 | putfile | `live-response putfile` | `batch` | backend-live, synthetic |
 | run (library script) | `live-response run` | `batch` | backend-live (benign script), synthetic |
 | Command output | `live-response output` | `batch output` | cli-live, synthetic |
@@ -82,8 +82,21 @@ errors.
 | Contain / release containment (unmanaged devices) | `device contain`, `device uncontain` | unavailable | source, synthetic; not run live |
 | Automated investigation | `device start-investigation` | yes (records the comment) | source; protocol selector read live (dotnet-ui), never started live; synthetic CLI |
 | Action history (Action center) | `device action-history [--limit N]` | machine actions only (excludes portal Live Response) | backend-live (7-day window, 19 rows matching the native count, pagination complete), synthetic CLI |
-| Collect support logs | `device collect-support-logs` | unavailable | source, synthetic; no collection was started live |
-| Support-log download | — | — | gap: download host/transfer contract unverified, and no completed collection was available to test against |
-| Troubleshooting mode (fixed 4 hours) | `device troubleshoot --on/--off` | unavailable | source, synthetic; not run live |
+| Collect support logs | `device collect-support-logs` | unavailable | source, synthetic. Collection attempt returned HTTP 403; separately, tenant context reported the feature disabled. No collection was created. The new feature preflight was run live with reads only: `TENANT_FEATURE_UNAVAILABLE` after two GET requests, no mutation |
+| Support-log download | — | — | gap: download host/transfer contract unverified, and no completed collection exists to test against |
+| Troubleshooting mode (fixed 4 hours) | `device troubleshoot --on/--off` | unavailable | source, synthetic; not run live; portal stop eligibility via feature/configuration variant is not checked |
 | Asset value, criticality, exclusion state | — | — | gap: source contract only |
 | Offboard, stop and quarantine, forensic artifacts, policy sync, expert consultation, Logic App playbooks | — | — | gap: no device-page wire contract inventoried |
+
+The portal's action-availability response reported support-log collection as
+allowed while the tenant feature was off. Availability is not authorization
+and does not prove a feature is enabled.
+
+Before submitting, `collect-support-logs` reads the tenant's feature settings,
+in the same order as the portal. If `LogsCollection` is off, it stops with
+`TENANT_FEATURE_UNAVAILABLE` (exit 3), even when the newer diagnostic-package
+feature is on. If `LogsCollection` is on but `EnableCollectDiagnosticPackage`
+is also on, the tenant uses the newer protocol, which the CLI does not
+implement, and it stops with `BACKEND_CAPABILITY_UNAVAILABLE` (exit 3). In
+both cases nothing is sent to the device. A plain HTTP 403 (exit 7) still
+means the service refused the request; the status alone does not identify the cause.

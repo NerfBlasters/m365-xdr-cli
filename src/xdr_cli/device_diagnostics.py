@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from enum import Enum
 
 from xdr_cli.backend_contract import UnsupportedBackendCapability
-from xdr_cli.device_management import _comment, _machine_id, _portal_raw
+from xdr_cli.device_management import _comment, _machine_id, _portal_raw, _tenant_feature
 from xdr_cli.exceptions import APIError, ConflictError, UsageError
 
 _ACTION = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
@@ -117,6 +117,21 @@ class PortalDeviceDiagnostics:
         """Submit one support-log collection request, retaining its native status."""
         _machine_id(machine_id)
         _comment(comment)
+        context = await self._dm_tenant_context()
+        if not _tenant_feature(context, "LogsCollection"):
+            error = APIError("Support-log collection is not enabled for this tenant.")
+            error.error_code = "TENANT_FEATURE_UNAVAILABLE"
+            error.suggested_fix = (
+                "Check support-log availability with your Defender administrator "
+                "or Microsoft support."
+            )
+            raise error
+        if _tenant_feature(context, "EnableCollectDiagnosticPackage"):
+            raise UnsupportedBackendCapability(
+                "This tenant uses the modern diagnostic-package collection protocol, "
+                "which the CLI does not implement yet.",
+                suggested_fix="Use the Defender portal's diagnostic-package collection workflow.",
+            )
         metadata = await self._dd_device(machine_id)
         value = await self._dm_request(
             _DiagnosticsRoute.CREATE,

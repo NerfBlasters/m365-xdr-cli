@@ -357,15 +357,22 @@ async def test_autoir_selects_one_native_protocol_from_fresh_features(
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_autoir_missing_feature_inventory_never_sends_a_mutation(portal):
+@pytest.mark.parametrize("inventory", [
+    {},
+    {"Features": {"UseDotnetAirsUiInvestigations": 0}},
+    {"Features": {"UseDotnetAirsUiInvestigations": 1}},
+    {"EnabledFeatures": [1]},
+])
+async def test_autoir_invalid_feature_inventory_never_sends_a_mutation(portal, inventory):
     respx.get(BASE + "/sccManagement/mgmt/TenantContext").respond(
         json={
             "AuthInfo": {"TenantId": "synthetic-tenant"},
+            **inventory,
         }
     )
     legacy = respx.post(BASE + "/autoIr/investigations/").respond(json={"id": 1})
     dotnet = respx.post(BASE + "/autoIr/ui/investigations/").respond(json={"id": 1})
-    with pytest.raises(APIError, match="feature inventory"):
+    with pytest.raises(APIError):
         await portal.start_device_investigation(DEVICE, comment="reason")
     assert not legacy.called and not dotnet.called
 
