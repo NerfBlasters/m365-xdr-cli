@@ -31,6 +31,21 @@ def _identity(value: object) -> str:
     return _string(value)
 
 
+def _text_lower(value: object) -> str:
+    return _string(value).lower()
+
+
+def _text_upper(value: object) -> str:
+    return _string(value).upper()
+
+
+def _token_unpad(value: object) -> str:
+    text = _string(value).rstrip("=")
+    if not text:
+        raise NormalizationError("padded token identifier cannot be empty")
+    return text
+
+
 def _guid_lower(value: object) -> str:
     text = _string(value)
     try:
@@ -155,6 +170,9 @@ NORMALIZERS: dict[str, Callable[[object], str]] = {
     "hex40-lower": _hex40_lower,
     "hostname-lower": _hostname_lower,
     "identity": _identity,
+    "text-lower": _text_lower,
+    "text-upper": _text_upper,
+    "token-unpad": _token_unpad,
     "ip-canonical": _ip_canonical,
     "sha1-lower": _sha1_lower,
     "sha256-lower": _sha256_lower,

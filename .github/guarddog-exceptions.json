@@ -38,13 +38,16 @@
     },
     {
       "package": "setuptools",
-      "version": "84.0.0",
-      "findings_sha256": "6fe9a7b5dc0bd79a48ff43eb8cc53ab6489fbb9859725b3fd2dcd96d098dfa80",
-      "reviewed_on": "2026-09-23",
-      "expires": "2026-12-22",
-      "reason": "Bundled EXEs are Windows console/GUI launchers. develop.py invokes pip for editable installs; installer.py launches the installer. Remaining filesystem/download capabilities belong to build/packaging support. This accepts only the exact reported binary hashes and code observations.",
+      "version": "84.2.1",
+      "findings_sha256": "96a47ff0c8615d0fb7cf77097daf48ac6fb66c0aa3af611c63a2836c9387ebaf",
+      "reviewed_on": "2026-10-24",
+      "expires": "2027-01-22",
+      "reason": "Verified the exact PyPI wheel digest against registry metadata and uv.lock. All eight bundled Windows console/GUI launchers are byte-identical to the reviewed 84.0.0 release. Six flagged core source files match the official v84.2.1 tag byte-for-byte; the vendored jaraco download helper is unchanged. Native rule results and risk score differ only by the archive_util.py ZIP-read hit moving from line 131 to 180 after archive hardening. Editable pip installation, build output replacement, metadata permissions and MSVC registry lookup are expected packaging functions. Accept only this exact release and findings fingerprint; this is not a blanket dependency safety claim.",
       "evidence": [
-        "https://pypi.org/project/setuptools/84.0.0/"
+        "https://pypi.org/project/setuptools/84.2.1/",
+        "https://github.com/pypa/setuptools/tree/v84.2.1",
+        "https://github.com/pypa/setuptools/blob/v84.2.1/setuptools/command/develop.py",
+        "https://github.com/pypa/setuptools/blob/v84.2.1/setuptools/archive_util.py"
       ]
     },
     {

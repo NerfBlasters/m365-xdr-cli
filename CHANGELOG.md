@@ -10,6 +10,89 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.17.0] - 2026-10-23
+
+### Added
+
+- Automatic capture-first `schema collect --explore`: recent private source data,
+  up to 25,000 recent rows per table, labelled inventory samples, verifiable
+  selected-row completeness and resumable resource budgets,
+  local graph discovery and focused follow-up validation. Complete captures from
+  the same job establish observed overlaps without redundant live queries; other
+  pairs validate in table batches with exact counts for each identifier cohort.
+  Capture overlap never asserts join safety or live-query validation. Query capacity is
+  reserved for validation; bounded rate-limit waits resume saved validation
+  progress automatically. Local indexing and evidence reads honor the job
+  deadline without publishing incomplete replacement graphs. Ordinary saved-result
+  collection and existing investigation artifacts remain supported.
+- Historical v1 capture artifacts remain verifiable after the collection policy
+  changes. Existing result files stay intact; automatic claims that fail current
+  query/provenance contracts are retired from the active graph and verified
+  overlaps are rederived.
+- Capture evidence pins protect unfinished collection and local-discovery handoff
+  during explicit result pruning.
+
+- `schema init` downloads a content-bound XDRInternals reference, compares all
+  mappings to the tenant schema, and saves bounded live validation with resumable
+  query budgets. Trusted reference routes and empirical matches remain distinct.
+- Physical refresh discovers tenant portal tables and retains previously seen
+  names; tenant `getschema` types win over conflicting reference metadata.
+
+- Route output distinguishes `SemanticallyReviewed` from
+  `EmpiricallyValidated`; the existing `Validated` union remains compatible.
+- Schema refresh records the actual hunting execution surface and exact probe
+  coverage, with bounded counts in artifact receipts. Missing fuzzy-union results
+  remain inconclusive instead of asserting that a table is absent.
+- Schema pivots distinguish fields outside the recorded probe scope, fields not
+  observed in the response, and incompatible storage types. These states cannot
+  authorize live probes; legacy caches retain their existing missing-field label.
+
+### Changed
+
+- Normal schema pivots and paths omit physically unusable routes;
+  `--include-unavailable` enables diagnostics. Dense path searches report their
+  bounded work and output truncation.
+
+- The schema probe and KQL table tokenizer share one packaged table registry.
+  The probe now includes `AgentsInfo`, `CallActivityEvents`,
+  `CloudPolicyEnforcementEvents`, `MessageContents`, and
+  `ThreatIntelligenceIndicator`, preserving existing legacy table names.
+
+### Fixed
+
+- Refresh vulnerable Python and website lockfile dependencies without weakening
+  dependency audit gates. Align schema help, docstrings, session maintenance,
+  troubleshooting and generated website documentation with capture-first
+  discovery, evidence levels and table-batched validation.
+
+- Require authoritative physical-column evidence, complete conditional scopes,
+  process timing and STIX feed/latest-snapshot semantics before exposing routes.
+- Bind saved reference matches to the running compiler; retain failed-check
+  suppression across refreshes, protect active validation evidence from pruning,
+  and preserve authentication and artifact exit classes.
+- Return partial success for failed new-table checks. Prevent standalone observe
+  from persisting orphaned imported IDs, and report older orphan observations
+  without blocking unrelated pivots.
+
+- Report unsupported source normalizers, currently including IP canonicalization,
+  as `SCHEMA_SOURCE_NOT_PROBEABLE` (exit 13) before authentication, instead of an
+  internal error. Constrained sources report `SCHEMA_SOURCE_CONSTRAINED`, retaining
+  exit 12 for compatibility without claiming that an artifact write failed.
+- Prefer a unique packaged source interpretation over provisional tenant
+  occurrences on the same field. Genuine ambiguity reports
+  `SCHEMA_AMBIGUOUS_SEMANTIC_FIELD` (exit 13), rather than incorrectly claiming
+  the known field does not exist; provisional-source and constraint checks remain.
+- Record workspace table references such as `SigninLogs`, `AuditLogs`, and
+  `SecurityAlert` that the physical probe recognized but session tokenization
+  previously ignored.
+- Enforce physical storage compatibility in semantic availability and probe
+  target planning, including local-overlap validation and candidate context reads.
+  Preserve historical overlap evidence when current storage is incompatible.
+  String identifier interpretations no longer trigger validation against numeric
+  or otherwise incompatible physical columns.
+- Treat new or unknown availability states as non-queryable rather than granting
+  availability to every state except the original unavailable label.
+
 ## [0.16.2] - 2026-10-07
 
 ### Fixed

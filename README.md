@@ -35,8 +35,8 @@ pipeable, and small enough for an agent's context window.
   exactly how to drive it.
 - **Playbooks** — alert-title → [playbook](playbooks/index.md) mapping for
   common Defender alerts (BEC, forwarding rules, ransomware, AiTM, C2, …).
-- **Optional extras** — a schema graph that learns identifier pivots from your
-  saved hunts (exportable to BloodHound), local investigation sessions with
+- **Optional extras** — a schema graph initialized from XDRInternals that learns identifier
+  pivots from saved hunts or automatic recent-data capture (exportable to BloodHound), local investigation sessions with
   an improvement loop, and an *unofficial* device-timeline download that
   reaches back ~180 days. None of these are needed to work an incident.
 
@@ -410,22 +410,30 @@ for the moment you hold an identifier — a DeviceId, an account, a SHA-256 —
 and want to know which other tables and differently named fields carry it:
 
 ```bash
+xdr schema init                       # reference comparison and tenant validation
 xdr schema pivot DeviceNetworkEvents.DeviceId
 xdr schema path DeviceNetworkEvents DeviceProcessEvents
 ```
 
-It starts from a reviewed graph shipped with the tool and grows from your own
-hunts: `xdr schema collect` mines the results you have already saved, recovers
-field origins from their KQL, and validates promising pairs with a few
-targeted queries; `--explore` searches for saved identifiers in other tables.
-Shared values establish *correlation* evidence, never join safety.
+`schema init` compares XDRInternals reference mappings with this tenant's physical
+schema and validates supported routes. The reviewed graph shipped with the tool
+and tenant observations remain distinct from trusted reference mappings.
+
+`xdr schema collect` mines saved results and recovers field origins from their KQL.
+`--explore` also works without saved hunts: it captures up to 25,000 rows per table
+within a requested 24-hour horizon, saves them privately, and finds overlaps locally.
+Untimed inventory is sampled. Complete captures from the same job support observed
+routes directly; other eligible pairs use focused tenant queries batched by target
+table. Capped coverage and weak candidates remain explicit. Shared values establish
+*correlation* evidence, never join safety. Budgets checkpoint unfinished work for
+resumption by rerunning the command.
 
 ```bash
 xdr schema status                     # cache-only; prints the exact next_command
 xdr schema collect --local-only       # mine saved results without tenant queries
 xdr schema collect --plan-only        # preview focused validation
 xdr schema collect                    # validate promising field pairs
-xdr schema collect --explore          # discover additional identifier locations
+xdr schema collect --explore          # capture recent data and discover pivots automatically
 xdr schema export-opengraph graph.json --include-tenant   # BloodHound import
 ```
 
@@ -453,8 +461,9 @@ query budgets, what session end does, BloodHound export, and portable bundles
 | `xdr domains list [--source all\|entra\|active-directory]` | Source-labelled Entra and observed AD domains (AD is cookie-only) |
 | `xdr results list / show / head / rows / query / shape / prune` | Browse and manage local result artifacts (`rows --type/--offset/--limit`) |
 | `xdr schema status` / `xdr schema diagnostics` | Cache-only state of the schema cache and semantic graph; `status` prints the exact `next_command` |
-| `xdr schema collect` [`--local-only` \| `--plan-only` \| `--explore`] | Mine saved results, validate focused pairs, or discover additional identifier locations; rerun to continue |
+| `xdr schema collect` [`--local-only` \| `--plan-only` \| `--explore`] | Mine saved results or automatically capture recent data and validate pivots; budgets preserve resumable progress |
 | `xdr schema pivot FIELD` / `xdr schema path A B` / `xdr schema discoveries` | Explain reviewed and empirical identifier routes |
+| `xdr schema init` | Initialize reference mappings and validate them for this tenant |
 | `xdr schema refresh` / `tables` / `show TABLE` | Refresh and query the physical table/column cache (`--search`) |
 | `xdr schema observe` / `candidate-review` / `candidate-proposal` | Explicit identifier probes, private evidence review, non-promoting core proposals |
 | `xdr schema export-opengraph PATH` | Export the graph for BloodHound (`--include-tenant`, `--include-candidates`, `--custom-nodes`) |
@@ -486,7 +495,7 @@ schema_stale_seconds = 86400    # cached schema is visibly stale after this age
 schema_collection_stale_seconds = 604800  # nonblocking semantic-collection reminder
 schema_collect_on_session_end = true  # master switch for session-end schema upkeep
 schema_refresh_on_session_end = true  # refresh only if physical cache is missing/stale
-schema_explore_on_session_end = true  # discover new locations after focused validation
+schema_explore_on_session_end = true  # capture recent data and discover pivots after validation
 schema_explore_max_queries = 5        # exploration queries per explicit session end (1-1000)
 schema_maintenance_timeout_seconds = 90  # overall foreground upkeep deadline; maximum 3600
 ```

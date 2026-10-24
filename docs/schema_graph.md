@@ -17,8 +17,9 @@ your own tenant, or a BloodHound picture of the schema.
 Terms used throughout:
 
 - **Physical cache** - the local copy of the tenant's table and column list,
-  written by `xdr schema refresh` (one Advanced Hunting call). Every other
-  schema command reads it; most never contact the tenant.
+  written by `xdr schema refresh` (one Advanced Hunting call, plus the portal's
+  table listing when portal cookies exist). Every other schema command reads it;
+  most never contact the tenant.
 - **Packaged graph** - the reviewed, value-free semantic graph shipped in the
   package: which fields are the same identifier, how to transform them, and
   which joins are safe.
@@ -28,8 +29,10 @@ Terms used throughout:
 - **Candidate** - an unverified hypothesis that two fields share an
   identifier. Hidden from `pivot`/`path` unless you pass
   `--include-candidates`.
-- **Observed** - a completed tenant query showed sampled identifiers from one
-  field recurring in another. Usable as a search route; not a join contract.
+- **Observed** - verified tenant evidence showed at least three eligible shared
+  identifiers in saved results or complete captures, or a bounded probe supported
+  an empirical route. The evidence stage states which source supports it. Usable
+  as a search route; not a join contract.
 - **Validated** - repeated, independent observations passed a fixed machine
   policy. Still correlation-only; a join-safe edge requires a reviewed core
   change.
@@ -38,6 +41,38 @@ The physical cache answers "which tables and columns exist here?" The graph
 answers "which fields may carry the same identifier, and what workflow is
 safe?" Equal values justify another pivot without proving that a raw KQL join
 is selective, cardinality-safe, or semantically equivalent.
+
+The physical probe is a curated catalog, not exhaustive tenant discovery. New
+refreshes record the exact requested table names and returned tables in cache
+metadata under `coverage`; refresh artifact metadata also exposes `schema_coverage`.
+Refresh, pivot, and path receipts report bounded coverage counts and the actual hunting execution surface
+(`graph`, `mde`, `portal`, or `unknown`). A Graph-to-MDE fallback stays within the
+official backend but changes that surface. Fuzzy-union omissions and unknown
+server truncation never prove a table is absent or inaccessible.
+
+`pivot` and `path` distinguish physical availability from semantic compatibility:
+
+- `available`: a compatible top-level field was returned in the cached schema.
+- `outer-available-unobserved`: JSON storage exists, but this nested path has not
+  been observed locally. This remains an eligible path for explicit probing.
+- `not-probed`: the table was outside the exact recorded probe scope.
+- `not-observed`: the field was not returned, including inconclusive/custom scope.
+- `type-conflict`: an explicit storage type conflicts with the semantic field,
+  or its supplied type is unknown. A nested leaf's type is checked separately
+  from its outer string/dynamic JSON storage.
+- `unavailable`: the legacy label for a missing field when the cache predates
+  coverage metadata; it is not proof of absence.
+
+Only the first two states permit live probing. Missing type metadata in legacy
+rows retains its previous behavior; supplied unknown types do not. Existing
+routes with unusable physical fields are omitted by default; pass
+`--include-unavailable` to inspect their availability labels. Historical local overlaps
+are retained when current storage types prevent live validation. No public schema
+reference is used as evidence that a field exists in the tenant.
+When the pivot source is non-queryable, its receipt outcome is
+`source-not-probed`, `source-not-observed`, `source-type-conflict`, or the legacy
+`source-unavailable`. Path receipts report table-level availability; individual
+steps carry their field-level state and `SourceAvailable`/`TargetAvailable` flags.
 
 Start with the cache-only status command and run its exact
 `context.next_command`:
@@ -62,7 +97,9 @@ foreground upkeep stages for the configured tenant:
    5 samples per overlap, and a 20-query budget. These are not configurable.
 3. **Exploration** - `schema collect --explore` with a budget of
    `schema_explore_max_queries` (default 5, integer 1-1000). This is the only
-   stage with a tunable budget.
+   stage with a tunable budget. It captures recent rows (24-hour requested horizon,
+   up to 25,000 rows per table), correlates privately saved rows locally, and uses
+   the remaining budget for focused validation. It does not require saved seeds.
 
 The whole run has one deadline, `schema_maintenance_timeout_seconds = 90`
 (maximum 3600). Completed work is saved and reused at the next explicit end.
@@ -102,6 +139,64 @@ xdr schema migrate-cache --yes
 Use the recovery command reported by the actual error or diagnostics output.
 `schema refresh` is the tenant-calling operation that replaces the physical
 cache.
+
+### Physical schema refresh
+
+`getschema` is the authority for which columns this tenant can query and their
+types. Refresh probes the union of the packaged table registry
+(`src/xdr_cli/hunting_tables.py`), every table the Defender portal lists for this
+tenant, and every table seen by the previous refresh. Missing tables are skipped
+silently, so absence stays inconclusive.
+
+`--metadata-source` selects the table listing:
+
+| Value | Behavior |
+|---|---|
+| `auto` (default) | Adds the portal `huntingService/schema` listing when tenant-bound portal cookies exist. A missing or failed listing is recorded in `coverage.metadata` and the refresh still succeeds. The selected hunting backend never changes. |
+| `portal` | Requires the listing. If it fails, the getschema cache is still published and the command exits 14. |
+| `probe` | Uses only the getschema probe; the portal is never contacted. |
+
+A metadata listing does not prove that a table or column can be queried, so
+only getschema rows are cached. Tables and columns that are listed but not
+returned by getschema are reported in `coverage.metadata.portal_only_tables` and
+`coverage.metadata.portal_only_columns` (with bounded examples) and stay
+unavailable. Earlier pre-release caches that stored portal-only rows are filtered
+when read, so those rows never authorize a field. When the portal and getschema disagree on a column type,
+getschema wins and the count appears in `coverage.metadata.type_disagreements`.
+In the development tenant, seven portal types disagreed with getschema; for
+example, the portal reports `DeviceTvmInfoGatheringKB.IgId` as `DateTime` while
+getschema returns `string`.
+
+`coverage.new_tables` lists tenant tables that are absent from both the packaged
+registry and the reference table names. `schema init` passes its reference
+snapshot, and a plain `schema refresh` reads the local snapshot when one exists,
+so both commands report the same set. This is how a
+newly shipped Defender table, such as `ExposureRecommendations` in the
+development tenant, is detected and cached before it enters the packaged probe
+registry. The full portal listing, including descriptions and entity tags,
+is saved privately beside the cache as `schema.<generation>.portal.json`. The
+metadata binds it by SHA-256. Receipts carry only bounded counts.
+
+`schema init` proposes routes for tables that the reference does not know yet.
+A new table's string, GUID or numeric column becomes a candidate when either of
+these holds:
+
+- its exact name matches a top-level reference endpoint column of a family whose
+  endpoints exist in this tenant;
+- the verified portal sidecar tags it `Machine` (Defender device) or
+  `UserObjectId` (Entra user).
+
+Each candidate targets at most three physically present hubs of that family,
+preferring `DeviceInfo`, `IdentityInfo` and `EntraIdSignInEvents`. Route IDs are
+deterministic (`tenant-discovery-<hash>`), and at most 100 derived routes are
+validated per run; the receipt reports when the cap is reached. Candidates run
+through the same bounded validation as reference routes. One becomes an
+`observed` pivot only after at least three distinct sampled values match.
+Weaker results stay candidates and never become reference-trusted, reviewed or
+join-safe. Tables with no candidate are listed as unmapped, with
+`xdr schema collect --explore` as the next step for value-overlap discovery.
+In the development tenant, newer tables such as `CallActivityEvents` have neither
+matching column names nor portal entity tags, so they rely on that discovery path.
 
 Browse the physical cache to form field locators:
 
@@ -205,75 +300,122 @@ attributed to a raw column when a probe cannot reproduce that transformation.
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--plan-only` | off | Index and plan only; no tenant queries, no overlay write |
-| `--local-only` | off | Publish saved-result overlaps; no tenant queries |
-| `--explore` | off | Active discovery of saved identifiers in new fields |
-| `--source Table.Column` | none | Restrict exploration seeds; repeatable |
-| `--lookback` | `30d` | Time window for validation and discovery queries |
+| `--plan-only` | off | Preview cached capture/local work without tenant queries or observations |
+| `--local-only` | off | Publish saved-result overlaps without tenant queries |
+| `--explore` | off | Automatically capture recent data, correlate locally and validate focused pairs |
+| `--source Table.Column` | none | Restrict identifiers for gap-filling follow-up queries; repeatable |
+| `--lookback` | `24h` with explore, otherwise `30d` | Capture horizon and validation window |
 | `--samples` | 5 | Identifiers per local-overlap validation (1-100) |
-| `--batch-size` | 20 | Target fields per validation query (1-50) |
-| `--seed-batch-size` | 20 | Identifiers per discovery query (1-100) |
-| `--max-json-depth` | 6 | Nested JSON expansion levels (0-12) |
-| `--discovery-row-limit` | 2000 | Result rows per discovery query (1-10000) |
-| `--max-queries-per-page` | 20 | Total query budget this invocation (1-1000) |
-| `--timeout` | 120 | HTTP timeout per tenant query, seconds (1-3600) |
+| `--batch-size` | 20 | Distinct target fields per validation batch (1-50); cohorts stay separate |
+| `--seed-batch-size` | 20 | Identifiers per gap-filling query (1-100) |
+| `--max-json-depth` | 6 | Gap-filling JSON expansion levels (0-12) |
+| `--discovery-row-limit` | 2000 | Rows per gap-filling result (1-10000); does not cap raw capture |
+| `--max-queries` | 300 | Overall exploration query budget, including capture and validation |
+| `--max-rows` | 2000000 | Overall captured row budget |
+| `--max-bytes` | 2147483648 | Overall serialized capture byte budget |
+| `--deadline` | 1200 | Overall exploration deadline, seconds |
+| `--max-queries-per-page` | 20 | Local validation budget; explicit use with explore overrides max-queries |
+| `--timeout` | 120 | Per-query timeout, seconds (1-3600) |
 
 `--local-only` and `--explore` are mutually exclusive. `--source` requires
-`--explore`. `--samples` and `--batch-size` shape focused validation and are
-ignored by `--explore`; the seed, depth, and row-limit flags shape exploration
-only. `--max-queries-per-page` and `--timeout` apply to both modes.
-
-Collection receipts distinguish pending work from excluded scope. Cached
-tables without a usable time column, unavailable targets, and unsupported
-property paths are recorded in `excluded_scope`. Completing eligible work can
-return success while reporting those exclusions. Budget exhaustion, output
-truncation, depth limits, and upstream failures remain partial. A valid
-source selector with no saved identifiers returns not-found. Completion
-history outlives the one-day refresh interval: never-tested cohorts run
-first, followed by the oldest verified cohorts. Earlier evidence can guide
-scheduling without satisfying the 30-day freshness requirement for promotion.
+`--explore` and does not restrict table capture. Supplying both query-budget flags
+explicitly is a usage error. Capturing more rows does not establish semantic
+review or join safety. Concrete identifiers remain in private artifacts; the
+tenant graph stores value-free evidence and provenance.
 
 ## Explicit active exploration
 
-`schema collect --explore` takes eligible identifiers from every supported saved
-hunt/library artifact. There is no fixed starter-field matrix or target-field
-sweep. Searches use cached tables with `Timestamp` or `TimeGenerated` and report
-tables excluded for lacking a time column. Refresh stale physical availability
-explicitly with `schema refresh`.
-
-Each query searches a batch of identifiers across a group of tables, expands
-nested JSON containers, and returns explicit table, column, path, matched value,
-and count fields. Substring matching narrows the scan; only exact normalized
-leaf-value matches become observations. Unsupported paths, depth limits, and
-result caps are reported as coverage gaps, never evidence of absence. Concrete
-values and query text stay in private artifacts.
-
-Optionally restrict which saved fields supply identifiers:
-
 ```bash
-xdr schema collect --explore \
-  --source DeviceNetworkEvents.DeviceId \
-  --source IdentityInfo.AccountObjectId
+xdr schema collect --explore --plan-only
+xdr schema collect --explore
+xdr schema collect --explore --lookback 2h --max-queries 100
 ```
 
-Defaults are a 30-day lookback, 20 identifiers per query batch, six JSON expansion
-levels, 2,000 result rows per query, a 120-second timeout, and 20 queries per
-invocation. Tables are grouped into batches of at most 100. Batching and the
-invocation budget divide work; they do not silently discard the remaining
-identifiers or eligible tables. `--samples` controls focused local validation,
-not active discovery. Use `--max-json-depth` (up to 12) or
-`--discovery-row-limit` (up to 10,000) when the receipt reports those gaps.
+`--explore` starts with recent tenant data even when no hunt results have been
+saved. It refreshes missing/stale physical metadata, selects getschema-queryable
+tables and verified datetime columns, and fixes one half-open capture interval.
+Timed inventory tables are labelled separately from events. Untimed tables are
+explicit capped state samples; the lookback does not bound them. Global
+knowledge-base tables are excluded. The plan and coverage report retain reasons
+for skipped or unsupported work.
 
-```bash
-xdr schema collect --explore --seed-batch-size 20 --max-queries-per-page 10
-```
+Each table gets one capped query, normally up to 25,000 rows. Timed tables
+select the newest rows in the requested interval. When capped, the actual
+observed span is shorter and its oldest timestamp can be only partly sampled;
+rows tied at that boundary are retained. Untimed inventory/state tables use a
+capped sample. The result reports the requested window, observed boundary,
+sample/cap flags and source counts separately. Counts from a separate source
+scan are informational. Samples never establish absence elsewhere in the table.
 
-Saved search evidence is verified against its originating artifacts before reuse.
-A successful search can directly add an observed pivot to a previously unknown
-field, without a redundant follow-up probe. With no eligible saved identifiers,
-exploration reports no work rather than starting a blind scan.
+A same-query control packet counts the exact materialized selected rows.
+Matching full payload counts prove transport completeness; a cap-plus-one
+sentinel distinguishes a complete source window from a sample. Size, runtime or
+transport-truncation failures automatically reduce the row cap and retry, down
+to a bounded minimum. No manual window selection is needed. Multiple requests
+do not provide a single transactional tenant snapshot.
+
+Full selected rows are saved as private capture artifacts with exact query,
+compiler, tenant, source, interval, coverage and proof bindings. Bulk rows are
+not printed. The existing local index mines identifiers and nested paths,
+publishes conservative overlap evidence and runs focused validation. When both
+sides are verified complete captures from the same job, tenant, schema, execution
+surface and interval, it uses their saved overlap without a redundant tenant query.
+At least three distinct eligible shared identifiers produce the distinct
+`capture-overlap-complete` observed stage. Weaker overlaps remain candidates;
+private-address-only overlaps do not meet the threshold. This stage is historical
+presence evidence, never live-query validation, absence evidence or a join assertion.
+
+Pairs involving sampled/capped captures or ordinary saved hunt/library results
+remain eligible for live validation. Scalar targets share a single scan per target
+table and bounded chunk, even when source fields, normalizers or identifier cohorts
+differ. Each pair keeps its own cohort and exact match counts; another pair's
+identifiers cannot strengthen its result. Array paths are isolated to preserve
+expansion semantics. Distinct-target and query-byte limits can split large batches.
+Receipts distinguish complete-capture skips, below-threshold pairs, planned live
+pairs and queries, and completed queries. Identifier searches remain available for failed/incomplete timed tables. The seed/depth/
+result-limit flags apply to that follow-up stage. Inventory co-occurrence
+remains historical evidence when a time-bounded live validation cannot be
+compiled; it does not become a join assertion.
+
+Exploration reserves 20% of its remaining query budget, up to 50 queries, for
+focused validation when at least two queries remain. Large inventory capture
+therefore cannot consume the validation allocation. Unused validation capacity
+does not trigger a broad identifier sweep.
+
+One invocation advances ordinary batches automatically and honors bounded retry
+and quota delays. Validation honors Retry-After with at most 10 retries, 120 seconds
+per delay and 600 seconds of total waiting across capture and validation, within
+the same deadline and query budget. Completed fresh validations are reused.
+A true query/row/byte/deadline limit or cancellation saves a
+checkpoint; rerunning resumes verified unfinished work instead of recapturing
+completed tables. Intentional samples can complete the collection policy while
+remaining nonexhaustive; partial success is reserved for unfinished work or failures. Inspect the final receipt and private table-coverage records:
+partial coverage returns exit 14, with retry timing when applicable. No background
+scheduler is installed. Parsing, evidence reads and SQLite correlation check the
+same foreground deadline; unfinished indexing retains capture evidence and does
+not publish an incomplete replacement graph. Existing hunt/library results remain intact and continue
+to contribute local evidence. Older automatic claims are reverified under current
+query/provenance contracts; incompatible claims can leave the active graph while
+their source results remain under normal retention. Saved overlaps are rederived
+from verified artifacts. Active capture evidence is retained during result
+pruning until its handoff is durable.
 
 ## How observe compiles and crawls
+
+When a field has a unique packaged interpretation and all competing tenant
+interpretations are provisional occurrences, `observe` uses the packaged
+contract. It keeps the provisional evidence and still enforces source constraints
+and the ban on provisional-source fan-out. Multiple non-provisional meanings or
+multiple packaged meanings remain ambiguous and return
+`SCHEMA_AMBIGUOUS_SEMANTIC_FIELD` (exit 13), with bounded competing interpretation
+IDs. A genuinely unknown semantic field still returns exit 8.
+
+An unsupported source normalizer, currently including `ip-canonical`, returns
+`SCHEMA_SOURCE_NOT_PROBEABLE` (exit 13) before authentication or query execution.
+Cache-only pivots and offline correlation remain available. A constrained source
+the compiler cannot enforce returns `SCHEMA_SOURCE_CONSTRAINED` (exit 12,
+retained for compatibility); it does not indicate that writing a result failed.
+Neither outcome is evidence of a confirmed or invalid relationship.
 
 Use `observe` for one source:
 
@@ -477,6 +619,28 @@ tier, where stronger route semantics rank first. Candidates remain last.
 Per-step output includes transform, cardinality, temporal
 guidance, confidence, provenance, entity kind, namespace, role, and physical
 availability.
+
+Use `SemanticallyReviewed` and `EmpiricallyValidated` to distinguish repository
+review from tenant evidence. `SemanticallyReviewed=true` means the route's
+`EvidenceLevel` is `reviewed`; it does not claim that this tenant was queried.
+`EmpiricallyValidated=true` means the level is `validated` under the independent
+artifact policy above. Neither flag asserts that every value joins safely or
+that the route has just been tested against current tenant data. The legacy
+`Validated` flag is the union of these two states and is retained for compatibility;
+do not interpret it alone as live tenant confirmation. Field availability and
+successful cache-only navigation are separate from empirical validation.
+`EmpiricallyValidated=false` on a reviewed route identifies its reported evidence
+level; it does not mean tenant evidence was checked and failed. Reviewed core
+contracts keep that level even when tenant observations corroborate them.
+
+`schema init` imports a content-bound XDRInternals snapshot. Reference mappings
+start trusted, with their original provenance and conditions. Cache-only route
+composition checks whether the current compiler can enforce those conditions;
+unsupported conditions prevent tenant use. `TenantMatched` requires verified
+evidence from the current query contract. Reference trust is separate from
+semantic review and the independent-artifact `EmpiricallyValidated` policy.
+Downloading a mapping or finding its outer columns is not validation of its
+conditions or nested paths.
 
 Path output distinguishes:
 
@@ -972,7 +1136,7 @@ Shared entities are row evidence; a structural route alone is not.
 | `schema collect --plan-only` | No | Index saved results and preview focused validation |
 | `schema collect --local-only` | No | Publish saved-result overlaps |
 | `schema collect` | When candidates exist | Mine saved results and validate focused targets |
-| `schema collect --explore` | When work remains | Find saved identifiers in new fields and nested paths |
+| `schema collect --explore` | When work remains | Capture recent tenant data and discover pivots locally |
 | `schema observe --plan-only` | No | Preview one source's targets and request estimate |
 | `schema observe` | Yes | Sample/reuse identifiers and crawl target tables |
 | `schema discoveries` | No | Report observed/validated routes and policy decisions |
@@ -985,3 +1149,77 @@ Shared entities are row evidence; a structural route alone is not.
 | `schema repair-overlay`, `schema migrate-cache` | No | Repair local state |
 | `schema bundle inspect/export/import` | No | Inspect or move portable schema state |
 | `schema prune-evidence` | No | Retire explicit observations before result pruning |
+
+## Tenant initialization from XDRInternals
+
+Run `xdr schema init` when setting up a tenant. It downloads a content-bound public
+XDRInternals snapshot, refreshes physical schema across reference, packaged,
+previously observed and portal-listed table names, and executes bounded,
+aggregate-only validation KQL for every applicable reference mapping. The private
+result contains every reference route, including missing tables and unsupported
+conditions. `--reference-dir DIR` imports the four saved provider JSON documents;
+`--sync-reference` explicitly replaces the cached public snapshot.
+
+The reference starts trusted. `matched` means the saved validation query found
+shared identifiers within its stated scope. `no-source-data`, `no-target-data`
+and `no-overlap` remain inconclusive; they do not contradict a reference mapping.
+Compiled-check failures and incompatible physical types prevent that tenant route from
+being offered. Reference guidance, scope, counts and evidence run IDs accompany
+routes; reference trust alone never establishes raw join safety. Existing reviewed
+core join contracts retain their authored semantics.
+
+Validation defaults to seven days, fifty source keys, a 1,000-row sample, and at
+most 200 queries per invocation. Additional compiler membership-scan caps are
+reported in each route's scope; a capped scan cannot establish absence. Results
+are tenant-, reference-, schema- and query-bound. Repeated runs reuse verified
+results for one day. A budget or service pause saves progress and returns exit 14;
+follow the receipt's exact continuation command and honor `retry_after_seconds`.
+`--revalidate` reruns fresh results. `--plan-only` uses local caches without tenant
+queries or cache publication.
+
+Normal `schema pivot` and `schema path` stay cache-only and omit physically
+unusable routes. Use `--include-unavailable` for diagnostics. `ReferenceTrusted`
+is separate from semantic review. `TenantMatched` reports a bounded reference
+match; `EmpiricallyValidated` retains the stronger independent-artifact policy. Missing or corrupted validation artifacts suppress only the affected
+reference routes until initialization revalidates them. Dense path searches have
+a work cap and report incomplete search/truncated results in `context.path_search`.
+
+Initialization also saves full table/column comparisons, including tenant-only
+columns and type disagreements; physical types from tenant `getschema` take priority.
+Refresh continues to discover tables outside the reference through the tenant
+portal listing and retained cache names. Exact identifier-column names and verified
+portal Entity tags create candidate mappings to available reference hubs. These
+share the validation budget and become observed correlation pivots after at least
+three distinct shared identifiers; weaker matches stay opt-in candidates and never
+inherit reference trust or join safety. Initialization reports the 100-candidate
+cap and unmapped tables as coverage gaps. Existing `schema observe` and
+`schema collect --explore` workflows remain available for fields without usable
+name/tag hints and tenant-specific nested paths.
+
+### Validation compatibility and evidence retention
+
+Route composition derives scope and conditions from the running compiler, even
+before a validation ledger exists. Saved matches must still match that compiler,
+reference, tenant, options and physical-schema binding. A changed contract retires
+the match claim until initialization reruns. Verified failed checks remain
+suppressed across unrelated schema refreshes and budget pauses until revalidated.
+Unverifiable type conditions, such as a workload-dependent cloud `Target` value,
+are reported as unsupported rather than promoted to unconditional user semantics.
+
+Generic `schema observe` does not use runtime-only imported interpretations as
+sources. It can still test packaged sources against new fields using self-contained
+neutral provisional targets; known contextual constraints cannot be bypassed by
+such a fallback. Older observations with missing interpretation definitions are
+excluded from composition and reported in status and route coverage diagnostics.
+Their private records and artifacts are not silently deleted.
+
+`results prune` preserves verified evidence pinned by current reference ledgers
+and live scope pointers across all local tenants. Active corruption fails pruning
+closed. Per-query obsolete ledger generations are cleaned up in bounded batches;
+live pointer targets remain intact. Authentication, permission, configuration and
+artifact errors keep their original exit classes. Only transient rate, timeout
+and network failures pause validation with exit 14 and a continuation.
+
+Reference trust describes mapping provenance, not instruction authority. Free-form
+third-party titles and guidance remain in the private artifact; automatic previews
+show structured locators, conditions and reference IDs instead of that prose.

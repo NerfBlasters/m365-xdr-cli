@@ -64,7 +64,9 @@ def test_refresh_precedes_validation_and_budgeted_exploration(ctx, cache_state, 
         ),
         patch("xdr_cli.commands.schema_cmd._schema_refresh", side_effect=refresh),
         patch("xdr_cli.schema_graph.local_collection.collect_local", side_effect=validate),
-        patch("xdr_cli.schema_graph.discovery.explore_saved_identifiers", side_effect=explore),
+        patch(
+            "xdr_cli.schema_graph.capture_orchestration.explore_recent_data", side_effect=explore
+        ),
         patch("xdr_cli.schema_graph.maintenance.mark_collection_complete") as complete,
     ):
         collect_session_schema(ctx, on_result=results.append)
@@ -88,7 +90,7 @@ def test_stage_toggles_skip_network_work_but_keep_validation(ctx):
             "xdr_cli.schema_graph.local_collection.collect_local", new_callable=AsyncMock
         ) as local,
         patch(
-            "xdr_cli.schema_graph.discovery.explore_saved_identifiers", new_callable=AsyncMock
+            "xdr_cli.schema_graph.capture_orchestration.explore_recent_data", new_callable=AsyncMock
         ) as explore,
     ):
         collect_session_schema(ctx, on_result=results.append)
@@ -109,7 +111,7 @@ def test_validation_budget_pause_does_not_starve_exploration(ctx):
         patch("xdr_cli.commands.schema_cmd._load_cache", return_value=([], {"stale": False})),
         patch("xdr_cli.schema_graph.local_collection.collect_local", side_effect=validate),
         patch(
-            "xdr_cli.schema_graph.discovery.explore_saved_identifiers", new_callable=AsyncMock
+            "xdr_cli.schema_graph.capture_orchestration.explore_recent_data", new_callable=AsyncMock
         ) as explore,
         patch("xdr_cli.schema_graph.maintenance.mark_collection_complete") as complete,
         pytest.raises(PartialSuccessError),
@@ -135,7 +137,7 @@ def test_validation_upstream_failure_stops_exploration(ctx, error):
         patch("xdr_cli.commands.schema_cmd._load_cache", return_value=([], {"stale": False})),
         patch("xdr_cli.schema_graph.local_collection.collect_local", side_effect=validate),
         patch(
-            "xdr_cli.schema_graph.discovery.explore_saved_identifiers", new_callable=AsyncMock
+            "xdr_cli.schema_graph.capture_orchestration.explore_recent_data", new_callable=AsyncMock
         ) as explore,
         patch("xdr_cli.schema_graph.maintenance.mark_collection_complete") as complete,
         pytest.raises(PartialSuccessError) as exc,
@@ -199,7 +201,7 @@ def test_deadline_stops_queries_saves_prior_receipts_and_skips_future_stages(ctx
         patch(
             "xdr_cli.schema_graph.local_collection.collect_local", side_effect=stage("validation")
         ),
-        patch("xdr_cli.schema_graph.discovery.explore_saved_identifiers",
+        patch("xdr_cli.schema_graph.capture_orchestration.explore_recent_data",
               side_effect=stage("exploration")),
         patch("xdr_cli.schema_graph.maintenance.mark_collection_complete") as complete,
         pytest.raises(XDRTimeoutError) as exc,
@@ -234,7 +236,7 @@ def test_deadline_is_shared_across_stages_not_reset_for_each_query(ctx):
         patch("xdr_cli.commands.schema_cmd._load_cache", return_value=([], {"stale": True})),
         patch("xdr_cli.commands.schema_cmd._schema_refresh", side_effect=consume_budget),
         patch("xdr_cli.schema_graph.local_collection.collect_local", side_effect=consume_budget),
-        patch("xdr_cli.schema_graph.discovery.explore_saved_identifiers") as explore,
+        patch("xdr_cli.schema_graph.capture_orchestration.explore_recent_data") as explore,
         pytest.raises(XDRTimeoutError),
     ):
         collect_session_schema(ctx, on_result=results.append)

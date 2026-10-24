@@ -20,6 +20,7 @@ from xdr_cli.results import tenant_fingerprint
 ORIGIN = "https://security.microsoft.com"
 TENANT = ORIGIN + "/apiproxy/mtp/sccManagement/mgmt/TenantContext"
 HUNT = ORIGIN + "/apiproxy/hunting/huntingQueryExecutorService/queryExecutor/v1/external"
+HUNTING_SCHEMA = ORIGIN + "/apiproxy/mtp/huntingService/schema"
 
 
 @pytest.fixture
@@ -56,6 +57,7 @@ async def test_cookie_hunting_verifies_tenant_and_never_constructs_msal(config):
     assert result.results == [{"value": 1}]
     assert result.schema == [{"name": "value", "type": "Int64"}]
     assert result.stats["Quota"]["ExecutionTime"] == "00:00:00.001"
+    assert result.metadata["execution_surface"] == "portal"
     assert tenant.call_count == 1
     assert hunting.call_count == 2
     auth.assert_not_called()
@@ -384,6 +386,7 @@ def test_cookie_session_end_refreshes_schema_without_official_auth(config, monke
         "xdr_cli.auth.AuthManager", "xdr_cli.commands.schema_cmd.AuthManager",
         "xdr_cli.schema_graph.local_collection.AuthManager",
         "xdr_cli.schema_graph.discovery.AuthManager",
+        "xdr_cli.schema_graph.capture_orchestration.AuthManager",
     ):
         monkeypatch.setattr(target, forbidden)
     respx.get(TENANT).respond(200, json={"AuthInfo": {"TenantId": "test-tenant"}})
@@ -395,7 +398,20 @@ def test_cookie_session_end_refreshes_schema_without_official_auth(config, monke
     schema["Results"] = [{
         "TableName": "DeviceInfo", "ColumnName": "Timestamp", "ColumnType": "datetime",
     }]
-    hunting = respx.post(HUNT).respond(200, json=schema)
+    def capture_response(request):
+        query = json.loads(request.content)["QueryText"]
+        if "getschema" in query:
+            return httpx.Response(200, json=schema)
+        if query.startswith("let "):
+            results = [{"__xdr_control": "v2", "__xdr_count": 0, "__xdr_bytes": 0,
+                        "__xdr_more": 0, "__xdr_floor": None, "__xdr_total": 0}]
+        else:
+            # A zero histogram still requires a verified fetch of the interval.
+            results = []
+        return httpx.Response(200, json={"Results": results, "Schema": []})
+
+    hunting = respx.post(HUNT).mock(side_effect=capture_response)
+    respx.get(HUNTING_SCHEMA).respond(200, json={"Tables": []})
     runner = CliRunner()
     start = runner.invoke(app, ["--backend", "portal-cookie", "session", "start"])
     assert start.exit_code == 0, start.output
@@ -410,7 +426,7 @@ def test_cookie_session_end_refreshes_schema_without_official_auth(config, monke
     stages = records[-1]["maintenance"]["result"]["context"]["stages"]
     assert stages["refresh"]["status"] == "success"
     assert current_session() is None
-    assert hunting.call_count == 1  # No evidence: no broad discovery queries.
+    assert 2 <= hunting.call_count <= 6  # Refresh plus bounded automatic capture.
     forbidden.assert_not_called()
 
 

@@ -10,6 +10,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+from tests.local_validation_fakes import keyed_validation_response, route_response
 from click.testing import CliRunner
 
 from xdr_cli.config import Config, save_config
@@ -240,12 +242,17 @@ def test_session_completes_after_exhausting_eligible_scope(home, ctx):
                 {"stale": False},
             ),
         ),
-        patch("xdr_cli.schema_graph.discovery.AuthManager"),
-        patch("xdr_cli.schema_graph.discovery.XDRClient", side_effect=fake_client),
         patch(
-            "xdr_cli.schema_graph.discovery.run_query",
+            "xdr_cli.schema_graph.capture_orchestration.explore_recent_data",
             new_callable=AsyncMock,
-            return_value=empty_search(),
+            side_effect=lambda _ctx, **kwargs: kwargs["on_result"](
+                write_result(
+                    [],
+                    command="schema collect",
+                    tenant_id=TENANT,
+                    receipt_context={"queries_used": 1, "scope_complete": True},
+                )
+            ),
         ) as query,
         patch("xdr_cli.schema_graph.maintenance.mark_collection_complete") as complete,
     ):
@@ -255,7 +262,7 @@ def test_session_completes_after_exhausting_eligible_scope(home, ctx):
     stages = captured[0].receipt.context["stages"]
     assert stages["validation"]["status"] == stages["exploration"]["status"] == "success"
     assert stages["validation"]["result"]["context"]["remaining_queries"] == 0
-    assert stages["exploration"]["result"]["context"]["queries_executed"] == 1
+    assert stages["exploration"]["result"]["context"]["queries_used"] == 1
     complete.assert_called_once()
 
 
@@ -351,6 +358,7 @@ def test_31_day_history_prefers_unseen_work_without_promoting_stale_evidence(hom
     rows = [{"TableName": "Second", "ColumnName": name} for name in ("Who", "Timestamp")]
     queries = []
 
+    @keyed_validation_response
     async def respond(client, query):
         queries.append(query)
         count = len(old) if old[0] in query else len(unseen)
@@ -412,13 +420,13 @@ def test_31_day_history_prefers_unseen_work_without_promoting_stale_evidence(hom
                 )
                 is not None
             )
-            with pytest.raises(PartialSuccessError):
-                collect()
+            collect()
 
     assert len(queries) == 2
     assert old[0] in queries[0]
     assert unseen[0] in queries[1]
-    assert old[0] not in queries[1]
+    # One table scan refreshes old and unseen cohorts independently.
+    assert old[0] in queries[1]
 
 
 @pytest.mark.parametrize("count,expected", [(1, "candidate"), (2, "candidate"), (3, "observed")])
@@ -468,7 +476,10 @@ async def test_reverse_validation_keeps_identity_and_verifiable_evidence(home, c
     with (
         patch("xdr_cli.schema_graph.local_collection.AuthManager"),
         patch("xdr_cli.schema_graph.local_collection.XDRClient", side_effect=fake_client),
-        patch("xdr_cli.schema_graph.local_collection.run_query", return_value=response) as query,
+        patch(
+            "xdr_cli.schema_graph.local_collection.run_query",
+            side_effect=route_response(response.results),
+        ) as query,
     ):
         await collect_local(
             ctx,
@@ -522,7 +533,10 @@ async def test_private_ip_overlap_remains_candidate(home, ctx, local_only):
     with (
         patch("xdr_cli.schema_graph.local_collection.AuthManager"),
         patch("xdr_cli.schema_graph.local_collection.XDRClient", side_effect=fake_client),
-        patch("xdr_cli.schema_graph.local_collection.run_query", return_value=response),
+        patch(
+            "xdr_cli.schema_graph.local_collection.run_query",
+            side_effect=route_response(response.results),
+        ),
     ):
         await collect_local(
             ctx,
@@ -595,6 +609,7 @@ async def test_validation_needs_independent_cohorts(home, ctx, second_values, ex
                 tenant_id=TENANT,
             )
 
+    @keyed_validation_response
     async def respond(_client, query):
         count = len(set(re.findall(r"[uv][0-9]+@example.invalid", query)))
         return SimpleNamespace(
@@ -732,7 +747,10 @@ async def test_future_validation_cannot_be_reused_or_promoted(home, ctx):
     with (
         patch("xdr_cli.schema_graph.local_collection.AuthManager"),
         patch("xdr_cli.schema_graph.local_collection.XDRClient", side_effect=fake_client),
-        patch("xdr_cli.schema_graph.local_collection.run_query", return_value=response) as query,
+        patch(
+            "xdr_cli.schema_graph.local_collection.run_query",
+            side_effect=route_response(response.results),
+        ) as query,
     ):
 
         async def collect():

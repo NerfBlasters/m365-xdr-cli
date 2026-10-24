@@ -14,10 +14,12 @@ from xdr_cli.schema_graph.model import (
     field_id,
     interpretation_id,
 )
+from xdr_cli.schema_graph.physical import (
+    canonical_storage_type,
+    field_storage_compatible,
+    physical_field_rows,
+)
 from xdr_cli.schema_graph.probe import supports_probe_prefilter
-
-_STRING_TYPES = {"string", "system.string"}
-_DYNAMIC_TYPES = {"dynamic", "system.dynamic", "object", "system.object"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,14 +32,8 @@ class ProbeTarget:
 def normalized_kql_type(value: object) -> str | None:
     """Return the probeable KQL type represented by a getschema value."""
 
-    if not isinstance(value, str):
-        return None
-    lowered = value.strip().casefold()
-    if lowered in _STRING_TYPES:
-        return "string"
-    if lowered in _DYNAMIC_TYPES:
-        return "dynamic"
-    return None
+    normalized = canonical_storage_type(value)
+    return normalized if normalized in {"string", "dynamic"} else None
 
 
 def physical_catalog_graph(schema_rows: list[dict], known: Graph) -> Graph:
@@ -101,6 +97,8 @@ def exhaustive_probe_targets(
     schema_rows: list[dict],
     graph: Graph,
     source: InterpretationRecord,
+    *,
+    excluded_interpretation_ids: frozenset[str] = frozenset(),
 ) -> tuple[tuple[ProbeTarget, ...], Graph]:
     """Plan every eligible locator under one reviewed source interpretation.
 
@@ -114,6 +112,7 @@ def exhaustive_probe_targets(
             f"normalizer {source.normalizer!r} has no deterministic KQL prefilter"
         )
     additions = physical_catalog_graph(schema_rows, graph)
+    physical = physical_field_rows(schema_rows)
     combined_fields = {**graph.fields, **additions.fields}
     eligible_outer = {
         (str(row.get("TableName")), str(row.get("ColumnName")))
@@ -133,6 +132,10 @@ def exhaustive_probe_targets(
             field.locator.column,
         ) not in eligible_outer:
             continue
+        if not field_storage_compatible(
+            field, physical.get((field.locator.table, field.locator.column), [])
+        ):
+            continue
         applicable = [
             item
             for item in existing_by_field.get(field.id, [])
@@ -141,7 +144,8 @@ def exhaustive_probe_targets(
             and item.normalizer == source.normalizer
         ]
         compatible = sorted(
-            (item for item in applicable if not item.constraints),
+            (item for item in applicable if not item.constraints
+             and item.id not in excluded_interpretation_ids),
             key=lambda item: item.id,
         )
         if compatible:
@@ -154,7 +158,7 @@ def exhaustive_probe_targets(
                 for item in compatible
             )
             continue
-        if applicable:
+        if any(item.constraints for item in applicable):
             # A reviewed constrained interpretation is evidence that this
             # field is polymorphic. Creating an unconstrained provisional copy
             # would bypass the constraint and misclassify sibling-dependent

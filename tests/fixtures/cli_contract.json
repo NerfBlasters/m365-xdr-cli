@@ -762,12 +762,16 @@
     },
     "schema collect:--explore": {
       "batch_size": 20,
+      "deadline": 1200,
       "discovery_row_limit": 2000,
       "explore": true,
       "local_only": false,
-      "lookback": "30d",
+      "lookback": null,
+      "max_bytes": 2147483648,
       "max_json_depth": 6,
+      "max_queries": 300,
       "max_queries_per_page": 20,
+      "max_rows": 2000000,
       "plan_only": false,
       "samples": 5,
       "seed_batch_size": 20,
@@ -776,12 +780,16 @@
     },
     "schema collect:--local-only": {
       "batch_size": 20,
+      "deadline": 1200,
       "discovery_row_limit": 2000,
       "explore": false,
       "local_only": true,
-      "lookback": "30d",
+      "lookback": null,
+      "max_bytes": 2147483648,
       "max_json_depth": 6,
+      "max_queries": 300,
       "max_queries_per_page": 20,
+      "max_rows": 2000000,
       "plan_only": false,
       "samples": 5,
       "seed_batch_size": 20,
@@ -790,12 +798,16 @@
     },
     "schema collect:--plan-only": {
       "batch_size": 20,
+      "deadline": 1200,
       "discovery_row_limit": 2000,
       "explore": false,
       "local_only": false,
-      "lookback": "30d",
+      "lookback": null,
+      "max_bytes": 2147483648,
       "max_json_depth": 6,
+      "max_queries": 300,
       "max_queries_per_page": 20,
+      "max_rows": 2000000,
       "plan_only": true,
       "samples": 5,
       "seed_batch_size": 20,
@@ -804,12 +816,16 @@
     },
     "schema collect:required": {
       "batch_size": 20,
+      "deadline": 1200,
       "discovery_row_limit": 2000,
       "explore": false,
       "local_only": false,
-      "lookback": "30d",
+      "lookback": null,
+      "max_bytes": 2147483648,
       "max_json_depth": 6,
+      "max_queries": 300,
       "max_queries_per_page": 20,
+      "max_rows": 2000000,
       "plan_only": false,
       "samples": 5,
       "seed_batch_size": 20,
@@ -818,12 +834,16 @@
     },
     "schema collect:supplied": {
       "batch_size": 1,
+      "deadline": 1,
       "discovery_row_limit": 1,
       "explore": true,
       "local_only": true,
       "lookback": "sample",
+      "max_bytes": 1,
       "max_json_depth": 1,
+      "max_queries": 1,
       "max_queries_per_page": 1,
+      "max_rows": 1,
       "plan_only": true,
       "samples": 1,
       "seed_batch_size": 1,
@@ -922,6 +942,80 @@
       "output": {
         "path": "<output-path>"
       }
+    },
+    "schema init:--plan-only": {
+      "lookback": "7d",
+      "max_queries": 200,
+      "metadata_source": "auto",
+      "plan_only": true,
+      "reference_dir": null,
+      "revalidate": false,
+      "row_limit": 1000,
+      "samples": 50,
+      "skip_refresh": false,
+      "sync_reference": false
+    },
+    "schema init:--revalidate": {
+      "lookback": "7d",
+      "max_queries": 200,
+      "metadata_source": "auto",
+      "plan_only": false,
+      "reference_dir": null,
+      "revalidate": true,
+      "row_limit": 1000,
+      "samples": 50,
+      "skip_refresh": false,
+      "sync_reference": false
+    },
+    "schema init:--skip-refresh": {
+      "lookback": "7d",
+      "max_queries": 200,
+      "metadata_source": "auto",
+      "plan_only": false,
+      "reference_dir": null,
+      "revalidate": false,
+      "row_limit": 1000,
+      "samples": 50,
+      "skip_refresh": true,
+      "sync_reference": false
+    },
+    "schema init:--sync-reference": {
+      "lookback": "7d",
+      "max_queries": 200,
+      "metadata_source": "auto",
+      "plan_only": false,
+      "reference_dir": null,
+      "revalidate": false,
+      "row_limit": 1000,
+      "samples": 50,
+      "skip_refresh": false,
+      "sync_reference": true
+    },
+    "schema init:required": {
+      "lookback": "7d",
+      "max_queries": 200,
+      "metadata_source": "auto",
+      "plan_only": false,
+      "reference_dir": null,
+      "revalidate": false,
+      "row_limit": 1000,
+      "samples": 50,
+      "skip_refresh": false,
+      "sync_reference": false
+    },
+    "schema init:supplied": {
+      "lookback": "sample",
+      "max_queries": 1,
+      "metadata_source": "auto",
+      "plan_only": true,
+      "reference_dir": {
+        "path": "<existing-directory>"
+      },
+      "revalidate": true,
+      "row_limit": 1,
+      "samples": 1,
+      "skip_refresh": true,
+      "sync_reference": true
     },
     "schema migrate-cache:--yes": {
       "yes": true
@@ -1039,32 +1133,50 @@
     },
     "schema path:--include-candidates": {
       "include_candidates": true,
+      "include_unavailable": false,
+      "max_depth": 4,
+      "source_table": "sample",
+      "target_table": "sample"
+    },
+    "schema path:--include-unavailable": {
+      "include_candidates": false,
+      "include_unavailable": true,
       "max_depth": 4,
       "source_table": "sample",
       "target_table": "sample"
     },
     "schema path:required": {
       "include_candidates": false,
+      "include_unavailable": false,
       "max_depth": 4,
       "source_table": "sample",
       "target_table": "sample"
     },
     "schema path:supplied": {
       "include_candidates": true,
+      "include_unavailable": true,
       "max_depth": 1,
       "source_table": "sample",
       "target_table": "sample"
     },
     "schema pivot:--include-candidates": {
       "include_candidates": true,
+      "include_unavailable": false,
+      "locator": "sample"
+    },
+    "schema pivot:--include-unavailable": {
+      "include_candidates": false,
+      "include_unavailable": true,
       "locator": "sample"
     },
     "schema pivot:required": {
       "include_candidates": false,
+      "include_unavailable": false,
       "locator": "sample"
     },
     "schema pivot:supplied": {
       "include_candidates": true,
+      "include_unavailable": true,
       "locator": "sample"
     },
     "schema prune-evidence:--include-legacy": {
@@ -1087,8 +1199,12 @@
       "older_than": 1,
       "yes": true
     },
-    "schema refresh:required": {},
-    "schema refresh:supplied": {},
+    "schema refresh:required": {
+      "metadata_source": "auto"
+    },
+    "schema refresh:supplied": {
+      "metadata_source": "auto"
+    },
     "schema repair-overlay:--all-local": {
       "all_local": true,
       "reset_empty": false,
@@ -3923,7 +4039,7 @@
       ]
     },
     "results prune": {
-      "help": "Delete old results; retire automatic evidence and preserve explicit pins. Example: `xdr results prune --older-than 90 --yes` Automatic discovery references are retired at the cutoff before deleting bytes. Explicit observations and extant candidate proposals retain their evidence. A proposal mismatch stops pruning. Retire explicit observations with schema prune-evidence and delete merged or abandoned proposal drafts before pruning their evidence.",
+      "help": "Delete old results; retire automatic evidence and preserve explicit pins. Example: `xdr results prune --older-than 90 --yes` Automatic discovery references are retired at the cutoff before deleting bytes. Explicit observations and extant candidate proposals retain their evidence. Current reference validation ledgers and live scope pointers also retain their verified evidence across all local tenants. An active evidence mismatch stops pruning. Retire explicit observations with schema prune-evidence and delete merged or abandoned proposal drafts before pruning their evidence.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,
@@ -4758,7 +4874,7 @@
       ]
     },
     "schema collect": {
-      "help": "Mine saved results, or actively discover new locations of their identifiers. xdr schema collect --plan-only previews local-overlap validation. xdr schema collect --explore --plan-only previews identifier-led discovery. xdr schema collect --explore --source DeviceNetworkEvents.DeviceId --lookback 7d narrows discovery to values from that saved field. Use xdr schema tables and xdr schema show DeviceNetworkEvents to inspect the cached physical schema. No six-field matrix or catalog target sweep is used by new collections.",
+      "help": "Mine saved results, or capture recent tenant data and discover pivots. xdr schema collect --plan-only previews local-overlap validation. xdr schema collect --explore --source DeviceNetworkEvents.DeviceId --lookback 7d selects follow-up identifiers after table capture. Use xdr schema tables and xdr schema show DeviceNetworkEvents for cached availability. xdr schema collect --explore gathers up to 25,000 recent rows per table, indexes private rows, and discovers field pairs without prior saved identifiers. Complete captures from one job support observed overlaps without re-query; other eligible pairs use tenant validation batched by target table, with separate identifier cohorts. Overlap never asserts join safety. The default requested horizon is 24 hours; capped time spans and untimed inventory samples are labelled explicitly. Unfinished jobs resume within the overall resource budgets. xdr schema collect --explore --plan-only previews capture without network activity. xdr schema collect --local-only mines existing results without tenant queries.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,
@@ -4788,7 +4904,7 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Find saved identifiers in unknown fields and nested paths.",
+          "help": "Capture recent data, correlate locally, and run focused tenant validation.",
           "hidden": false,
           "is_eager": false,
           "is_flag": true,
@@ -4809,7 +4925,7 @@
           "count": false,
           "default": null,
           "envvar": null,
-          "help": "Optionally restrict saved source locators; no starter matrix.",
+          "help": "Restrict source identifiers used for focused follow-up queries after capture.",
           "hidden": false,
           "is_eager": false,
           "is_flag": false,
@@ -4828,9 +4944,9 @@
         },
         {
           "count": false,
-          "default": "30d",
+          "default": null,
           "envvar": null,
-          "help": "",
+          "help": "Time horizon: 24h with --explore; 30d otherwise.",
           "hidden": false,
           "is_eager": false,
           "is_flag": false,
@@ -4851,7 +4967,7 @@
           "count": false,
           "default": 5,
           "envvar": null,
-          "help": "Samples per local-overlap validation; does not cap active discovery.",
+          "help": "Identifiers per validation cohort; does not cap raw table capture.",
           "hidden": false,
           "is_eager": false,
           "is_flag": false,
@@ -4877,7 +4993,7 @@
           "count": false,
           "default": 20,
           "envvar": null,
-          "help": "",
+          "help": "Distinct target fields per validation batch; each pair retains its own identifier cohort.",
           "hidden": false,
           "is_eager": false,
           "is_flag": false,
@@ -4981,7 +5097,7 @@
           "count": false,
           "default": 20,
           "envvar": null,
-          "help": "Total query budget for this invocation; rerun to continue.",
+          "help": "Local validation budget; explicit use with --explore overrides --max-queries.",
           "hidden": false,
           "is_eager": false,
           "is_flag": false,
@@ -4997,6 +5113,110 @@
           "type": {
             "clamp": false,
             "max": 1000,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 300,
+          "envvar": null,
+          "help": "Overall query budget for automatic exploration.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_queries",
+          "nargs": 1,
+          "opts": [
+            "--max-queries"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 10000,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 2000000,
+          "envvar": null,
+          "help": "Overall captured row budget for exploration.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_rows",
+          "nargs": 1,
+          "opts": [
+            "--max-rows"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 2147483648,
+          "envvar": null,
+          "help": "Overall serialized capture byte budget.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_bytes",
+          "nargs": 1,
+          "opts": [
+            "--max-bytes"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 1200,
+          "envvar": null,
+          "help": "Overall exploration deadline in seconds.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "deadline",
+          "nargs": 1,
+          "opts": [
+            "--deadline"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 86400,
             "max_open": false,
             "min": 1,
             "min_open": false,
@@ -5277,6 +5497,252 @@
           "nargs": 1,
           "opts": [
             "--force"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "schema init": {
+      "help": "Compare this tenant to XDRInternals and validate all applicable mappings. Reference mappings start trusted. No-data results preserve that trust; empirical matches are explicitly labeled and retain bounded query scope. Rerun after a budget pause to reuse verified results and continue.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Import a complete saved reference snapshot instead of downloading.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "reference_dir",
+          "nargs": 1,
+          "opts": [
+            "--reference-dir"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": true,
+            "exists": true,
+            "file_okay": false,
+            "name": "directory",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Download a fresh public snapshot.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "sync_reference",
+          "nargs": 1,
+          "opts": [
+            "--sync-reference"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Use the existing physical schema cache.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "skip_refresh",
+          "nargs": 1,
+          "opts": [
+            "--skip-refresh"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Plan using local caches; no network or cache changes.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "plan_only",
+          "nargs": 1,
+          "opts": [
+            "--plan-only"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": "auto",
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "metadata_source",
+          "nargs": 1,
+          "opts": [
+            "--metadata-source"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": true,
+            "choices": [
+              "auto",
+              "portal",
+              "probe"
+            ],
+            "name": "choice"
+          }
+        },
+        {
+          "count": false,
+          "default": "7d",
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "lookback",
+          "nargs": 1,
+          "opts": [
+            "--lookback"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 50,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "samples",
+          "nargs": 1,
+          "opts": [
+            "--samples"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 100,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 1000,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "row_limit",
+          "nargs": 1,
+          "opts": [
+            "--row-limit"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 10000,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 200,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_queries",
+          "nargs": 1,
+          "opts": [
+            "--max-queries"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 1000,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Rerun fresh saved validations.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "revalidate",
+          "nargs": 1,
+          "opts": [
+            "--revalidate"
           ],
           "required": false,
           "secondary_opts": [],
@@ -5726,7 +6192,7 @@
       ]
     },
     "schema path": {
-      "help": "Find reviewed or empirical investigation routes between tables; cache-only. Example: `xdr schema path EntraIdSignInEvents CloudAppEvents` Discover valid table names with `xdr schema tables`. Observed and validated pivots are included by default; `--include-candidates` adds unverified hypotheses. Read `RouteKind`, `EvidenceLevel`, and `AllStepsJoinCompatible`: a sequential pivot is useful for investigation but is not a raw multi-table join recipe.",
+      "help": "Find tenant-usable reference, reviewed, or empirical routes; cache-only. Example: `xdr schema path EntraIdSignInEvents CloudAppEvents` Discover valid table names with `xdr schema tables`. Observed and validated pivots are included by default; `--include-candidates` adds unverified hypotheses. Read `RouteKind`, `EvidenceLevel`, and `AllStepsJoinCompatible`: a sequential pivot is useful for investigation but is not a raw multi-table join recipe.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,
@@ -5819,11 +6285,32 @@
           "type": {
             "name": "boolean"
           }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Include paths through unavailable or unprobed fields for diagnostics.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_unavailable",
+          "nargs": 1,
+          "opts": [
+            "--include-unavailable"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
         }
       ]
     },
     "schema pivot": {
-      "help": "Find fields that can carry the same semantic identifier; cache-only. Example: `xdr schema pivot EntraIdSignInEvents.AccountUpn` Discover valid fields first: `xdr schema show EntraIdSignInEvents` Reviewed, validated, and observed routes are returned by default. Add `--include-candidates` only for unverified hypotheses. A returned pivot is a search route; check `EvidenceLevel`, `JoinSafe`, `Relationship`, `Workflow`, and `Transform` before deciding whether raw equality or a KQL join is safe.",
+      "help": "Find fields that can carry the same semantic identifier; cache-only. Example: `xdr schema pivot EntraIdSignInEvents.AccountUpn` Discover valid fields first: `xdr schema show EntraIdSignInEvents` Tenant-usable reviewed, trusted reference, validated, and observed routes are returned by default. Add `--include-candidates` only for unverified hypotheses. A returned pivot is a search route; check `EvidenceLevel`, `JoinSafe`, `Relationship`, `Workflow`, and `Transform` before deciding whether raw equality or a KQL join is safe.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,
@@ -5863,6 +6350,27 @@
           "nargs": 1,
           "opts": [
             "--include-candidates"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Include routes with unavailable or unprobed fields for diagnostics.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_unavailable",
+          "nargs": 1,
+          "opts": [
+            "--include-unavailable"
           ],
           "required": false,
           "secondary_opts": [],
@@ -5950,11 +6458,39 @@
       ]
     },
     "schema refresh": {
-      "help": "Refresh the tenant's table/column cache with one Advanced Hunting call. Run this first on a new workstation or tenant, and again when schema output reports a stale cache. Next: `xdr schema tables`. Example: `xdr schema refresh`",
+      "help": "Refresh the tenant's table/column cache with one Advanced Hunting call. The getschema probe covers the packaged table registry, every table the portal lists for this tenant, and tables seen by the previous refresh, so newly added Defender tables are detected and reported as `new_tables`. Run this first on a new workstation or tenant, and again when schema output reports a stale cache. Next: `xdr schema tables`. Examples: `xdr schema refresh`; `xdr schema refresh --metadata-source probe`",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,
-      "params": []
+      "params": [
+        {
+          "count": false,
+          "default": "auto",
+          "envvar": null,
+          "help": "Table listing source. `auto` adds the portal hunting-schema listing when tenant-bound portal cookies exist and records any failure; `portal` returns exit 14 if the listing fails; `probe` uses only the getschema probe.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "metadata_source",
+          "nargs": 1,
+          "opts": [
+            "--metadata-source"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": true,
+            "choices": [
+              "auto",
+              "portal",
+              "probe"
+            ],
+            "name": "choice"
+          }
+        }
+      ]
     },
     "schema repair-overlay": {
       "help": "Repair integrity and migrate compatible legacy semantic-overlay state. Examples: `xdr schema repair-overlay --yes`; `xdr schema repair-overlay --all-local --yes`; `xdr schema repair-overlay --reset-empty --yes` Inspect first with `xdr schema status`. This command never contacts the tenant or reads result-row values. It selects the newest structurally valid retained generation. A compatible pre-digest generation receives an exact byte binding. Contract drift causes the exact prior overlay files to be quarantined before a new generation is atomically published: compatible records are retained, obsolete provisional interpretations and dependent observations are inactivated, and unsafe legacy nested fields are excluded. Reviewed contract conflicts fail closed without changing the active state. Use `--reset-empty` only when every retained generation is invalid.",

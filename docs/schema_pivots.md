@@ -8,7 +8,8 @@ grep for a field name to find every table it reaches.
 > **Physical reference only:** a shared column name does not prove shared
 > semantics, matching values, uniqueness, cardinality, or join safety. Use
 > `xdr schema pivot <Table.Column>` and `xdr schema path <Source> <Target>` for
-> reviewed semantic routes. See `docs/schema_graph.md`.
+> tenant-available semantic routes and their evidence levels. Trusted reference,
+> reviewed and empirical routes are distinct. See `docs/schema_graph.md`.
 
 <!-- BEGIN GENERATED SEMANTIC GRAPH -->
 ## Generated semantic route inventory
@@ -56,12 +57,12 @@ roles, namespaces, provenance, temporal guidance, and tenant availability.
 > [Regenerating this file](#regenerating-this-file) at the end for the exact
 > POSIX commands and the portal-export path.
 >
-> The probe covers **80 curated Defender XDR, Sentinel, and Entra workspace
+> The probe covers **85 curated Defender XDR, Sentinel, and Entra workspace
 > tables**; which schemas resolve can vary by license, permission, region,
 > connected-workspace context, and connector. `sys_schema_probe` uses
 > `union isfuzzy=true`, so absent tables are silently skipped. Schema presence
 > does not prove recent row population or a licensed SKU. Custom logs and future
-> workspace tables must be added to the probe explicitly. Re-run after a
+> workspace tables must be added to `xdr_cli.hunting_tables` explicitly. Re-run after a
 > relevant tenant or schema change.
 
 > Rebuilding this doc: the build script consumes **CSV**, so convert the
@@ -886,10 +887,13 @@ DeviceTvmSoftwareVulnerabilitiesKB
 Three pieces work together:
 
 - **`sys_schema_probe`** - a library KQL query that enumerates a curated
-  80-table Advanced Hunting catalog via `union isfuzzy=true ... | getschema`,
-  covering Defender XDR plus Sentinel and Entra workspace tables. Custom logs
-  and future workspace tables must be added to it explicitly; KQL has no
-  metadata-only way to enumerate every connected-workspace table.
+  85-table Advanced Hunting catalog via `union isfuzzy=true ... | getschema`,
+  covering Defender XDR plus Sentinel and Entra workspace tables. The table
+  list lives in `src/xdr_cli/hunting_tables.py`, which also feeds the session
+  recorder's KQL tokenizer; regenerate the query with
+  `python scripts/build_schema_probe.py`. Custom logs and future workspace
+  tables must be added there explicitly; KQL has no metadata-only way to
+  enumerate every connected-workspace table.
 - **`scripts/build_schema_pivots.py`** - a deterministic renderer that turns
   the probe's CSV output into the hand-maintained sections of this file.
 - **`xdr schema validate-core --document docs/schema_pivots.md`** - checks
@@ -1001,7 +1005,7 @@ in the right section of `scripts/build_schema_pivots.py`.
 
 - **Fewer tables than expected.** `isfuzzy=true` silently skips tables the
   tenant does not expose, so absent tables are invisible. Compare against the
-  list in `src/xdr_cli/queries/sys_schema_probe.kql`.
+  list in `src/xdr_cli/hunting_tables.py`.
 - **Cache is stale.** `schema show` and `schema tables` report cache age and
   staleness in the receipt but never refresh implicitly. Run
   `xdr schema refresh` deliberately after a licensing or connector change.

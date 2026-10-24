@@ -36,6 +36,7 @@ class RelationshipStatus(StrEnum):
     VALIDATED = "validated"
     REVIEWED = "reviewed"
     DEPRECATED = "deprecated"
+    REFERENCE_TRUSTED = "reference-trusted"
 
 
 class Direction(StrEnum):
@@ -485,7 +486,11 @@ class ObservationRecord:
     @property
     def evidence_run_ids(self) -> tuple[str, ...]:
         references = {self.source_artifact_run_id, self.target_artifact_run_id}
-        if self.extra.get("evidence_stage") in {"local-overlap", "local-validation"}:
+        if self.extra.get("evidence_stage") in {
+            "local-overlap",
+            "capture-overlap-complete",
+            "local-validation",
+        }:
             pair = self.extra.get("local_pair")
             if not isinstance(pair, dict):
                 raise GraphValidationError(
@@ -723,7 +728,7 @@ def empirical_relationship_from_observations(
         item
         for item in positive
         if item.observation_id in verified_observation_ids
-        and item.extra.get("evidence_stage") != "local-overlap"
+        and item.extra.get("evidence_stage") not in {"local-overlap", "capture-overlap-complete"}
         and item.extra.get("eligible_shared_values", item.matched_seeds) >= 2
     )
     evidence_pairs = {
@@ -760,9 +765,12 @@ def empirical_relationship_from_observations(
         )
         >= 3
         for item in positive
-        if item.extra.get("evidence_stage") == "local-overlap"
+        if item.extra.get("evidence_stage") in {"local-overlap", "capture-overlap-complete"}
     )
-    local_only = all(item.extra.get("evidence_stage") == "local-overlap" for item in positive)
+    local_only = all(
+        item.extra.get("evidence_stage") in {"local-overlap", "capture-overlap-complete"}
+        for item in positive
+    )
     # Local overlap is corroboration, never an independent tenant probe.
     if local_only:
         validation_passed = False
@@ -791,7 +799,10 @@ def empirical_relationship_from_observations(
         cardinality=Cardinality.UNKNOWN,
         temporal=(
             "historical-result-overlap"
-            if all(item.extra.get("evidence_stage") == "local-overlap" for item in positive)
+            if all(
+                item.extra.get("evidence_stage") in {"local-overlap", "capture-overlap-complete"}
+                for item in positive
+            )
             else "bounded-lookback-search"
         ),
         status=status,

@@ -2,16 +2,18 @@
 -- description: Enumerate tables/columns available in this tenant (run first in a new environment)
 -- tier: utility
 -- params:
+-- Generated from xdr_cli.hunting_tables by scripts/build_schema_probe.py; do not edit by hand.
 union isfuzzy=true
   (AADGraphActivityLogs | getschema | extend TableName = "AADGraphActivityLogs"),
   (AADManagedIdentitySignInLogs | getschema | extend TableName = "AADManagedIdentitySignInLogs"),
   (AADProvisioningLogs | getschema | extend TableName = "AADProvisioningLogs"),
   (AADRiskyUsers | getschema | extend TableName = "AADRiskyUsers"),
-  (AADSignInEventsBeta | getschema | extend TableName = "AADSignInEventsBeta"),
   (AADServicePrincipalSignInLogs | getschema | extend TableName = "AADServicePrincipalSignInLogs"),
+  (AADSignInEventsBeta | getschema | extend TableName = "AADSignInEventsBeta"),
   (AADSpnSignInEventsBeta | getschema | extend TableName = "AADSpnSignInEventsBeta"),
   (AADUserRiskEvents | getschema | extend TableName = "AADUserRiskEvents"),
   (AIAgentsInfo | getschema | extend TableName = "AIAgentsInfo"),
+  (AgentsInfo | getschema | extend TableName = "AgentsInfo"),
   (Alert | getschema | extend TableName = "Alert"),
   (AlertEvidence | getschema | extend TableName = "AlertEvidence"),
   (AlertInfo | getschema | extend TableName = "AlertInfo"),
@@ -19,10 +21,12 @@ union isfuzzy=true
   (AuditLogs | getschema | extend TableName = "AuditLogs"),
   (BehaviorEntities | getschema | extend TableName = "BehaviorEntities"),
   (BehaviorInfo | getschema | extend TableName = "BehaviorInfo"),
+  (CallActivityEvents | getschema | extend TableName = "CallActivityEvents"),
   (CampaignInfo | getschema | extend TableName = "CampaignInfo"),
   (CloudAppEvents | getschema | extend TableName = "CloudAppEvents"),
   (CloudAuditEvents | getschema | extend TableName = "CloudAuditEvents"),
   (CloudDnsEvents | getschema | extend TableName = "CloudDnsEvents"),
+  (CloudPolicyEnforcementEvents | getschema | extend TableName = "CloudPolicyEnforcementEvents"),
   (CloudProcessEvents | getschema | extend TableName = "CloudProcessEvents"),
   (CloudStorageAggregatedEvents | getschema | extend TableName = "CloudStorageAggregatedEvents"),
   (ConnectorStatusInfo | getschema | extend TableName = "ConnectorStatusInfo"),
@@ -72,6 +76,7 @@ union isfuzzy=true
   (IdentityInfo | getschema | extend TableName = "IdentityInfo"),
   (IdentityLogonEvents | getschema | extend TableName = "IdentityLogonEvents"),
   (IdentityQueryEvents | getschema | extend TableName = "IdentityQueryEvents"),
+  (MessageContents | getschema | extend TableName = "MessageContents"),
   (MessageEvents | getschema | extend TableName = "MessageEvents"),
   (MessagePostDeliveryEvents | getschema | extend TableName = "MessagePostDeliveryEvents"),
   (MessageUrlInfo | getschema | extend TableName = "MessageUrlInfo"),
@@ -81,6 +86,7 @@ union isfuzzy=true
   (SecurityAlert | getschema | extend TableName = "SecurityAlert"),
   (SecurityIncident | getschema | extend TableName = "SecurityIncident"),
   (SigninLogs | getschema | extend TableName = "SigninLogs"),
+  (ThreatIntelligenceIndicator | getschema | extend TableName = "ThreatIntelligenceIndicator"),
   (UrlClickEvents | getschema | extend TableName = "UrlClickEvents"),
   (Usage | getschema | extend TableName = "Usage")
 | project TableName, ColumnName, ColumnType, ColumnOrdinal

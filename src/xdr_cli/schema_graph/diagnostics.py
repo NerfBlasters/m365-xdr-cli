@@ -10,6 +10,7 @@ from typing import Any
 from xdr_cli import __version__
 
 SCHEMA_CAPABILITIES = (
+    {"id": "tenant-reference-initialization-v1", "command": "schema init"},
     {"id": "identifier-discovery-v1", "command": "schema collect --explore"},
     {"id": "local-first-discovery-v1", "command": "schema collect --local-only"},
     {"id": "maintenance-status-v1", "command": "schema status"},

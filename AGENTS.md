@@ -237,6 +237,7 @@ Query the native catalog and execute with:
 xdr library list --search identity
 xdr library show identity_signin_context
 xdr library run <name> --param key=value --param other=value
+xdr schema init                       # new tenant: compare reference and run bounded validation
 xdr schema tables --search signin
 xdr schema show AADSignInEventsBeta --search application
 xdr schema pivot EntraIdSignInEvents.AccountObjectId
@@ -271,12 +272,36 @@ validation; it performs no tenant queries and does not publish observations.
 `schema collect --local-only` also publishes local overlap evidence without
 network activity. Default `schema collect` validates locally discovered field
 pairs using saved identifiers and cached physical availability. It performs no
-broad scan when local evidence is absent. `--explore` explicitly searches all eligible saved identifiers across cached,
-time-bounded tables and nested JSON paths. It has no starter-field matrix or
-target-column sweep. The per-invocation query budget still applies.
-Rerun after a budget pause to reuse completed searches and continue; inspect
-reported depth, result-cap, and unsupported-path gaps. Refresh physical
+broad scan when local evidence is absent. `--explore` automatically gathers up to 25,000 rows per eligible physical
+table, using the most recent rows within a 24h requested horizon by default.
+Untimed inventory/state tables are capped samples. Capped timed responses
+report their shorter observed span and partial oldest-timestamp boundary.
+Full selected rows are private; same-query control counts prove all selected
+rows arrived. Sampling never proves absence elsewhere. The collector then
+indexes/correlates locally. Complete captures from the same job support the distinct
+`capture-overlap-complete` observed stage without a live re-query (three eligible
+shared identifiers required, never join-safe). Weaker complete-capture overlaps
+remain candidates. Sampled/capped or ordinary saved-result pairs use per-target-table
+validation batches with separate identifier cohorts and exact counts; array paths
+remain isolated. Hard resource limits leave resumable checkpoints and exit 14.
+Multiple requests are not a single consistent tenant snapshot. Targeted identifier
+searches fill remaining timed-table gaps; `--source` restricts these follow-up seeds,
+not capture tables. No prior saved identifiers are required. Inspect private
+coverage rows and final receipt before claiming completeness. Refresh physical
 availability separately with `schema refresh`.
+
+Fresh physical-cache metadata records exact probe scope and actual hunting
+surface; missing fuzzy-union results are inconclusive. Treat `not-probed`,
+`not-observed`, and `type-conflict` availability as non-queryable. Legacy
+`unavailable` also does not prove tenant absence. Use each pivot step's
+`SourceAvailable`/`TargetAvailable` flags before planning a probe; semantic
+`JoinSafe` alone does not establish physical availability.
+
+For route evidence, `SemanticallyReviewed` means repository review and
+`EmpiricallyValidated` means the machine evidence policy passed. The legacy
+`Validated` flag includes both and must not be described as a fresh live test.
+Do not call external reference mappings confirmed merely because their columns
+exist or a cache-only pivot returns them.
 
 Local discovery recovers direct field origins from saved KQL, including projections,
 aliases, nested properties and direct summary grouping keys. Unsupported query
@@ -315,7 +340,8 @@ receipts point
 to `xdr results rows RUN_ID --type relationship-path-match`, which supports
 bounded filtering and offsets for large private graphs. `xdr results prune
 --older-than DAYS --yes` deletes eligible old results and retires the automatic
-discovery evidence (local-overlap, local-validation, identifier-search) that
+discovery evidence (local-overlap, capture-overlap-complete, local-validation,
+identifier-search) that
 referenced them; explicit `schema observe` observations and live
 `candidate-proposal` drafts remain protected. Delete merged or abandoned
 proposal drafts before pruning their evidence.
@@ -335,7 +361,9 @@ explicit POSIX/PowerShell attachment syntax.
 
 Use `xdr session start --concurrent` only for deliberate parallel work.
 Explicit `xdr session end` closes the session, then refreshes a missing/stale
-schema cache, validates locally discovered pairs, and runs bounded exploration.
+schema cache, validates locally discovered pairs, and runs bounded recent-data
+capture with local correlation and focused validation. No saved seed identifiers
+are needed for this exploration stage.
 `schema_collect_on_session_end = false` disables all stages. Exploration defaults
 to `schema_explore_max_queries = 5`; `schema_explore_on_session_end = false`
 disables it, and `schema_refresh_on_session_end = false` disables automatic
@@ -359,6 +387,6 @@ For session env vars (`XDR_SESSION`), parallel sub-agents (`XDR_ACTOR`), learnin
 - `docs/investigation.md` — investigation methodology, KQL authoring, presenting findings
 - `docs/sessions.md` — session env vars, parallel sub-agents, learning mode mechanics
 - `playbooks/` — per-alert-type investigation playbooks
-- `docs/schema_pivots.md` — KQL table/column reference (~80 tables); its "Regenerating this file" section covers the `sys_schema_probe` library query
+- `docs/schema_pivots.md` — KQL table/column reference (85 curated tables); its "Regenerating this file" section covers the `sys_schema_probe` library query
 - `docs/schema_graph.md` — see this for the schema workflow (semantic pivots, paths, probes)
 - `src/xdr_cli/queries/` — library query source

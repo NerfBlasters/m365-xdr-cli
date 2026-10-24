@@ -75,8 +75,10 @@ Every custom query should:
 2. **Pivot on the right entity.** Column names differ across tables
    (`AccountObjectId`, `AccountUpn`, `DeviceId`,
    `InitiatingProcessAccountObjectId`, etc.). Use `xdr schema pivot
-   <Table.Column>` or `xdr schema path <SourceTable> <TargetTable>` for reviewed
-   semantic routes. Use `docs/schema_pivots.md` only for physical field
+   <Table.Column>` or `xdr schema path <SourceTable> <TargetTable>` for tenant-available
+   routes. Inspect the evidence level: trusted reference mappings, reviewed semantics,
+   observed overlap and empirical validation are distinct; an overlap is not a join
+   contract. Use `docs/schema_pivots.md` only for physical field
    availability; a shared name is not a join contract.
 3. **Cap results.** `| take 50` for exploratory; `| top 50 by Timestamp desc` for most-recent-first.
 4. **Control output width — but don't discard blindly.** Use `| project` when

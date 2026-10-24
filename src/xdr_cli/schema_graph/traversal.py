@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from heapq import heappop, heappush
+from itertools import count
 
+from xdr_cli.schema_graph.effective import QUERYABLE_AVAILABILITY
 from xdr_cli.schema_graph.model import (
     Direction,
     Graph,
@@ -59,6 +62,8 @@ class GraphStep:
     target_available: bool
     source_availability: str
     target_availability: str
+    reference_routes: tuple[dict, ...] = ()
+    tenant_discoveries: tuple[dict, ...] = ()
 
     @property
     def evidence_rank(self) -> int:
@@ -66,9 +71,13 @@ class GraphStep:
         # tested. Prefer route semantics when it competes with authored routes.
         if self.evidence_level == "observed" and self.confidence == "low":
             return 2
-        return {"validated": 0, "observed": 1, "reviewed": 2, "candidate": 3}.get(
-            self.evidence_level, 3
-        )
+        return {
+            "validated": 0,
+            "observed": 1,
+            "reviewed": 2,
+            "reference-trusted": 3,
+            "candidate": 4,
+        }.get(self.evidence_level, 4)
 
     @property
     def weight(self) -> int:
@@ -77,7 +86,7 @@ class GraphStep:
             state == "outer-available-unobserved"
             for state in (self.source_availability, self.target_availability)
         )
-        evidence = (0, 20, 60, 100)[self.evidence_rank]
+        evidence = (0, 20, 60, 80, 100)[self.evidence_rank]
         lossy = 10 if self.transform in _LOSSY_TRANSFORMS else 0
         cardinality = _CARDINALITY_PENALTY[self.cardinality]
         confidence = _CONFIDENCE_PENALTY[self.confidence]
@@ -125,10 +134,7 @@ class GraphPath:
         """Prefer empirical evidence, then strong, short, available routes."""
 
         return (
-            max(
-                step.evidence_rank
-                for step in self.steps
-            ),
+            max(step.evidence_rank for step in self.steps),
             max(_RELATION_WEIGHT[step.relationship] for step in self.steps),
             sum(_RELATION_WEIGHT[step.relationship] for step in self.steps),
             len(self.steps),
@@ -226,10 +232,12 @@ def _step(
         target_role=target_interpretation.role,
         evidence_level=relationship.status.value,
         candidate=relationship.status is RelationshipStatus.CANDIDATE,
-        source_available=source_state != "unavailable",
-        target_available=target_state != "unavailable",
+        source_available=source_state in QUERYABLE_AVAILABILITY,
+        target_available=target_state in QUERYABLE_AVAILABILITY,
         source_availability=source_state,
         target_availability=target_state,
+        reference_routes=tuple(relationship.extra.get("reference_routes", ())),
+        tenant_discoveries=tuple(relationship.extra.get("tenant_discoveries", ())),
     )
 
 
@@ -239,6 +247,7 @@ def _adjacency(
     include_candidates: bool,
     available_fields: set[str] | None,
     field_availability: dict[str, str] | None,
+    include_unavailable: bool = True,
 ) -> dict[str, list[GraphStep]]:
     adjacency: dict[str, list[GraphStep]] = {}
     for relationship in sorted(graph.relationships.values(), key=lambda item: item.id):
@@ -247,16 +256,16 @@ def _adjacency(
         if relationship.status is RelationshipStatus.CANDIDATE and not include_candidates:
             continue
         for source, target in _directions(relationship):
-            adjacency.setdefault(source, []).append(
-                _step(
-                    graph,
-                    relationship,
-                    source,
-                    target,
-                    available_fields,
-                    field_availability,
-                )
+            step = _step(
+                graph,
+                relationship,
+                source,
+                target,
+                available_fields,
+                field_availability,
             )
+            if include_unavailable or (step.source_available and step.target_available):
+                adjacency.setdefault(source, []).append(step)
     for steps in adjacency.values():
         steps.sort(key=lambda item: (item.rank, item.relationship_id, item.target_interpretation))
     return adjacency
@@ -280,12 +289,14 @@ def pivot(
     include_candidates: bool = False,
     available_fields: set[str] | None = None,
     field_availability: dict[str, str] | None = None,
+    include_unavailable: bool = True,
 ) -> list[GraphStep]:
     adjacency = _adjacency(
         graph,
         include_candidates=include_candidates,
         available_fields=available_fields,
         field_availability=field_availability,
+        include_unavailable=include_unavailable,
     )
     result = []
     for interpretation in _interpretations_for_locator(graph, locator):
@@ -311,11 +322,24 @@ def table_paths(
     include_candidates: bool = False,
     available_fields: set[str] | None = None,
     field_availability: dict[str, str] | None = None,
+    include_unavailable: bool = True,
+    max_expansions: int = 10_000,
+    diagnostics: dict | None = None,
 ) -> list[GraphPath]:
     if max_depth < 1 or max_depth > 12:
         raise GraphValidationError("max_depth must be between 1 and 12")
     if max_paths < 1:
         raise GraphValidationError("max_paths must be positive")
+    if max_expansions < 1:
+        raise GraphValidationError("max_expansions must be positive")
+    if diagnostics is not None:
+        diagnostics.update(
+            search_complete=True,
+            paths_truncated=False,
+            expansion_limit_reached=False,
+            generated_states=0,
+            max_expansions=max_expansions,
+        )
     source_ids = sorted(
         interpretation.id
         for interpretation in graph.interpretations.values()
@@ -333,27 +357,60 @@ def table_paths(
         include_candidates=include_candidates,
         available_fields=available_fields,
         field_availability=field_availability,
+        include_unavailable=include_unavailable,
     )
     found: list[GraphPath] = []
 
-    def walk(current: str, steps: tuple[GraphStep, ...], visited: frozenset[str]) -> None:
-        if len(steps) >= max_depth:
+    # Path rank is monotone as hops are appended. A bounded best-first search
+    # avoids enumerating every simple path in a dense reference graph before
+    # applying the output limit. Count generated states to bound memory too.
+    queue = []
+    sequence = count()
+    generated = 0
+    exhausted = False
+
+    def enqueue(steps, visited):
+        nonlocal generated, exhausted
+        if generated >= max_expansions:
+            exhausted = True
             return
-        for next_step in adjacency.get(current, ()):
-            if next_step.target_interpretation in visited:
-                continue
-            next_steps = (*steps, next_step)
-            if next_step.target_interpretation in target_ids:
-                found.append(GraphPath(next_steps))
-                continue
-            walk(
-                next_step.target_interpretation,
-                next_steps,
-                visited | {next_step.target_interpretation},
-            )
+        path = GraphPath(steps)
+        heappush(
+            queue,
+            (
+                path.rank,
+                tuple(s.relationship_id for s in steps),
+                tuple(s.target_interpretation for s in steps),
+                next(sequence),
+                path,
+                visited,
+            ),
+        )
+        generated += 1
 
     for source_id in source_ids:
-        walk(source_id, (), frozenset({source_id}))
+        for step in adjacency.get(source_id, ()):
+            if step.target_interpretation != source_id:
+                enqueue((step,), frozenset({source_id, step.target_interpretation}))
+    while queue:
+        _, _, _, _, path, visited = heappop(queue)
+        current = path.steps[-1].target_interpretation
+        if current in target_ids:
+            found.append(path)
+            if len(found) > max_paths:
+                break
+            continue
+        if len(path.steps) < max_depth:
+            for step in adjacency.get(current, ()):
+                if step.target_interpretation not in visited:
+                    enqueue((*path.steps, step), visited | {step.target_interpretation})
+    if diagnostics is not None:
+        diagnostics.update(
+            search_complete=not exhausted and len(found) <= max_paths,
+            paths_truncated=len(found) > max_paths,
+            expansion_limit_reached=exhausted,
+            generated_states=generated,
+        )
     found.sort(
         key=lambda path: (
             path.rank,

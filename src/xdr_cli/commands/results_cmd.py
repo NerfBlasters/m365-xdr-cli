@@ -44,10 +44,13 @@ class _EvidenceReferences:
     proposal_run_ids: frozenset[str]
     proposal_paths: tuple[str, ...]
     legacy_proposal_paths: tuple[str, ...]
+    reference_validation_run_ids: frozenset[str] = frozenset()
+    capture_run_ids: frozenset[str] = frozenset()
 
     @property
     def all_run_ids(self) -> frozenset[str]:
-        return self.overlay_run_ids | self.proposal_run_ids
+        return (self.overlay_run_ids | self.proposal_run_ids
+                | self.reference_validation_run_ids | self.capture_run_ids)
 
 
 def _results_root() -> Path:
@@ -345,7 +348,15 @@ def _schema_evidence_references(cutoff: datetime | None = None) -> _EvidenceRefe
     """Return verified result IDs retained by overlays and live proposals."""
 
     schema_root = get_config_home() / "schema"
-    from xdr_cli.schema_graph.retention import index_result_metadata, retired_observation
+    from xdr_cli.schema_graph.retention import (
+        index_result_metadata,
+        retired_observation,
+        verified_capture_references,
+        verified_reference_validation_references,
+    )
+
+    reference_validation_run_ids = verified_reference_validation_references(get_config_home())
+    capture_run_ids = verified_capture_references(get_config_home())
 
     metadata_paths = index_result_metadata(_results_root()) if cutoff else None
     overlay_run_ids: set[str] = set()
@@ -411,6 +422,8 @@ def _schema_evidence_references(cutoff: datetime | None = None) -> _EvidenceRefe
         proposal_run_ids=frozenset(proposal_run_ids),
         proposal_paths=tuple(sorted(proposal_paths)),
         legacy_proposal_paths=tuple(sorted(legacy_proposal_paths)),
+        reference_validation_run_ids=reference_validation_run_ids,
+        capture_run_ids=capture_run_ids,
     )
 
 
@@ -424,6 +437,8 @@ def _results_prune_plan(
     protected_bundles = 0
     protected_overlay_bundles = 0
     protected_proposal_bundles = 0
+    protected_reference_validation_bundles = 0
+    protected_capture_bundles = 0
     for meta_path in _metadata_paths():
         try:
             meta = _load_meta(meta_path)
@@ -439,8 +454,12 @@ def _results_prune_plan(
         run_id = meta.get("run_id")
         if run_id in references.all_run_ids:
             protected_bundles += 1
+            protected_capture_bundles += int(run_id in references.capture_run_ids)
             protected_overlay_bundles += int(run_id in references.overlay_run_ids)
             protected_proposal_bundles += int(run_id in references.proposal_run_ids)
+            protected_reference_validation_bundles += int(
+                run_id in references.reference_validation_run_ids
+            )
             continue
         data_path = _registered_data_path(meta.get("data_path"))
         try:
@@ -471,6 +490,8 @@ def _results_prune_plan(
         "total": protected_bundles,
         "overlay": protected_overlay_bundles,
         "proposal": protected_proposal_bundles,
+        "reference_validation": protected_reference_validation_bundles,
+        "capture": protected_capture_bundles,
         "proposal_paths": list(references.proposal_paths),
         "legacy_proposal_paths": list(references.legacy_proposal_paths),
     }
@@ -928,7 +949,9 @@ def results_prune(
 
     Automatic discovery references are retired at the cutoff before deleting
     bytes. Explicit observations and extant candidate proposals retain their
-    evidence. A proposal mismatch stops pruning. Retire explicit observations
+    evidence. Current reference validation ledgers and live scope pointers also
+    retain their verified evidence across all local tenants. An active evidence
+    mismatch stops pruning. Retire explicit observations
     with schema prune-evidence and delete merged or abandoned proposal drafts
     before pruning their evidence.
     """
@@ -1017,6 +1040,8 @@ def results_prune(
                 "protected_schema_evidence_bundles": protected["total"],
                 "protected_overlay_evidence_bundles": protected["overlay"],
                 "protected_candidate_proposal_bundles": protected["proposal"],
+                "protected_reference_validation_bundles": protected["reference_validation"],
+                "protected_capture_bundles": protected["capture"],
                 "protected_candidate_proposal_paths": protected["proposal_paths"],
                 "legacy_candidate_proposal_paths": protected[
                     "legacy_proposal_paths"

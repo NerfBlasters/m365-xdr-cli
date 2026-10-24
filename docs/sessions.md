@@ -83,14 +83,18 @@ already ended session is a conflict error.
 
 Explicit `xdr session end` closes the session first, then runs three foreground
 maintenance stages: refresh a missing or stale physical cache, mine saved results
-and validate their overlaps, and explore new identifier locations. All are enabled
+and validate their overlaps, and capture recent data for local pivot discovery. All are enabled
 by default. `schema_collect_on_session_end = false` in `~/.xdr-cli/config.toml`
 disables the entire workflow. Set `schema_refresh_on_session_end = false` or
 `schema_explore_on_session_end = false` to disable just that stage.
 
 `schema_explore_max_queries = 5` controls the exploration query budget per explicit
-session end (integer 1–1000). Focused validation retains its separate 20-query
-budget; a needed refresh adds one schema query. A validation budget pause still
+session end (integer 1–1000). This budget covers recent-data capture and its
+focused validation, rather than a broad search using saved seed identifiers.
+Exploration uses the same 24-hour requested horizon and 25,000-row per-table cap
+as `schema collect --explore`; untimed inventory is sampled. Complete captures
+support observed overlap without a redundant live query. Focused validation of
+saved results retains its separate 20-query budget; a needed refresh adds one schema query. A validation budget pause still
 allows exploration its budget. Upstream failures, including authentication and
 rate limits, stop subsequent stages. Completed work is reused at later explicit
 session ends. Refresh uses the existing `schema_stale_seconds` threshold, which
@@ -103,8 +107,10 @@ after durable closure with feedback `next_action`. The second is a
 `record_type: "session-maintenance"` completion record containing `maintenance`
 and, when available, an artifact receipt with the individual stage receipts.
 Maintenance has an overall deadline of `schema_maintenance_timeout_seconds = 90`
-seconds (maximum 3,600 seconds). Local synchronous parsing can finish its current
-operation before the deadline is checked. Use `session end --no-maintenance`
+seconds (maximum 3,600 seconds). Local indexing, SQLite correlation and evidence
+reads check this deadline cooperatively; paused work does not publish an incomplete
+replacement graph. Resume integrity hashing can finish its current artifact before
+the deadline is checked. Use `session end --no-maintenance`
 to skip upkeep once.
 Failure or partial completion leaves the session ended and returns exit 14 with
 the cause classification in the terminal record. Cancellation returns exit 130.
