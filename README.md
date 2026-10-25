@@ -24,8 +24,8 @@ pipeable, and small enough for an agent's context window.
   take typed parameters and are escaped before they reach the API. Three are
   marked beta; see [the library reference](docs/library.md).
 - **Response actions** — isolate/release, scan, restrict/unrestrict execution,
-  collect and download investigation packages, with confirmation, `--dry-run`,
-  and a local audit log.
+  collect and download investigation packages, and Live Response sessions,
+  with `--dry-run` previews and a local audit log.
 - **Two ways to sign in** — reuse your logged-in Defender portal session
   (minutes to set up, no app registration), or register an Entra app and use
   Microsoft's supported APIs. See [Two ways to sign in](#two-ways-to-sign-in).
@@ -49,8 +49,8 @@ machine except the API calls to Microsoft, made either with your own browser
 session or with your own Entra app registration and delegated permissions.
 
 It is **not** a SIEM, a scheduler, or a replacement for the portal's action
-center. Response actions require an explicit command, a comment, and a
-confirmation.
+center. Response actions run only from an explicit command, most with a
+required comment, and every attempt is audited.
 
 ## Install
 
@@ -290,20 +290,27 @@ explicit observation and proposal evidence remains protected. See
 ```bash
 xdr device show <device-id>
 xdr device isolate <device-id> --comment "Incident 42" --dry-run   # preview
-xdr device isolate <device-id> --comment "Incident 42" --yes       # do it
-xdr device unisolate <device-id> --comment "Remediated" --yes
+xdr device isolate <device-id> --comment "Incident 42"             # do it
+xdr device unisolate <device-id> --comment "Remediated"
 xdr device scan <device-id> --scan-type Full
-xdr device restrict <device-id> --comment "Suspicious activity" --yes
-xdr device unrestrict <device-id> --comment "Recovery approved" --yes
+xdr device restrict <device-id> --comment "Suspicious activity"
+xdr device unrestrict <device-id> --comment "Recovery approved"
 xdr device collect-package <device-id>
 xdr device action-status <action-id>
 xdr device download-package <action-id> --device <device-id> --output pkg.zip   # cookie backend
+xdr device live-response connect <machine-id> --wait 120                         # cookie backend; prints alias lr-1
+xdr device live-response findfile lr-1 evil.exe --wait 120
+xdr device live-response getfile lr-1 'C:\Temp\evil.exe' --output evil.bin
+xdr device live-response sessions                                                 # remembered sessions (local)
 ```
 
+Live Response (search, fetch and place files, run library scripts, command jobs
+and the library) is described in [docs/live_response.md](docs/live_response.md).
+
 `isolate`, `unisolate`, `restrict`, and `unrestrict` require `--comment`.
-Every action asks for confirmation unless you pass `--yes`, and refuses to run
-non-interactively without it; declining the prompt exits 13. `--dry-run` is
-available on all actions except `unisolate`. In cookie mode, device IDs must
+Running an action is the intent: there is no confirmation prompt and no
+`--yes`. Preview with `--dry-run`, available on all actions except
+`unisolate`. Every attempt is recorded in `~/.xdr-cli/audit.log`. In cookie mode, device IDs must
 be the 40-hex MachineId (or a hostname with exactly one match) and action IDs
 must be GUIDs; `action-status` needs `--device` the first time it sees an
 action on this machine.
@@ -324,8 +331,8 @@ The short version:
   `--no-quiet` forces it on. Configuration warnings can still appear on stderr.
 - `xdr` prompts only when both stdin and stdout are TTYs; otherwise (or with
   `--no-interactive`) it never prompts. Commands that would ask for
-  confirmation (response actions, `incidents update`, `results prune`) refuse
-  with exit 6 unless `--yes` is passed. `auth login` and `auth portal-cookie`
+  confirmation (`incidents update`, `results prune`) refuse with exit 6 unless
+  `--yes` is passed; device response actions have no prompt. `auth login` and `auth portal-cookie`
   are interactive flows for a human; agents should ask rather than treat
   `--no-interactive` as unattended sign-in.
 - Failures before durable output are one JSON error line with a stable `code`
@@ -457,6 +464,14 @@ query budgets, what session end does, BloodHound export, and portable bundles
 | `xdr lists init` | Seed `~/.xdr-cli/lists/` reference data used by library queries (`--force --yes` to overwrite) |
 | `xdr device show / isolate / unisolate / scan / restrict / unrestrict / collect-package / action-status` | Device details and response actions |
 | `xdr device download-package ACTION --device ID --output PATH` | Download a completed investigation ZIP (cookie backend; `--force`, `--max-bytes`) |
+| `xdr device start-investigation ID --comment R` / `action-history ID [--limit N]` | Start an automated investigation; save response-action history (portal: last 7 days, with a completeness row) |
+| `xdr device collect-support-logs ID` / `troubleshoot ID --on\|--off` (`--comment R`) | Request Defender support logs (download not yet in the CLI); turn troubleshooting mode on for the portal's fixed four hours, or off (cookie backend) |
+| `xdr device contain / uncontain ID --comment R` | Contain or release an unmanaged (not onboarded) device; refused for onboarded or ambiguous devices (cookie backend) |
+| `xdr device tags list / set / add / remove` | Read and change manual device tags (`set` replaces the whole manual set and needs `--expect`; no atomic compare-and-swap) |
+| `xdr device action-permissions ID` / `cancel-action ACTION --device ID --comment R` | Portal-reported action availability; cancel a pending response action (cookie backend) |
+| `xdr device live-response connect / sessions [list\|refresh] / exec / findfile / getfile / putfile / run / status / history / output / download / disconnect` | Live Response sessions with `lr-N` aliases (cookie backend) — [docs/live_response.md](docs/live_response.md) |
+| `xdr device live-response collect-event-logs TARGET --output-dir DIR` | Fetch Windows event logs (curated set, `--log`, or `--all`) privately with a provenance manifest — [docs/live_response.md](docs/live_response.md#event-log-collection) |
+| `xdr device live-response library list / show / upload / download / delete`, `batch submit / status / output / download / cancel` | Live Response file library; official one-shot batch actions |
 | `xdr device timeline DEVICE` | Download a device's portal timeline (unofficial API) — [docs/device_timeline.md](docs/device_timeline.md) |
 | `xdr domains list [--source all\|entra\|active-directory]` | Source-labelled Entra and observed AD domains (AD is cookie-only) |
 | `xdr results list / show / head / rows / query / shape / prune` | Browse and manage local result artifacts (`rows --type/--offset/--limit`) |
@@ -582,6 +597,7 @@ More in [docs/troubleshooting.md](docs/troubleshooting.md).
 | [docs/schema_graph.md](docs/schema_graph.md) | Schema graph: discovery, session-end upkeep, BloodHound export, bundles |
 | [docs/schema_pivots.md](docs/schema_pivots.md) | Generated reference of tables, shared fields and reviewed pivots |
 | [docs/device_timeline.md](docs/device_timeline.md) | Unofficial device-timeline download |
+| [docs/live_response.md](docs/live_response.md) | Live Response sessions, file search/fetch/place, scripts, library, batch |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Error and exit codes, longer troubleshooting reference |
 | [docs/backend_development.md](docs/backend_development.md) | Adding an operation to both API backends (contributors) |
 | [docs/ci.md](docs/ci.md) | What CI checks on every PR |

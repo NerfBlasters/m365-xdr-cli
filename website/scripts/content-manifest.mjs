@@ -17,6 +17,8 @@ export const pages = [
   { source: 'docs/schema_graph.md', route: 'docs/advanced/schema-graph', title: 'Schema graph' },
   { source: 'docs/schema_pivots.md', route: 'docs/advanced/schema-reference', title: 'Schema reference' },
   { source: 'docs/device_timeline.md', route: 'docs/advanced/device-timeline', title: 'Device timeline' },
+  { source: 'docs/live_response.md', route: 'docs/advanced/live-response', title: 'Live Response' },
+  { source: 'docs/live_response_coverage.md', route: 'docs/advanced/live-response-coverage', title: 'Live Response coverage' },
   { source: 'docs/troubleshooting.md', route: 'docs/troubleshooting', title: 'Troubleshooting' },
   { source: 'CONTRIBUTING.md', route: 'docs/contributing/index', title: 'Contributing' },
   { source: 'docs/contributing-walkthrough.md', route: 'docs/contributing/walkthrough', title: 'Contributor walkthrough' },

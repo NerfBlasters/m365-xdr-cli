@@ -70,6 +70,20 @@
     "auth portal-logout:supplied": {},
     "auth status:required": {},
     "auth status:supplied": {},
+    "device action-history:required": {
+      "limit": 100,
+      "machine_id": "sample"
+    },
+    "device action-history:supplied": {
+      "limit": 1,
+      "machine_id": "sample"
+    },
+    "device action-permissions:required": {
+      "machine_id": "sample"
+    },
+    "device action-permissions:supplied": {
+      "machine_id": "sample"
+    },
     "device action-status:required": {
       "action_id": "sample",
       "device_id": null
@@ -78,29 +92,68 @@
       "action_id": "sample",
       "device_id": "sample"
     },
+    "device cancel-action:--dry-run": {
+      "action_id": "sample",
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": true
+    },
+    "device cancel-action:required": {
+      "action_id": "sample",
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": false
+    },
+    "device cancel-action:supplied": {
+      "action_id": "sample",
+      "comment": "sample",
+      "device_id": "sample",
+      "dry_run": true
+    },
     "device collect-package:--dry-run": {
       "comment": "Forensic package requested via xdr-cli",
       "device_id": "sample",
-      "dry_run": true,
-      "yes": false
-    },
-    "device collect-package:--yes": {
-      "comment": "Forensic package requested via xdr-cli",
-      "device_id": "sample",
-      "dry_run": false,
-      "yes": true
+      "dry_run": true
     },
     "device collect-package:required": {
       "comment": "Forensic package requested via xdr-cli",
       "device_id": "sample",
-      "dry_run": false,
-      "yes": false
+      "dry_run": false
     },
     "device collect-package:supplied": {
       "comment": "sample",
       "device_id": "sample",
+      "dry_run": true
+    },
+    "device collect-support-logs:--dry-run": {
+      "comment": "sample",
       "dry_run": true,
-      "yes": true
+      "machine_id": "sample"
+    },
+    "device collect-support-logs:required": {
+      "comment": "sample",
+      "dry_run": false,
+      "machine_id": "sample"
+    },
+    "device collect-support-logs:supplied": {
+      "comment": "sample",
+      "dry_run": true,
+      "machine_id": "sample"
+    },
+    "device contain:--dry-run": {
+      "comment": "sample",
+      "dry_run": true,
+      "machine_id": "sample"
+    },
+    "device contain:required": {
+      "comment": "sample",
+      "dry_run": false,
+      "machine_id": "sample"
+    },
+    "device contain:supplied": {
+      "comment": "sample",
+      "dry_run": true,
+      "machine_id": "sample"
     },
     "device download-package:--force": {
       "action_id": "sample",
@@ -136,18 +189,7 @@
       "isolation_type": {
         "enum": "IsolationType",
         "value": "Full"
-      },
-      "yes": false
-    },
-    "device isolate:--yes": {
-      "comment": "sample",
-      "device_id": "sample",
-      "dry_run": false,
-      "isolation_type": {
-        "enum": "IsolationType",
-        "value": "Full"
-      },
-      "yes": true
+      }
     },
     "device isolate:required": {
       "comment": "sample",
@@ -156,8 +198,7 @@
       "isolation_type": {
         "enum": "IsolationType",
         "value": "Full"
-      },
-      "yes": false
+      }
     },
     "device isolate:supplied": {
       "comment": "sample",
@@ -166,32 +207,663 @@
       "isolation_type": {
         "enum": "IsolationType",
         "value": "Full"
+      }
+    },
+    "device live-response batch cancel:--dry-run": {
+      "action_id": "sample",
+      "dry_run": true
+    },
+    "device live-response batch cancel:required": {
+      "action_id": "sample",
+      "dry_run": false
+    },
+    "device live-response batch cancel:supplied": {
+      "action_id": "sample",
+      "dry_run": true
+    },
+    "device live-response batch download:--force": {
+      "action_id": "sample",
+      "force": true,
+      "index": 0,
+      "max_bytes": 1073741824,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "device live-response batch download:required": {
+      "action_id": "sample",
+      "force": false,
+      "index": 0,
+      "max_bytes": 1073741824,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "device live-response batch download:supplied": {
+      "action_id": "sample",
+      "force": true,
+      "index": 1,
+      "max_bytes": 1,
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "device live-response batch output:required": {
+      "action_id": "sample"
+    },
+    "device live-response batch output:supplied": {
+      "action_id": "sample"
+    },
+    "device live-response batch status:required": {
+      "action_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response batch status:supplied": {
+      "action_id": "sample",
+      "wait_seconds": 1
+    },
+    "device live-response batch submit:--dry-run": {
+      "command_file": null,
+      "command_texts": {
+        "tuple": []
       },
-      "yes": true
+      "comment": "sample",
+      "dry_run": true,
+      "machine_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response batch submit:required": {
+      "command_file": null,
+      "command_texts": {
+        "tuple": []
+      },
+      "comment": "sample",
+      "dry_run": false,
+      "machine_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response batch submit:supplied": {
+      "command_file": {
+        "path": "<output-path>"
+      },
+      "command_texts": {
+        "tuple": [
+          "sample",
+          "sample"
+        ]
+      },
+      "comment": "sample",
+      "dry_run": true,
+      "machine_id": "sample",
+      "wait_seconds": 1
+    },
+    "device live-response cancel:--dry-run": {
+      "command_id": "sample",
+      "dry_run": true,
+      "session_id": "sample"
+    },
+    "device live-response cancel:required": {
+      "command_id": "sample",
+      "dry_run": false,
+      "session_id": "sample"
+    },
+    "device live-response cancel:supplied": {
+      "command_id": "sample",
+      "dry_run": true,
+      "session_id": "sample"
+    },
+    "device live-response catalog:required": {
+      "platform": null,
+      "risk": null
+    },
+    "device live-response catalog:supplied": {
+      "platform": "windows",
+      "risk": "local"
+    },
+    "device live-response collect-event-logs:--all": {
+      "comment": null,
+      "dry_run": false,
+      "include_all": true,
+      "logs": {
+        "tuple": []
+      },
+      "max_bytes": 3221225472,
+      "max_total_bytes": 4294967296,
+      "min_bytes": 0,
+      "output_dir": {
+        "path": "<output-path>"
+      },
+      "target": "sample",
+      "wait_seconds": 300
+    },
+    "device live-response collect-event-logs:--dry-run": {
+      "comment": null,
+      "dry_run": true,
+      "include_all": false,
+      "logs": {
+        "tuple": []
+      },
+      "max_bytes": 3221225472,
+      "max_total_bytes": 4294967296,
+      "min_bytes": 0,
+      "output_dir": {
+        "path": "<output-path>"
+      },
+      "target": "sample",
+      "wait_seconds": 300
+    },
+    "device live-response collect-event-logs:required": {
+      "comment": null,
+      "dry_run": false,
+      "include_all": false,
+      "logs": {
+        "tuple": []
+      },
+      "max_bytes": 3221225472,
+      "max_total_bytes": 4294967296,
+      "min_bytes": 0,
+      "output_dir": {
+        "path": "<output-path>"
+      },
+      "target": "sample",
+      "wait_seconds": 300
+    },
+    "device live-response collect-event-logs:supplied": {
+      "comment": "sample",
+      "dry_run": true,
+      "include_all": true,
+      "logs": {
+        "tuple": [
+          "sample",
+          "sample"
+        ]
+      },
+      "max_bytes": 1,
+      "max_total_bytes": 1,
+      "min_bytes": 1,
+      "output_dir": {
+        "path": "<output-path>"
+      },
+      "target": "sample",
+      "wait_seconds": 1
+    },
+    "device live-response connect:--dry-run": {
+      "comment": null,
+      "dry_run": true,
+      "machine_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response connect:required": {
+      "comment": null,
+      "dry_run": false,
+      "machine_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response connect:supplied": {
+      "comment": "sample",
+      "dry_run": true,
+      "machine_id": "sample",
+      "wait_seconds": 1
+    },
+    "device live-response dir:--dry-run": {
+      "dry_run": true,
+      "full_path": false,
+      "path": null,
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response dir:--full-path": {
+      "dry_run": false,
+      "full_path": true,
+      "path": null,
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response dir:required": {
+      "dry_run": false,
+      "full_path": false,
+      "path": null,
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response dir:supplied": {
+      "dry_run": true,
+      "full_path": true,
+      "path": "sample",
+      "session_id": "sample",
+      "wait_seconds": 1
+    },
+    "device live-response disconnect:--dry-run": {
+      "dry_run": true,
+      "session_id": "sample"
+    },
+    "device live-response disconnect:required": {
+      "dry_run": false,
+      "session_id": "sample"
+    },
+    "device live-response disconnect:supplied": {
+      "dry_run": true,
+      "session_id": "sample"
+    },
+    "device live-response download:--force": {
+      "command_id": "sample",
+      "force": true,
+      "max_bytes": 1073741824,
+      "output": {
+        "path": "<output-path>"
+      },
+      "session_id": "sample"
+    },
+    "device live-response download:required": {
+      "command_id": "sample",
+      "force": false,
+      "max_bytes": 1073741824,
+      "output": {
+        "path": "<output-path>"
+      },
+      "session_id": "sample"
+    },
+    "device live-response download:supplied": {
+      "command_id": "sample",
+      "force": true,
+      "max_bytes": 1,
+      "output": {
+        "path": "<output-path>"
+      },
+      "session_id": "sample"
+    },
+    "device live-response exec:--command-stdin": {
+      "command_file": null,
+      "command_stdin": true,
+      "command_text": null,
+      "dry_run": false,
+      "force": false,
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response exec:--dry-run": {
+      "command_file": null,
+      "command_stdin": false,
+      "command_text": null,
+      "dry_run": true,
+      "force": false,
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response exec:--force": {
+      "command_file": null,
+      "command_stdin": false,
+      "command_text": null,
+      "dry_run": false,
+      "force": true,
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response exec:required": {
+      "command_file": null,
+      "command_stdin": false,
+      "command_text": null,
+      "dry_run": false,
+      "force": false,
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response exec:supplied": {
+      "command_file": {
+        "path": "<output-path>"
+      },
+      "command_stdin": true,
+      "command_text": "sample",
+      "dry_run": true,
+      "force": true,
+      "session_id": "sample",
+      "wait_seconds": 1
+    },
+    "device live-response fileinfo:--dry-run": {
+      "dry_run": true,
+      "path": "sample",
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response fileinfo:required": {
+      "dry_run": false,
+      "path": "sample",
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response fileinfo:supplied": {
+      "dry_run": true,
+      "path": "sample",
+      "session_id": "sample",
+      "wait_seconds": 1
+    },
+    "device live-response findfile:--dry-run": {
+      "dry_run": true,
+      "name": "sample",
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response findfile:required": {
+      "dry_run": false,
+      "name": "sample",
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response findfile:supplied": {
+      "dry_run": true,
+      "name": "sample",
+      "session_id": "sample",
+      "wait_seconds": 1
+    },
+    "device live-response getfile:--background": {
+      "background": true,
+      "dry_run": false,
+      "force": false,
+      "max_bytes": 1073741824,
+      "output": null,
+      "path": "sample",
+      "session_id": "sample",
+      "upload_only": false,
+      "wait_seconds": 300
+    },
+    "device live-response getfile:--dry-run": {
+      "background": false,
+      "dry_run": true,
+      "force": false,
+      "max_bytes": 1073741824,
+      "output": null,
+      "path": "sample",
+      "session_id": "sample",
+      "upload_only": false,
+      "wait_seconds": 300
+    },
+    "device live-response getfile:--force": {
+      "background": false,
+      "dry_run": false,
+      "force": true,
+      "max_bytes": 1073741824,
+      "output": null,
+      "path": "sample",
+      "session_id": "sample",
+      "upload_only": false,
+      "wait_seconds": 300
+    },
+    "device live-response getfile:--upload-only": {
+      "background": false,
+      "dry_run": false,
+      "force": false,
+      "max_bytes": 1073741824,
+      "output": null,
+      "path": "sample",
+      "session_id": "sample",
+      "upload_only": true,
+      "wait_seconds": 300
+    },
+    "device live-response getfile:required": {
+      "background": false,
+      "dry_run": false,
+      "force": false,
+      "max_bytes": 1073741824,
+      "output": null,
+      "path": "sample",
+      "session_id": "sample",
+      "upload_only": false,
+      "wait_seconds": 300
+    },
+    "device live-response getfile:supplied": {
+      "background": true,
+      "dry_run": true,
+      "force": true,
+      "max_bytes": 1,
+      "output": {
+        "path": "<output-path>"
+      },
+      "path": "sample",
+      "session_id": "sample",
+      "upload_only": true,
+      "wait_seconds": 1
+    },
+    "device live-response history:required": {
+      "session_id": "sample"
+    },
+    "device live-response history:supplied": {
+      "session_id": "sample"
+    },
+    "device live-response library delete:--dry-run": {
+      "dry_run": true,
+      "name": "sample"
+    },
+    "device live-response library delete:required": {
+      "dry_run": false,
+      "name": "sample"
+    },
+    "device live-response library delete:supplied": {
+      "dry_run": true,
+      "name": "sample"
+    },
+    "device live-response library download:--force": {
+      "force": true,
+      "max_bytes": 1073741824,
+      "name": "sample",
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "device live-response library download:required": {
+      "force": false,
+      "max_bytes": 1073741824,
+      "name": "sample",
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "device live-response library download:supplied": {
+      "force": true,
+      "max_bytes": 1,
+      "name": "sample",
+      "output": {
+        "path": "<output-path>"
+      }
+    },
+    "device live-response library list:required": {},
+    "device live-response library list:supplied": {},
+    "device live-response library show:required": {
+      "name": "sample"
+    },
+    "device live-response library show:supplied": {
+      "name": "sample"
+    },
+    "device live-response library upload:--dry-run": {
+      "description": null,
+      "dry_run": true,
+      "overwrite": false,
+      "parameters_description": null,
+      "path": {
+        "path": "<existing-file>"
+      }
+    },
+    "device live-response library upload:--overwrite": {
+      "description": null,
+      "dry_run": false,
+      "overwrite": true,
+      "parameters_description": null,
+      "path": {
+        "path": "<existing-file>"
+      }
+    },
+    "device live-response library upload:required": {
+      "description": null,
+      "dry_run": false,
+      "overwrite": false,
+      "parameters_description": null,
+      "path": {
+        "path": "<existing-file>"
+      }
+    },
+    "device live-response library upload:supplied": {
+      "description": "sample",
+      "dry_run": true,
+      "overwrite": true,
+      "parameters_description": "sample",
+      "path": {
+        "path": "<existing-file>"
+      }
+    },
+    "device live-response output:required": {
+      "command_id": "sample",
+      "session_id": "sample"
+    },
+    "device live-response output:supplied": {
+      "command_id": "sample",
+      "session_id": "sample"
+    },
+    "device live-response putfile:--dry-run": {
+      "dry_run": true,
+      "keep": false,
+      "library_name": "sample",
+      "overwrite": false,
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response putfile:--keep": {
+      "dry_run": false,
+      "keep": true,
+      "library_name": "sample",
+      "overwrite": false,
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response putfile:--overwrite": {
+      "dry_run": false,
+      "keep": false,
+      "library_name": "sample",
+      "overwrite": true,
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response putfile:required": {
+      "dry_run": false,
+      "keep": false,
+      "library_name": "sample",
+      "overwrite": false,
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response putfile:supplied": {
+      "dry_run": true,
+      "keep": true,
+      "library_name": "sample",
+      "overwrite": true,
+      "session_id": "sample",
+      "wait_seconds": 1
+    },
+    "device live-response run:--background": {
+      "background": true,
+      "dry_run": false,
+      "parameters_file": null,
+      "parameters_stdin": false,
+      "script": "sample",
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response run:--dry-run": {
+      "background": false,
+      "dry_run": true,
+      "parameters_file": null,
+      "parameters_stdin": false,
+      "script": "sample",
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response run:--parameters-stdin": {
+      "background": false,
+      "dry_run": false,
+      "parameters_file": null,
+      "parameters_stdin": true,
+      "script": "sample",
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response run:required": {
+      "background": false,
+      "dry_run": false,
+      "parameters_file": null,
+      "parameters_stdin": false,
+      "script": "sample",
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response run:supplied": {
+      "background": true,
+      "dry_run": true,
+      "parameters_file": {
+        "path": "<output-path>"
+      },
+      "parameters_stdin": true,
+      "script": "sample",
+      "session_id": "sample",
+      "wait_seconds": 1
+    },
+    "device live-response sessions list:--all": {
+      "include_closed": true,
+      "machine_id": null
+    },
+    "device live-response sessions list:required": {
+      "include_closed": false,
+      "machine_id": null
+    },
+    "device live-response sessions list:supplied": {
+      "include_closed": true,
+      "machine_id": "sample"
+    },
+    "device live-response sessions refresh:required": {
+      "machine_id": null
+    },
+    "device live-response sessions refresh:supplied": {
+      "machine_id": "sample"
+    },
+    "device live-response sessions:--all": {
+      "include_closed": true,
+      "machine_id": null
+    },
+    "device live-response sessions:required": {
+      "include_closed": false,
+      "machine_id": null
+    },
+    "device live-response sessions:supplied": {
+      "include_closed": true,
+      "machine_id": "sample"
+    },
+    "device live-response show:required": {
+      "session_id": "sample"
+    },
+    "device live-response show:supplied": {
+      "session_id": "sample"
+    },
+    "device live-response status:required": {
+      "command_id": "sample",
+      "session_id": "sample",
+      "wait_seconds": 0
+    },
+    "device live-response status:supplied": {
+      "command_id": "sample",
+      "session_id": "sample",
+      "wait_seconds": 1
     },
     "device restrict:--dry-run": {
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": true,
-      "yes": false
-    },
-    "device restrict:--yes": {
-      "comment": "sample",
-      "device_id": "sample",
-      "dry_run": false,
-      "yes": true
+      "dry_run": true
     },
     "device restrict:required": {
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": false,
-      "yes": false
+      "dry_run": false
     },
     "device restrict:supplied": {
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": true,
-      "yes": true
+      "dry_run": true
     },
     "device scan:--dry-run": {
       "comment": "Scan triggered via xdr-cli",
@@ -200,18 +872,7 @@
       "scan_type": {
         "enum": "ScanType",
         "value": "Quick"
-      },
-      "yes": false
-    },
-    "device scan:--yes": {
-      "comment": "Scan triggered via xdr-cli",
-      "device_id": "sample",
-      "dry_run": false,
-      "scan_type": {
-        "enum": "ScanType",
-        "value": "Quick"
-      },
-      "yes": true
+      }
     },
     "device scan:required": {
       "comment": "Scan triggered via xdr-cli",
@@ -220,8 +881,7 @@
       "scan_type": {
         "enum": "ScanType",
         "value": "Quick"
-      },
-      "yes": false
+      }
     },
     "device scan:supplied": {
       "comment": "sample",
@@ -230,14 +890,114 @@
       "scan_type": {
         "enum": "ScanType",
         "value": "Quick"
-      },
-      "yes": true
+      }
     },
     "device show:required": {
       "device": "sample"
     },
     "device show:supplied": {
       "device": "sample"
+    },
+    "device start-investigation:--dry-run": {
+      "comment": "sample",
+      "dry_run": true,
+      "machine_id": "sample"
+    },
+    "device start-investigation:required": {
+      "comment": "sample",
+      "dry_run": false,
+      "machine_id": "sample"
+    },
+    "device start-investigation:supplied": {
+      "comment": "sample",
+      "dry_run": true,
+      "machine_id": "sample"
+    },
+    "device tags add:--dry-run": {
+      "dry_run": true,
+      "machine_id": "sample",
+      "tag": "sample"
+    },
+    "device tags add:required": {
+      "dry_run": false,
+      "machine_id": "sample",
+      "tag": "sample"
+    },
+    "device tags add:supplied": {
+      "dry_run": true,
+      "machine_id": "sample",
+      "tag": "sample"
+    },
+    "device tags list:required": {
+      "machine_id": "sample"
+    },
+    "device tags list:supplied": {
+      "machine_id": "sample"
+    },
+    "device tags remove:--dry-run": {
+      "dry_run": true,
+      "machine_id": "sample",
+      "tag": "sample"
+    },
+    "device tags remove:required": {
+      "dry_run": false,
+      "machine_id": "sample",
+      "tag": "sample"
+    },
+    "device tags remove:supplied": {
+      "dry_run": true,
+      "machine_id": "sample",
+      "tag": "sample"
+    },
+    "device tags set:--dry-run": {
+      "dry_run": true,
+      "expect_none": false,
+      "expected": {
+        "tuple": []
+      },
+      "machine_id": "sample",
+      "tags": {
+        "tuple": []
+      }
+    },
+    "device tags set:--expect-none": {
+      "dry_run": false,
+      "expect_none": true,
+      "expected": {
+        "tuple": []
+      },
+      "machine_id": "sample",
+      "tags": {
+        "tuple": []
+      }
+    },
+    "device tags set:required": {
+      "dry_run": false,
+      "expect_none": false,
+      "expected": {
+        "tuple": []
+      },
+      "machine_id": "sample",
+      "tags": {
+        "tuple": []
+      }
+    },
+    "device tags set:supplied": {
+      "dry_run": true,
+      "expect_none": true,
+      "expected": {
+        "tuple": [
+          "sample",
+          "sample"
+        ]
+      },
+      "machine_id": "sample",
+      "tags": {
+        "tuple": [
+          "sample",
+          "sample"
+        ]
+      }
     },
     "device timeline:--force": {
       "days": null,
@@ -293,44 +1053,73 @@
         "datetime": "2026-10-04T12:30:00"
       }
     },
-    "device unisolate:--yes": {
+    "device troubleshoot:--dry-run": {
       "comment": "sample",
-      "device_id": "sample",
-      "yes": true
+      "dry_run": true,
+      "enabled": true,
+      "machine_id": "sample"
+    },
+    "device troubleshoot:--off": {
+      "comment": "sample",
+      "dry_run": false,
+      "enabled": false,
+      "machine_id": "sample"
+    },
+    "device troubleshoot:--on": {
+      "comment": "sample",
+      "dry_run": false,
+      "enabled": true,
+      "machine_id": "sample"
+    },
+    "device troubleshoot:required": {
+      "comment": "sample",
+      "dry_run": false,
+      "enabled": true,
+      "machine_id": "sample"
+    },
+    "device troubleshoot:supplied": {
+      "comment": "sample",
+      "dry_run": true,
+      "enabled": true,
+      "machine_id": "sample"
+    },
+    "device uncontain:--dry-run": {
+      "comment": "sample",
+      "dry_run": true,
+      "machine_id": "sample"
+    },
+    "device uncontain:required": {
+      "comment": "sample",
+      "dry_run": false,
+      "machine_id": "sample"
+    },
+    "device uncontain:supplied": {
+      "comment": "sample",
+      "dry_run": true,
+      "machine_id": "sample"
     },
     "device unisolate:required": {
       "comment": "sample",
-      "device_id": "sample",
-      "yes": false
+      "device_id": "sample"
     },
     "device unisolate:supplied": {
       "comment": "sample",
-      "device_id": "sample",
-      "yes": true
+      "device_id": "sample"
     },
     "device unrestrict:--dry-run": {
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": true,
-      "yes": false
-    },
-    "device unrestrict:--yes": {
-      "comment": "sample",
-      "device_id": "sample",
-      "dry_run": false,
-      "yes": true
+      "dry_run": true
     },
     "device unrestrict:required": {
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": false,
-      "yes": false
+      "dry_run": false
     },
     "device unrestrict:supplied": {
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": true,
-      "yes": true
+      "dry_run": true
     },
     "domains list:required": {
       "source": {
@@ -1853,6 +2642,90 @@
       "no_args_is_help": true,
       "params": []
     },
+    "device action-history": {
+      "help": "Save a device's response-action history as a private artifact (read-only). Portal-cookie reads the Action center history for the last seven days. The official backend reads machine actions, which exclude portal-initiated Live Response activity. The final row (record_type device-action-history-coverage) states the window, native count and whether the read was complete; the receipt context repeats it.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "machine_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 100,
+          "envvar": null,
+          "help": "Maximum number of actions to read.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 10000,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        }
+      ]
+    },
+    "device action-permissions": {
+      "help": "Show which response actions the portal reports as available (portal-cookie). This is the portal's native availability response, not a grant of authorization; the service still enforces RBAC when an action is sent.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "machine_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
     "device action-status": {
       "help": "Check the status of a machine action.",
       "hidden": false,
@@ -1899,6 +2772,99 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
+          }
+        }
+      ]
+    },
+    "device cancel-action": {
+      "help": "Cancel a pending device response action (portal-cookie). Only pending or in-progress isolation, package collection, scan, app-restriction and log-collection requests are eligible. Cancellation does not confirm any rollback on the device; check action-status afterwards. A device that already picked the action up may still complete it.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "action_id",
+          "nargs": 1,
+          "opts": [
+            "action_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "MachineId the action targets.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "device_id",
+          "nargs": 1,
+          "opts": [
+            "--device"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reason for cancellation.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show what would happen.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
           }
         }
       ]
@@ -1956,22 +2922,144 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Skip confirmation.",
+          "help": "Show what would happen.",
           "hidden": false,
           "is_eager": false,
           "is_flag": true,
           "kind": "option",
           "multiple": false,
-          "name": "yes",
+          "name": "dry_run",
           "nargs": 1,
           "opts": [
-            "--yes",
-            "-y"
+            "--dry-run"
           ],
           "required": false,
           "secondary_opts": [],
           "type": {
             "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device collect-support-logs": {
+      "help": "Request a Defender support-log collection from a device (portal-cookie). Follow the request with action-status. Downloading the collected logs is not available from the CLI yet; use Defender for that. No collection has completed against a live tenant; see docs/live_response_coverage.md.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "machine_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reason recorded with the request.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show what would happen.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device contain": {
+      "help": "Contain an unmanaged device so Defender-onboarded devices stop talking to it (portal-cookie). Refused for onboarded or unknown-state devices; use isolate for those. Not yet verified against a live tenant; see docs/live_response_coverage.md.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "machine_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reason recorded with the action.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
           }
         },
         {
@@ -2203,28 +3291,6 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
           "help": "Show what would happen.",
           "hidden": false,
           "is_eager": false,
@@ -2240,6 +3306,2724 @@
           "secondary_opts": [],
           "type": {
             "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response": {
+      "help": "Live Response sessions: inspect, search, fetch and place files, run library scripts. Interactive sessions need the portal-cookie backend. Console commands are classified locally and dispatch directly. Use --dry-run for local validation.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "device live-response batch": {
+      "help": "Official API Live Response machine actions: PutFile, RunScript and GetFile in one request, without an interactive session. GetFile results are saved exactly as delivered (gzip-wrapped); the receipt's kind says so. See docs/live_response_coverage.md.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "device live-response batch cancel": {
+      "help": "Cancel a pending batch action. Commands already running may still finish.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "action_id",
+          "nargs": 1,
+          "opts": [
+            "action_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response batch download": {
+      "help": "Download a completed batch command's result privately.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "action_id",
+          "nargs": 1,
+          "opts": [
+            "action_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 0,
+          "envvar": null,
+          "help": "Zero-based command index within the action.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "index",
+          "nargs": 1,
+          "opts": [
+            "--index"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Destination file.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output",
+          "nargs": 1,
+          "opts": [
+            "--output",
+            "-o"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": false,
+            "exists": false,
+            "file_okay": true,
+            "name": "file",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Atomically replace an existing output path.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "force",
+          "nargs": 1,
+          "opts": [
+            "--force"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": 1073741824,
+          "envvar": null,
+          "help": "Maximum download size.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_bytes",
+          "nargs": 1,
+          "opts": [
+            "--max-bytes"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        }
+      ]
+    },
+    "device live-response batch output": {
+      "help": "Save per-command status and errors for a batch action as a private artifact.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "action_id",
+          "nargs": 1,
+          "opts": [
+            "action_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "device live-response batch status": {
+      "help": "Show a batch action's native state.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "action_id",
+          "nargs": 1,
+          "opts": [
+            "action_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 0,
+          "envvar": null,
+          "help": "Poll up to this many seconds for a terminal state (0 returns immediately).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "wait_seconds",
+          "nargs": 1,
+          "opts": [
+            "--wait"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 3600,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        }
+      ]
+    },
+    "device live-response batch submit": {
+      "help": "Submit one official runliveresponse machine action.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "machine_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": {
+            "tuple": []
+          },
+          "envvar": null,
+          "help": "Console command (getfile, putfile, run); repeatable, in order.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "command_texts",
+          "nargs": 1,
+          "opts": [
+            "--command"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Read commands from a file, one per line (keeps script arguments out of argv).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "command_file",
+          "nargs": 1,
+          "opts": [
+            "--command-file"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": false,
+            "exists": false,
+            "file_okay": true,
+            "name": "file",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reason recorded with the machine action.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 0,
+          "envvar": null,
+          "help": "Poll up to this many seconds for a terminal state (0 returns immediately).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "wait_seconds",
+          "nargs": 1,
+          "opts": [
+            "--wait"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 3600,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response cancel": {
+      "help": "Cancel a command in the portal. The device may still finish it.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "command_id",
+          "nargs": 1,
+          "opts": [
+            "command_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response catalog": {
+      "help": "List the pinned console command catalog (local; no authentication or network). A live session's server definitions may narrow syntax further; risk classes are always the pinned local ones.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Only commands available on this platform.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "platform",
+          "nargs": 1,
+          "opts": [
+            "--os"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": true,
+            "choices": [
+              "windows",
+              "macos",
+              "linux"
+            ],
+            "name": "choice"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Only commands with this risk class.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "risk",
+          "nargs": 1,
+          "opts": [
+            "--risk"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": true,
+            "choices": [
+              "local",
+              "read",
+              "collect",
+              "place",
+              "execute",
+              "device-action",
+              "library-write"
+            ],
+            "name": "choice"
+          }
+        }
+      ]
+    },
+    "device live-response collect-event-logs": {
+      "help": "Fetch Windows event logs (.evtx) from a device over Live Response (collect). TARGET is a session (lr-N or CLR\u2026) or a MachineId; for a MachineId this command opens a session and closes it afterwards. It lists the event-log folder once, then fetches each selected log with getfile. Files are saved privately with SHA-256s and are never opened. This is not Defender's support-log collection.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "target",
+          "nargs": 1,
+          "opts": [
+            "target"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "New or empty private directory for the logs and manifest.json.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output_dir",
+          "nargs": 1,
+          "opts": [
+            "--output-dir"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": true,
+            "exists": false,
+            "file_okay": false,
+            "name": "directory",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": {
+            "tuple": []
+          },
+          "envvar": null,
+          "help": "Event log to fetch (repeatable), e.g. Security or Microsoft-Windows-PowerShell/Operational. Default: a curated triage set.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "logs",
+          "nargs": 1,
+          "opts": [
+            "--log"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Fetch every .evtx in the folder.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_all",
+          "nargs": 1,
+          "opts": [
+            "--all"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": 0,
+          "envvar": null,
+          "help": "Skip logs listed smaller than this. A size filter only: a small log can still hold events.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "min_bytes",
+          "nargs": 1,
+          "opts": [
+            "--min-bytes"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 3221225472,
+          "envvar": null,
+          "help": "Skip, or stop downloading, any single larger log.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_bytes",
+          "nargs": 1,
+          "opts": [
+            "--max-bytes"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 4294967296,
+          "envvar": null,
+          "help": "Maximum total saved file bytes; bounds each transfer by the remaining budget. Failed transfers stop collection.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_total_bytes",
+          "nargs": 1,
+          "opts": [
+            "--max-total-bytes"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 300,
+          "envvar": null,
+          "help": "Seconds to wait for each job.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "wait_seconds",
+          "nargs": 1,
+          "opts": [
+            "--wait"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 3600,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reason recorded locally when this command opens the session.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show the plan; no network, nothing written.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response connect": {
+      "help": "Open a Live Response session on a device (MachineId). Opening a session is recorded by the service against your account. Use disconnect when finished; idle sessions end after 30 minutes.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "machine_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reason recorded locally with the request.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 0,
+          "envvar": null,
+          "help": "Poll up to this many seconds while the session is pending.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "wait_seconds",
+          "nargs": 1,
+          "opts": [
+            "--wait"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 600,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response dir": {
+      "help": "List a directory on the device (read).",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "path",
+          "nargs": 1,
+          "opts": [
+            "path"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show full paths.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "full_path",
+          "nargs": 1,
+          "opts": [
+            "--full-path"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": 0,
+          "envvar": null,
+          "help": "Poll up to this many seconds for a terminal state (0 returns immediately).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "wait_seconds",
+          "nargs": 1,
+          "opts": [
+            "--wait"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 3600,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response disconnect": {
+      "help": "Close a Live Response session. Running commands may be stopped by the service.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response download": {
+      "help": "Download a completed command's file (e.g. getfile) privately; never opened or extracted.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "command_id",
+          "nargs": 1,
+          "opts": [
+            "command_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Destination file.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output",
+          "nargs": 1,
+          "opts": [
+            "--output",
+            "-o"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": false,
+            "exists": false,
+            "file_okay": true,
+            "name": "file",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Atomically replace an existing output path.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "force",
+          "nargs": 1,
+          "opts": [
+            "--force"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": 1073741824,
+          "envvar": null,
+          "help": "Maximum download size.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_bytes",
+          "nargs": 1,
+          "opts": [
+            "--max-bytes"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        }
+      ]
+    },
+    "device live-response exec": {
+      "help": "Run one console command in a session, e.g. 'findfile evil.exe' or 'dir C:\\Temp'. A trailing '&' asks for background mode; a final '> FILE' saves the rendered output to a private local file once the command completes. Compound commands and pipes are rejected.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "One console command. Prefer --command-file/--command-stdin for sensitive text.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "command_text",
+          "nargs": 1,
+          "opts": [
+            "--command"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Read the console command from a file.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "command_file",
+          "nargs": 1,
+          "opts": [
+            "--command-file"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": false,
+            "exists": false,
+            "file_okay": true,
+            "name": "file",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Read the console command from stdin.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "command_stdin",
+          "nargs": 1,
+          "opts": [
+            "--command-stdin"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Replace an existing '> FILE' local output.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "force",
+          "nargs": 1,
+          "opts": [
+            "--force"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": 0,
+          "envvar": null,
+          "help": "Poll up to this many seconds for a terminal state (0 returns immediately).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "wait_seconds",
+          "nargs": 1,
+          "opts": [
+            "--wait"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 3600,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response fileinfo": {
+      "help": "Show file metadata and hashes (read).",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "path",
+          "nargs": 1,
+          "opts": [
+            "path"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 0,
+          "envvar": null,
+          "help": "Poll up to this many seconds for a terminal state (0 returns immediately).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "wait_seconds",
+          "nargs": 1,
+          "opts": [
+            "--wait"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 3600,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response findfile": {
+      "help": "Search the device for files by name (read).",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "name",
+          "nargs": 1,
+          "opts": [
+            "name"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 0,
+          "envvar": null,
+          "help": "Poll up to this many seconds for a terminal state (0 returns immediately).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "wait_seconds",
+          "nargs": 1,
+          "opts": [
+            "--wait"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 3600,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response getfile": {
+      "help": "Fetch a file from the device (collect). Downloads are private and never opened.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "path",
+          "nargs": 1,
+          "opts": [
+            "path"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Download the collected file here once the command completes.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output",
+          "nargs": 1,
+          "opts": [
+            "--output",
+            "-o"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": false,
+            "exists": false,
+            "file_okay": true,
+            "name": "file",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Replace an existing --output path.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "force",
+          "nargs": 1,
+          "opts": [
+            "--force"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": 1073741824,
+          "envvar": null,
+          "help": "Maximum download size.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_bytes",
+          "nargs": 1,
+          "opts": [
+            "--max-bytes"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Submit in background mode.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "background",
+          "nargs": 1,
+          "opts": [
+            "--background"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Only upload the file to the cloud (-upload_to_cloud); no download.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "upload_only",
+          "nargs": 1,
+          "opts": [
+            "--upload-only"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": 300,
+          "envvar": null,
+          "help": "Poll up to this many seconds before downloading.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "wait_seconds",
+          "nargs": 1,
+          "opts": [
+            "--wait"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 3600,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response history": {
+      "help": "List the session's command log (the console's jobs and Command log).",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "device live-response library": {
+      "help": "Tenant Live Response file library.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "device live-response library delete": {
+      "help": "Delete a file from the tenant library (library-write).",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "name",
+          "nargs": 1,
+          "opts": [
+            "name"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response library download": {
+      "help": "Download a library file privately.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "name",
+          "nargs": 1,
+          "opts": [
+            "name"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Destination file.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output",
+          "nargs": 1,
+          "opts": [
+            "--output",
+            "-o"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": false,
+            "exists": false,
+            "file_okay": true,
+            "name": "file",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Atomically replace an existing output path.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "force",
+          "nargs": 1,
+          "opts": [
+            "--force"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": 1073741824,
+          "envvar": null,
+          "help": "Maximum download size.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_bytes",
+          "nargs": 1,
+          "opts": [
+            "--max-bytes"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        }
+      ]
+    },
+    "device live-response library list": {
+      "help": "List library files.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": []
+    },
+    "device live-response library show": {
+      "help": "Show one library file's metadata.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "name",
+          "nargs": 1,
+          "opts": [
+            "name"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "device live-response library upload": {
+      "help": "Upload a file to the tenant library (library-write).",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Local file to upload; its name becomes the library name.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "path",
+          "nargs": 1,
+          "opts": [
+            "--from-file"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": false,
+            "exists": true,
+            "file_okay": true,
+            "name": "file",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Library description.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "description",
+          "nargs": 1,
+          "opts": [
+            "--description"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Describe the script's parameters (marks the script as taking parameters).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "parameters_description",
+          "nargs": 1,
+          "opts": [
+            "--parameters-description"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Replace a library file with the same name.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "overwrite",
+          "nargs": 1,
+          "opts": [
+            "--overwrite"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response output": {
+      "help": "Save a command's rendered output as a private artifact.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "command_id",
+          "nargs": 1,
+          "opts": [
+            "command_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "device live-response putfile": {
+      "help": "Place a library file on the device (place). Upload it first with library upload.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "library_name",
+          "nargs": 1,
+          "opts": [
+            "library_name"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Overwrite the file if it exists on the device.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "overwrite",
+          "nargs": 1,
+          "opts": [
+            "--overwrite"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Keep the file on the device after a restart.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "keep",
+          "nargs": 1,
+          "opts": [
+            "--keep"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": 0,
+          "envvar": null,
+          "help": "Poll up to this many seconds for a terminal state (0 returns immediately).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "wait_seconds",
+          "nargs": 1,
+          "opts": [
+            "--wait"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 3600,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response run": {
+      "help": "Run a library script on the device (execute).",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "script",
+          "nargs": 1,
+          "opts": [
+            "script"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Read script parameters from a file (kept out of argv).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "parameters_file",
+          "nargs": 1,
+          "opts": [
+            "--parameters-file"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": false,
+            "exists": false,
+            "file_okay": true,
+            "name": "file",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Read script parameters from stdin.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "parameters_stdin",
+          "nargs": 1,
+          "opts": [
+            "--parameters-stdin"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Submit in background mode.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "background",
+          "nargs": 1,
+          "opts": [
+            "--background"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": 0,
+          "envvar": null,
+          "help": "Poll up to this many seconds for a terminal state (0 returns immediately).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "wait_seconds",
+          "nargs": 1,
+          "opts": [
+            "--wait"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 3600,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Validate and show what would be sent; no network.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response sessions": {
+      "help": "Live Response sessions this CLI remembers (local state; no tenant-wide list). With no subcommand, lists the remembered active sessions, like ``list``.",
+      "hidden": false,
+      "invoke_without_command": true,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Only sessions for this MachineId.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "--device"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Include sessions remembered as closed, failed or not found.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_closed",
+          "nargs": 1,
+          "opts": [
+            "--all"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response sessions list": {
+      "help": "List remembered sessions from local state, with no network or authentication. States are as last seen by this CLI; run ``sessions refresh`` to check them.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Only sessions for this MachineId.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "--device"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Include sessions remembered as closed, failed or not found.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_closed",
+          "nargs": 1,
+          "opts": [
+            "--all"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response sessions refresh": {
+      "help": "Look up each remembered active session's current state (read-only). Sessions the service no longer knows are marked not found. A failed lookup never marks a session closed; it keeps the remembered state. Nothing is closed or reconnected.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Only sessions for this MachineId.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "--device"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "device live-response show": {
+      "help": "Show a session's native state.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "device live-response status": {
+      "help": "Show a command's native state, optionally polling until it is terminal.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "session_id",
+          "nargs": 1,
+          "opts": [
+            "session_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "command_id",
+          "nargs": 1,
+          "opts": [
+            "command_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": 0,
+          "envvar": null,
+          "help": "Poll up to this many seconds for a terminal state (0 returns immediately).",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "wait_seconds",
+          "nargs": 1,
+          "opts": [
+            "--wait"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 3600,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
           }
         }
       ]
@@ -2291,28 +6075,6 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
           }
         },
         {
@@ -2417,28 +6179,6 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
           "help": "Show what would happen.",
           "hidden": false,
           "is_eager": false,
@@ -2483,6 +6223,373 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
+          }
+        }
+      ]
+    },
+    "device start-investigation": {
+      "help": "Start an automated investigation on a device. The portal-cookie backend selects the tenant's investigation protocol from fresh tenant features and sends exactly one request. The result reports request acceptance only; follow the investigation in Defender. Tenants where Microsoft has withdrawn manual investigations report TENANT_FEATURE_UNAVAILABLE; see docs/live_response_coverage.md.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "machine_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reason. The official API records it; the portal protocol does not.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show what would happen.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device tags": {
+      "help": "Read and change a device's manual tags.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "device tags add": {
+      "help": "Add one manual tag. On portal-cookie this re-reads and replaces the whole manual set, so a concurrent edit can race it.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "machine_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "tag",
+          "nargs": 1,
+          "opts": [
+            "tag"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show what would happen.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device tags list": {
+      "help": "Show a device's manual and system tags (read-only).",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "machine_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "device tags remove": {
+      "help": "Remove one manual tag. On portal-cookie this re-reads and replaces the whole manual set, so a concurrent edit can race it.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "machine_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "tag",
+          "nargs": 1,
+          "opts": [
+            "tag"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show what would happen.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device tags set": {
+      "help": "Replace a device's whole manual tag set (portal-cookie). The current manual tags must match --expect (or --expect-none); otherwise nothing is sent. System tags are never sent. The service offers no atomic compare-and-swap, so a concurrent portal edit can still be overwritten. Whole-set replacement is tested with synthetic responses only.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "machine_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": {
+            "tuple": []
+          },
+          "envvar": null,
+          "help": "Desired manual tag; repeatable. Omit all to clear manual tags.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "tags",
+          "nargs": 1,
+          "opts": [
+            "--tag"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": {
+            "tuple": []
+          },
+          "envvar": null,
+          "help": "A manual tag you expect the device to have now; repeatable.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "expected",
+          "nargs": 1,
+          "opts": [
+            "--expect"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Expect the device to have no manual tags.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "expect_none",
+          "nargs": 1,
+          "opts": [
+            "--expect-none"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show what would happen.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
           }
         }
       ]
@@ -2743,6 +6850,173 @@
         }
       ]
     },
+    "device troubleshoot": {
+      "help": "Turn Defender troubleshooting mode on or off for a device (portal-cookie). On starts the portal's fixed four-hour window; off ends the one active window. Acceptance does not confirm the device changed state; check action-status.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "machine_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Turn troubleshooting mode on (a fixed four-hour window) or off.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "enabled",
+          "nargs": 1,
+          "opts": [
+            "--on"
+          ],
+          "required": true,
+          "secondary_opts": [
+            "--off"
+          ],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reason recorded with the request.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show what would happen.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device uncontain": {
+      "help": "Release containment of an unmanaged device (portal-cookie). Requires exactly one matching containment action on record; anything ambiguous is refused. Not yet verified against a live tenant; see docs/live_response_coverage.md.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "machine_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reason recorded with the action.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show what would happen.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
     "device unisolate": {
       "help": "Release a device from network isolation.",
       "hidden": false,
@@ -2790,28 +7064,6 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
           }
         }
       ]
@@ -2863,28 +7115,6 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
           }
         },
         {

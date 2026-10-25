@@ -10,6 +10,128 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.18.0] - 2026-10-24
+
+### Added
+
+- `xdr device live-response` for Microsoft Defender for Endpoint Live Response.
+  Interactive sessions on the portal-cookie backend cover connect (with
+  `--wait` for pending sessions), show and disconnect.
+  `exec` sends one console command, and shortcuts cover findfile, fileinfo,
+  dir, getfile (with private download), putfile and run. Jobs are covered by
+  status `--wait`, history, output, download and cancel. The tenant file
+  library gets list, show, upload, download and delete.
+- Console commands are validated against each session's server definitions
+  and classified with a pinned local risk table (read, collect, place, execute,
+  device-action, library-write). Anything beyond a read is audited and refused
+  under an invalid backend preference without an explicit `--backend`.
+  `--dry-run` works without authentication or network. Compound
+  syntax and pipes are rejected. A trailing `&` requests background mode, and
+  `> FILE` saves rendered output to a private local file.
+- Live Response sessions get short `lr-N` aliases that work wherever a session
+  ID does. Aliases are resolved locally (only the native ID is sent), bound to
+  one tenant, backend, session and device, and never reused. Recovery and
+  follow-up commands in output use the alias.
+- `xdr device live-response sessions` (or `sessions list`) lists remembered
+  sessions from local state with no authentication or network; `--all`
+  includes closed ones. `sessions refresh` looks up each remembered active
+  session once, marks sessions the service no longer knows as `not-found`,
+  keeps the remembered state when a lookup fails, and returns exit 14 when any
+  session could not be checked. Neither is a tenant-wide session list.
+- `xdr device live-response collect-event-logs` fetches Windows event logs in
+  one command: one listing of the event-log folder, then a `getfile` per log
+  (a curated triage set by default, `--log NAME`, or `--all`). Logs are saved
+  privately with SHA-256s into a new 0700 directory, never replace an existing
+  file and are never opened. A total byte budget is enforced against actual
+  downloaded bytes. A private manifest records provenance and every accepted
+  command ID with read-only recovery commands; nothing is ever resubmitted. A
+  MachineId target opens and closes its own session. This is separate from
+  Defender support logs.
+- `xdr device live-response batch` exposes official-API one-shot
+  `runliveresponse` actions (PutFile, RunScript, GetFile) with status, output,
+  per-command download and cancel.
+- `xdr device tags list|set|add|remove`. On portal-cookie, `set` replaces the
+  whole manual tag set only when the current set matches `--expect`, and
+  verifies the result afterwards; the service offers no atomic
+  compare-and-swap. `add`/`remove` use the official tag API, or a guarded
+  replacement on portal-cookie.
+- `xdr device contain` and `xdr device uncontain` contain or release an
+  unmanaged device (portal-cookie). Onboarded devices, unknown management
+  state and ambiguous containment records are refused rather than guessed.
+- `xdr device start-investigation` starts an automated investigation. On
+  portal-cookie it selects the tenant's protocol from fresh tenant features and
+  sends one request; the comment is recorded only by the official API. When
+  the tenant hides manual investigations (`HideInvestigationCreation`), nothing
+  is sent, and an HTTP 410 from either backend is reported as
+  `TENANT_FEATURE_UNAVAILABLE` with no investigation started.
+- `xdr device action-history` saves response-action history as a private
+  artifact. Portal-cookie reads the last seven days of Action center history;
+  the official backend reads machine actions, which exclude portal Live
+  Response. A final coverage row reports native counts and completeness.
+- Live Response download receipts report `kind: "gzip"` when the saved bytes
+  are gzip, as official batch GetFile results are; files are still saved
+  unmodified. A refused shared output directory names the actual fix.
+- `xdr device collect-support-logs` requests a Defender support-log
+  collection, and `xdr device troubleshoot --on|--off` turns troubleshooting
+  mode on for the portal's fixed four-hour window or ends the active window
+  (portal-cookie). Acceptance is reported, not a confirmed device-state change.
+  Support-log collection first reads the tenant's feature settings and sends
+  nothing when collection is disabled (`TENANT_FEATURE_UNAVAILABLE`) or when the
+  tenant uses the newer diagnostic-package protocol, which is not implemented
+  (`BACKEND_CAPABILITY_UNAVAILABLE`). The portal's action-availability report
+  alone is not treated as permission. Downloading support logs is not yet
+  available.
+- Live Response command records report `error_count`. A command that completes
+  with errors is not downloaded or saved locally.
+- `xdr device action-permissions` shows the portal's reported response-action
+  availability, and `xdr device cancel-action` cancels an eligible pending
+  response action without claiming any device rollback (portal-cookie).
+- `xdr device live-response catalog` lists the pinned command catalog with
+  platform applicability and evidence, without authentication.
+- Portal Live Response uses the V3 `liveResponseApi` session, command,
+  definition, download and library routes. Native session and command states
+  are preserved, and unrecognized states are never reported as terminal.
+  Sessions opened by the CLI are tracked in a private local handle store bound
+  to tenant and backend. Downloads are size-bounded, staged privately and
+  published atomically with a SHA-256, and are never opened or extracted.
+
+### Removed
+
+- `--yes`/`-y` and confirmation prompts from every `xdr device` response
+  action (isolate, unisolate, restrict, unrestrict, scan, collect-package,
+  contain, uncontain, start-investigation, collect-support-logs, troubleshoot,
+  cancel-action, tags set/add/remove) and from Live Response. Running the
+  command is the intent; `--dry-run` previews remain. Scripts that pass
+  `--yes` to these commands now fail with a usage error (exit 6) and must drop
+  the flag. `incidents update`, `results prune` and other local maintenance
+  commands keep their confirmation.
+
+### Security
+
+- Remote Live Response commands are always written to the audit log. Their
+  argv in the audit and session logs keeps only identifiers and fixed words,
+  so console text, paths, comments and script parameters are redacted. Each
+  submission adds one value-free `LR:` classification line.
+- Submissions are never replayed after a timeout or transport loss. The error
+  reports `OUTCOME_UNKNOWN` with a recovery command to inspect history first.
+  A server error (5xx) on a Live Response request that changes state is also
+  reported as `OUTCOME_UNKNOWN`, never as a rejection.
+- Once a Live Response command, session or batch action is accepted, a failure
+  in a later step (polling, saving `> FILE`, the `getfile --output` download)
+  keeps its exit code but is `retryable: false`. It names the accepted ID and
+  the read-only commands that follow it, so it never invites a duplicate run on
+  the device.
+- `getfile --output` prints exactly one result: the combined state and download
+  receipt, or the command state with `downloaded: false` and a
+  `download_skipped_reason`. Combining `--upload-only` with `--output` is
+  refused before anything is sent.
+- `--debug` logging removes URL query strings, fragments and user info, so
+  signed download tokens never reach stderr.
+- A mistyped `device` subcommand is redacted like a Live Response command in
+  the session log. `output` and `batch output` print no preview rows.
+- AGENTS.md: Live Response commands that run on an endpoint are guidance-only
+  for agents.
+
 ## [0.17.0] - 2026-10-23
 
 ### Added

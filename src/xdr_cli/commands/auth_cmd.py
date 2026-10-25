@@ -560,14 +560,26 @@ def status(
                         "device-unrestrict",
                         "incidents-update",
                         "device-scan-full",
+                        "device-live-response-v3-sessions",
+                        "device-live-response-library",
+                        "device-tags",
+                        "device-action-availability",
+                        "device-action-history",
                     ],
-                    "unverified_capabilities": [],
+                    "unverified_capabilities": [
+                        "device-contain", "device-uncontain", "device-cancel-action",
+                        "device-start-investigation", "device-collect-support-logs",
+                        "device-troubleshoot",
+                    ],
                     "validation_caveats": [
                         "AD domains are capped at 100 observed records; "
                         "incomplete coverage is reported.",
                         "Superseded device actions may be absent from portal status reads.",
                         "Native device and action response fields retain "
                         "partial-contract provenance.",
+                        "Live Response requires V3 sessions and device-specific permissions. "
+                        "Unverified capabilities have source and synthetic coverage only; "
+                        "see docs/live_response_coverage.md.",
                     ],
                     "full_parity": False,
                 }

@@ -258,6 +258,26 @@ class XDRClient:
         self._check_response(response)
         return self._decode_response(response)
 
+    async def upload_live_response_library(self, source, filename: str, fields: dict) -> dict:
+        """Upload one library file over the fixed MDE operation without replay."""
+        surface = APISurface.MDE
+        response = await self._request(
+            "POST", self._get_client(surface), "libraryfiles",
+            files={"file": (filename, source, "application/octet-stream")},
+            data=fields, headers=self._auth_headers(surface),
+        )
+        self._check_response(response)
+        return self._decode_response(response)
+
+    async def delete_live_response_library(self, encoded_filename: str) -> None:
+        """Delete one encoded library filename; never follow a redirect or replay."""
+        surface = APISurface.MDE
+        response = await self._request(
+            "DELETE", self._get_client(surface), f"libraryfiles/{encoded_filename}",
+            headers=self._auth_headers(surface),
+        )
+        self._check_response(response)
+
     async def patch(
         self,
         surface: APISurface,

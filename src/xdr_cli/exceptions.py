@@ -173,6 +173,18 @@ class NotFoundError(APIError):
         )
 
 
+class LiveResponseSessionNotFoundError(NotFoundError):
+    """Only an actual GET of the named Live Response session returned HTTP 404."""
+
+    error_code = "LIVE_RESPONSE_SESSION_NOT_FOUND"
+
+
+class LiveResponseSizeLimitError(APIError):
+    """The downloaded byte count or declared size exceeds the requested LR cap."""
+
+    error_code = "LIVE_RESPONSE_DOWNLOAD_SIZE_LIMIT"
+
+
 class LocalNotFoundError(XDRError):
     """A requested local artifact/session/cache entry does not exist."""
 

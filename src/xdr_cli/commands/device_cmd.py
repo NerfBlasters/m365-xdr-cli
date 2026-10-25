@@ -39,6 +39,9 @@ from xdr_cli.backend_contract import Backend
 from xdr_cli.backends import create_client
 from xdr_cli.cli_params import EnumValueChoice
 from xdr_cli.client import XDRClient
+from xdr_cli.commands import device_manage_cmd
+from xdr_cli.commands.live_response_cmd import live_response_app
+from xdr_cli.commands.live_response_collect_cmd import collect_event_logs
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import (
     ArtifactError,
@@ -69,6 +72,9 @@ device_app = click.Group(
     help="Device info and response actions.",
     no_args_is_help=True,
 )
+live_response_app.add_command(collect_event_logs)
+device_app.add_command(live_response_app)
+device_manage_cmd.register(device_app)
 
 # A MachineId is a 40-char SHA1 hex digest. It needs no hostname resolution;
 # stored-cookie timeline runs still verify it against the configured tenant.
@@ -96,33 +102,6 @@ def _get_client(ctx: AppContext) -> tuple[None, Backend]:
         auth_factory=AuthManager, client_factory=XDRClient,
     )
     return None, client
-
-
-def _confirm_action(
-    ctx: AppContext, action: str, target: str, yes: bool,
-) -> None:
-    """Confirm a destructive action. Exits if denied or non-interactive without --yes."""
-    if yes:
-        return
-    if not ctx.is_interactive:
-        raise UsageError(
-            f"Non-interactive mode requires --yes for {action!r}.",
-            invalid={"kind": "missing_option", "value": "--yes"},
-            suggestions=[
-                {
-                    "reason": "confirmation_required",
-                    "message": "Re-run the same device command with --yes.",
-                    "confidence": "exact",
-                }
-            ],
-            help_command="xdr device --help",
-        )
-    err_console.print(
-        f"[bold yellow]About to {action} device "
-        f"{target}.[/bold yellow]"
-    )
-    if not click.confirm("Proceed?"):
-        raise ConflictError(f"Device action {action!r} was cancelled by the operator.")
 
 
 @device_app.command("show")
@@ -163,7 +142,6 @@ async def _device_show(ctx: AppContext, device: str) -> None:
     help="Isolation type: Full or Selective.",
 )
 @click.option("--comment", "-c", required=True, help="Reason for isolation.")
-@click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
 @click.option("--dry-run", is_flag=True, help="Show what would happen.")
 @click.pass_context
 def device_isolate(
@@ -171,7 +149,6 @@ def device_isolate(
     device_id: str,
     isolation_type: IsolationType,
     comment: str,
-    yes: bool,
     dry_run: bool,
 ) -> None:
     """Isolate a device from the network."""
@@ -190,7 +167,6 @@ def device_isolate(
         }))
         return
 
-    _confirm_action(app_ctx, "isolate", device_id, yes)
     asyncio.run(
         _device_action(
             app_ctx, "isolate", device_id,
@@ -202,17 +178,14 @@ def device_isolate(
 @device_app.command("unisolate")
 @click.argument("device_id", type=str, required=True, help="Device ID.")
 @click.option("--comment", "-c", required=True, help="Reason for releasing isolation.")
-@click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
 @click.pass_context
 def device_unisolate(
     ctx: click.Context,
     device_id: str,
     comment: str,
-    yes: bool,
 ) -> None:
     """Release a device from network isolation."""
     app_ctx: AppContext = ctx.obj
-    _confirm_action(app_ctx, "unisolate", device_id, yes)
     asyncio.run(
         _device_action(
             app_ctx, "unisolate", device_id, comment=comment,
@@ -232,7 +205,6 @@ def device_unisolate(
 @click.option(
     "--comment", "-c", default="Scan triggered via xdr-cli", show_default=True, help="Comment."
 )
-@click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
 @click.option("--dry-run", is_flag=True, help="Show what would happen.")
 @click.pass_context
 def device_scan(
@@ -240,7 +212,6 @@ def device_scan(
     device_id: str,
     scan_type: ScanType,
     comment: str,
-    yes: bool,
     dry_run: bool,
 ) -> None:
     """Run an antivirus scan on a device."""
@@ -259,7 +230,6 @@ def device_scan(
         }))
         return
 
-    _confirm_action(app_ctx, f"{scan_type.lower()} scan", device_id, yes)
     asyncio.run(
         _device_action(
             app_ctx, "scan", device_id,
@@ -277,14 +247,12 @@ def device_scan(
     show_default=True,
     help="Comment.",
 )
-@click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
 @click.option("--dry-run", is_flag=True, help="Show what would happen.")
 @click.pass_context
 def device_collect_package(
     ctx: click.Context,
     device_id: str,
     comment: str,
-    yes: bool,
     dry_run: bool,
 ) -> None:
     """Request a forensic investigation package."""
@@ -302,7 +270,6 @@ def device_collect_package(
         }))
         return
 
-    _confirm_action(app_ctx, "collect forensic package from", device_id, yes)
     asyncio.run(
         _device_action(
             app_ctx, "collect-package", device_id, comment=comment,
@@ -313,14 +280,12 @@ def device_collect_package(
 @device_app.command("restrict")
 @click.argument("device_id", type=str, required=True, help="Device ID.")
 @click.option("--comment", "-c", required=True, help="Reason for restriction.")
-@click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
 @click.option("--dry-run", is_flag=True, help="Show what would happen.")
 @click.pass_context
 def device_restrict(
     ctx: click.Context,
     device_id: str,
     comment: str,
-    yes: bool,
     dry_run: bool,
 ) -> None:
     """Restrict app execution to Microsoft-signed binaries."""
@@ -338,9 +303,6 @@ def device_restrict(
         }))
         return
 
-    _confirm_action(
-        app_ctx, "restrict code execution on", device_id, yes,
-    )
     asyncio.run(
         _device_action(
             app_ctx, "restrict", device_id, comment=comment,
@@ -351,14 +313,12 @@ def device_restrict(
 @device_app.command("unrestrict")
 @click.argument("device_id", type=str, required=True, help="Device ID.")
 @click.option("--comment", "-c", required=True, help="Reason for removing restriction.")
-@click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
 @click.option("--dry-run", is_flag=True, help="Show what would happen.")
 @click.pass_context
 def device_unrestrict(
     ctx: click.Context,
     device_id: str,
     comment: str,
-    yes: bool,
     dry_run: bool,
 ) -> None:
     """Remove the Defender app-execution restriction."""
@@ -376,9 +336,6 @@ def device_unrestrict(
         }))
         return
 
-    _confirm_action(
-        app_ctx, "remove app-execution restriction from", device_id, yes,
-    )
     asyncio.run(
         _device_action(
             app_ctx, "unrestrict", device_id, comment=comment,

@@ -129,9 +129,14 @@ cookie-mode record (trimmed here):
     "device-download-package", "incident-comments", "incidents-update",
     "device-scan-quick", "device-scan-full", "device-isolate-selective",
     "device-isolate-full", "device-unisolate", "device-collect-package",
-    "device-restrict", "device-unrestrict"
+    "device-restrict", "device-unrestrict",
+    "device-live-response-v3-sessions", "device-live-response-library",
+    "device-tags", "device-action-availability", "device-action-history"
   ],
-  "unverified_capabilities": [],
+  "unverified_capabilities": [
+    "device-contain", "device-uncontain", "device-cancel-action",
+    "device-start-investigation", "device-collect-support-logs", "device-troubleshoot"
+  ],
   "validation_caveats": ["..."],
   "full_parity": false
 }
@@ -156,6 +161,14 @@ Supported operations, as reported by `auth status`:
 | Domains | `domains list` (Entra and MDI-observed Active Directory) |
 | Devices | `device show`, `device timeline`, `device action-status` |
 | Device actions | `device scan` (Quick/Full), `device isolate` (Selective/Full), `device unisolate`, `device restrict`, `device unrestrict`, `device collect-package`, `device download-package` |
+| Live Response | `device live-response` sessions, console commands, jobs, files and library; see [Live Response](live_response.md) |
+| Device metadata and history | `device tags`, `device action-permissions`, `device action-history` |
+| Source-derived actions, not live-tested | `device contain`, `uncontain`, `cancel-action`, `start-investigation`, `collect-support-logs`, `troubleshoot`; see [coverage and live-test limits](live_response_coverage.md) |
+
+Capabilities describe the installed adapters, not current tenant permissions or
+session validity. `unverified_capabilities` distinguishes source/synthetic-only
+actions from those exercised in the development tenant. It never grants
+authorization or confirms an endpoint state change.
 
 Input limits specific to the portal adapters:
 
