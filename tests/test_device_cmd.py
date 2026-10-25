@@ -3,6 +3,7 @@
 import json
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from click.testing import CliRunner
 
 from xdr_cli.main import app
@@ -54,7 +55,7 @@ def test_device_isolate_dry_run(
 
 @patch("xdr_cli.commands.device_cmd.AuthManager")
 @patch("xdr_cli.commands.device_cmd.XDRClient")
-def test_device_isolate_with_yes(
+def test_device_isolate_dispatches_without_confirmation(
     mock_client_cls, mock_auth_cls, tmp_path, monkeypatch,
 ):
     monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path / ".xdr-cli"))
@@ -69,33 +70,31 @@ def test_device_isolate_with_yes(
 
     result = runner.invoke(app, [
         "device", "isolate", "dev-1",
-        "--comment", "containment", "--yes",
+        "--comment", "containment",
     ])
     assert result.exit_code == 0
     parsed = json.loads(result.output)
     assert parsed["data"]["status"] == "Pending"
+    mock_client.post.assert_awaited_once()
 
 
-def test_unrestrict_dry_run_and_confirmation_are_local(tmp_path, monkeypatch):
+def test_unrestrict_dry_run_is_local(tmp_path, monkeypatch):
     from unittest.mock import Mock
 
     monkeypatch.setenv('XDR_CLI_HOME', str(tmp_path))
-    client = Mock(side_effect=AssertionError('No API for dry-run or missing confirmation'))
+    client = Mock(side_effect=AssertionError('No API for dry-run'))
     monkeypatch.setattr('xdr_cli.commands.device_cmd._get_client', client)
     result = runner.invoke(app, [
         'device', 'unrestrict', 'dev-1', '--comment', 'recovery', '--dry-run',
     ])
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)['data']['action'] == 'unrestrict'
-    result = runner.invoke(app, ['--no-interactive', 'device', 'unrestrict',
-                                 'dev-1', '--comment', 'recovery'])
-    assert result.exit_code == 6, result.output
     client.assert_not_called()
 
 
 def test_unrestrict_requires_comment(tmp_path, monkeypatch):
     monkeypatch.setenv('XDR_CLI_HOME', str(tmp_path))
-    result = runner.invoke(app, ['device', 'unrestrict', 'dev-1', '--yes'])
+    result = runner.invoke(app, ['device', 'unrestrict', 'dev-1'])
     assert result.exit_code != 0
     assert '--comment' in result.output
 
@@ -113,7 +112,7 @@ def test_unrestrict_dispatches_and_is_audited(tmp_path, monkeypatch, caplog):
         'xdr_cli.commands.device_cmd._get_client',
         Mock(return_value=(None, OfficialBackend(client))),
     )
-    args = ['device', 'unrestrict', 'dev-1', '--comment', 'recovery', '--yes']
+    args = ['--no-interactive', 'device', 'unrestrict', 'dev-1', '--comment', 'recovery']
     monkeypatch.setattr('sys.argv', ['xdr', *args])
     with caplog.at_level(logging.INFO, logger='xdr.audit'):
         result = runner.invoke(app, args)
@@ -123,3 +122,43 @@ def test_unrestrict_dispatches_and_is_audited(tmp_path, monkeypatch, caplog):
     assert client.post.call_args.args[1] == 'machines/dev-1/unrestrictCodeExecution'
     assert client.post.call_args.kwargs['json'] == {'Comment': 'recovery'}
     assert any('unrestrict' in r.message for r in caplog.records)
+
+
+@pytest.mark.parametrize("action", [
+    "isolate", "unisolate", "scan", "collect-package", "restrict", "unrestrict",
+])
+@pytest.mark.parametrize("interactive", [False, True])
+def test_device_actions_dispatch_once_without_prompt(tmp_path, monkeypatch, action, interactive):
+    from unittest.mock import Mock
+
+    from xdr_cli.context import AppContext
+
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path))
+    client = AsyncMock()
+    client.submit_device_action.return_value = {"id": "action", "status": "Pending"}
+    monkeypatch.setattr("xdr_cli.commands.device_cmd._get_client",
+                        Mock(return_value=(None, client)))
+    monkeypatch.setattr(AppContext, "is_interactive", property(lambda ctx: interactive))
+    monkeypatch.setattr("click.confirm", Mock(side_effect=AssertionError("No confirmation prompt")))
+    result = runner.invoke(app, ["--no-interactive", "device", action, "dev-1",
+                                 "--comment", "explicit operator request"])
+    assert result.exit_code == 0, result.output
+    client.submit_device_action.assert_awaited_once()
+    assert client.submit_device_action.call_args.args[:2] == ("dev-1", action)
+    client.close.assert_awaited_once()
+
+
+@pytest.mark.parametrize("action", [
+    "isolate", "unisolate", "scan", "collect-package", "restrict", "unrestrict",
+])
+def test_removed_confirmation_flag_is_refused_before_backend_creation(
+    tmp_path, monkeypatch, action
+):
+    from unittest.mock import Mock
+
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path))
+    client = Mock(side_effect=AssertionError("No API for invalid argv"))
+    monkeypatch.setattr("xdr_cli.commands.device_cmd._get_client", client)
+    result = runner.invoke(app, ["device", action, "dev-1", "--comment", "reason", "--yes"])
+    assert result.exit_code == 6, result.output
+    client.assert_not_called()

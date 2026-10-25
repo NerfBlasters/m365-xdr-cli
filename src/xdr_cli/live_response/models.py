@@ -30,8 +30,8 @@ class LRRisk(StrEnum):
     LIBRARY_WRITE = "library-write"  # tenant library upload/update/delete
 
 
-# Classes that require confirmation, --yes or --dry-run before submission.
-CONFIRM_RISKS = frozenset(LRRisk) - {LRRisk.LOCAL, LRRisk.READ}
+# Non-read operations retain the backend mutation-policy check.
+MUTATION_POLICY_RISKS = frozenset(LRRisk) - {LRRisk.LOCAL, LRRisk.READ}
 
 
 @dataclass(frozen=True)
@@ -133,6 +133,8 @@ class LRSession:
     created_by: str | None = None
     created_at: str | None = None
     raw: dict = field(default_factory=dict, repr=False)
+    alias: str | None = None
+    last_verified_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -151,6 +153,7 @@ class LRCommandState:
     raw: dict = field(default_factory=dict, repr=False)
     # Read-only status stays usable when local cwd bookkeeping cannot be updated.
     directory_tracking: str | None = None
+    session_alias: str | None = None
 
     @property
     def succeeded(self) -> bool:

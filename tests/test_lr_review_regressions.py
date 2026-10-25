@@ -101,7 +101,7 @@ async def test_portal_post_acceptance_command_validation_preserves_unknown_outco
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["timestamp", "lock"])
 async def test_accepted_cd_local_tracking_failure_keeps_exact_recovery_id(
-    private_home, monkeypatch, failure
+    private_home, monkeypatch, failure, caplog
 ):
     response = cd_result(NEW, r"C:\Temp")
     if failure == "timestamp":
@@ -137,7 +137,7 @@ async def test_accepted_cd_local_tracking_failure_keeps_exact_recovery_id(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["malformed-directory", "local-io"])
 async def test_cd_status_and_output_remain_readable_when_directory_tracking_fails(
-    private_home, monkeypatch, failure
+    private_home, monkeypatch, failure, caplog
 ):
     set_current_directory(TENANT, "portal-cookie", SESSION, r"C:\old")
     mark_directory_submission(TENANT, "portal-cookie", SESSION, NEW, "2026-10-24T00:00:00Z")
@@ -154,6 +154,7 @@ async def test_cd_status_and_output_remain_readable_when_directory_tracking_fail
         second = await client.lr_get_command(SESSION, NEW)
         assert first.succeeded and second.succeeded
         assert first.directory_tracking == second.directory_tracking == "unavailable"
+        assert sum("tracking is unavailable" in r.message for r in caplog.records) == 1
         rows = [row async for row in client.lr_iter_output(SESSION, NEW)]
         assert rows[0]["line"] == "completed"
         assert get_current_directory(TENANT, "portal-cookie", SESSION) == r"C:\old"

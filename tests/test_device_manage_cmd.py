@@ -119,32 +119,31 @@ def test_tags_list_offers_a_guarded_set_command(fake):
     assert data["manual"] == ["vip", "lab host"] and data["system"] == ["Server"]
     assert data["set_command"].startswith(
         f"xdr device tags set {MACHINE} --expect vip --expect 'lab host'")
+    assert "--yes" not in data["set_command"]
     assert fake.closed
 
 
-def test_tags_set_requires_an_expectation_and_yes(fake):
-    assert _invoke("tags", "set", MACHINE, "--tag", "a", "--yes").exit_code == 6
-    both = _invoke("tags", "set", MACHINE, "--tag", "a", "--expect", "x", "--expect-none",
-                   "--yes")
+def test_tags_set_requires_an_unambiguous_expectation(fake):
+    assert _invoke("tags", "set", MACHINE, "--tag", "a").exit_code == 6
+    both = _invoke("tags", "set", MACHINE, "--tag", "a", "--expect", "x", "--expect-none")
     assert both.exit_code == 6
-    assert _invoke("tags", "set", MACHINE, "--tag", "a", "--expect-none").exit_code == 6
     assert fake.calls == []
 
 
 def test_tags_set_sends_desired_and_expected_sets(fake):
     result = _invoke("tags", "set", MACHINE, "--tag", "a", "--tag", "b c",
-                     "--expect", "vip", "--yes")
+                     "--expect", "vip")
     assert result.exit_code == 0, result.output
     assert fake.calls == [("set", MACHINE, ["a", "b c"], ["vip"])]
     assert _data(result)["atomic_compare_and_swap"] is False
-    cleared = _invoke("tags", "set", MACHINE, "--expect-none", "--yes")
+    cleared = _invoke("tags", "set", MACHINE, "--expect-none")
     assert cleared.exit_code == 0
     assert fake.calls[-1] == ("set", MACHINE, [], [])
 
 
 @pytest.mark.parametrize("verb,remove", [("add", False), ("remove", True)])
 def test_tag_add_and_remove(fake, verb, remove):
-    result = _invoke("tags", verb, MACHINE, "triage", "--yes")
+    result = _invoke("tags", verb, MACHINE, "triage")
     assert result.exit_code == 0, result.output
     assert fake.calls == [("update", MACHINE, "triage", remove)]
 
@@ -165,12 +164,9 @@ def test_action_permissions_is_a_read(fake):
     assert _data(result)["authorization_granted"] is False
 
 
-def test_cancel_action_confirms_and_reports_no_rollback(fake, monkeypatch, caplog):
-    assert _invoke("cancel-action", ACTION, "--device", MACHINE, "-c", "wrong device"
-                   ).exit_code == 6
-    assert fake.calls == []
+def test_cancel_action_dispatches_once_and_reports_no_rollback(fake, monkeypatch, caplog):
     args = ["--no-interactive", "--backend", "portal-cookie", "device", "cancel-action",
-            ACTION, "--device", MACHINE, "-c", "wrong device", "--yes"]
+            ACTION, "--device", MACHINE, "-c", "wrong device"]
     monkeypatch.setattr("sys.argv", ["xdr", *args])
     with caplog.at_level(logging.INFO, logger="xdr.audit"):
         result = runner.invoke(app, args)
@@ -181,19 +177,16 @@ def test_cancel_action_confirms_and_reports_no_rollback(fake, monkeypatch, caplo
 
 
 @pytest.mark.parametrize("verb", ["contain", "uncontain"])
-def test_containment_submits_named_action_after_confirmation(fake, verb):
-    assert _invoke(verb, MACHINE, "-c", "IR-7").exit_code == 6
-    assert _invoke(verb, MACHINE, "--yes").exit_code == 6  # --comment is required
+def test_containment_submits_named_action_without_confirmation(fake, verb):
+    assert _invoke(verb, MACHINE).exit_code == 6  # --comment is required
     assert fake.calls == []
-    result = _invoke(verb, MACHINE, "-c", "IR-7", "--yes")
+    result = _invoke(verb, MACHINE, "-c", "IR-7")
     assert result.exit_code == 0, result.output
     assert fake.calls == [("action", MACHINE, verb, "IR-7", None)]
 
 
-def test_start_investigation_confirms_and_sends_once(fake):
-    assert _invoke("start-investigation", MACHINE, "-c", "IR-9").exit_code == 6
-    assert fake.calls == []
-    result = _invoke("start-investigation", MACHINE, "-c", "IR-9", "--yes")
+def test_start_investigation_dispatches_once(fake):
+    result = _invoke("start-investigation", MACHINE, "-c", "IR-9")
     assert result.exit_code == 0, result.output
     assert fake.calls == [("investigate", MACHINE, "IR-9")]
     assert _data(result)["investigation_status"] == "not_interpreted"
@@ -219,12 +212,11 @@ def test_action_history_is_an_artifact_with_coverage(fake, complete, state):
 
 def test_support_logs_and_troubleshooting(fake):
     assert {"device collect-support-logs", "device troubleshoot"} <= _TENANT_MUTATION_COMMANDS
-    assert _invoke("collect-support-logs", MACHINE, "-c", "case").exit_code == 6
-    assert _invoke("troubleshoot", MACHINE, "-c", "case", "--yes").exit_code == 6  # --on/--off
+    assert _invoke("troubleshoot", MACHINE, "-c", "case").exit_code == 6  # --on/--off
     assert fake.calls == []
-    assert _invoke("collect-support-logs", MACHINE, "-c", "case", "--yes").exit_code == 0
-    on = _invoke("troubleshoot", MACHINE, "--on", "-c", "case", "--yes")
-    off = _invoke("troubleshoot", MACHINE, "--off", "-c", "case", "--yes")
+    assert _invoke("collect-support-logs", MACHINE, "-c", "case").exit_code == 0
+    on = _invoke("troubleshoot", MACHINE, "--on", "-c", "case")
+    off = _invoke("troubleshoot", MACHINE, "--off", "-c", "case")
     assert on.exit_code == off.exit_code == 0
     assert _data(on)["state_change_confirmed"] is False
     assert fake.calls == [

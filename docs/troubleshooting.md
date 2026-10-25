@@ -169,26 +169,59 @@ Configuration warnings can still appear on stderr in quiet mode. Invalid
 schema-maintenance settings prevent upkeep but leave core recovery commands
 and `session end --no-maintenance` available.
 
-### A prompt was skipped, or a destructive action refused to run
+### A prompt was skipped, or a command refused to run without `--yes`
 
 `xdr` prompts only when **both** stdin and stdout are TTYs and
 `--no-interactive` is not given. If either stream is redirected or piped,
-the CLI never prompts. Commands that would normally ask for confirmation
-(the device actions `isolate`, `unisolate`, `restrict`, `unrestrict`,
-`scan`, `collect-package`, plus `incidents update` and `results prune`)
+the CLI never prompts. Commands that ask for confirmation (`incidents
+update`, `results prune` and local maintenance such as `lists init --force`)
 then refuse with `CLI_USAGE_ERROR` (exit 6) unless `--yes` is passed.
-
-Answering no at the prompt is reported as `STATE_CONFLICT` (exit 13) with a
-message such as *Device action 'isolate' was cancelled by the operator.*
+Answering no at the prompt is reported as `STATE_CONFLICT` (exit 13).
 Nothing was sent.
+
+Device response actions and Live Response commands never prompt and have no
+`--yes`: running the command is the intent, so preview with `--dry-run`
+first. A script that still passes `--yes` to them fails with
+`CLI_UNKNOWN_OPTION` (exit 6) before anything is sent; drop the flag.
 
 `auth login` is a separate interactive flow and is not made unattended by
 `--no-interactive`. Agents should surface authentication failures to a human
 rather than retrying login in a subprocess.
 
 ```bash
-xdr --no-interactive device isolate <machine-id> --yes --comment "IR-1234"
+xdr device isolate <machine-id> --comment "IR-1234" --dry-run   # preview
+xdr device isolate <machine-id> --comment "IR-1234"             # sends it
 ```
+
+## Live Response sessions
+
+### `lr-N` alias not found, or aliases are unavailable
+
+Aliases live in a private local registry next to the remembered sessions
+under `~/.xdr-cli/live_response/`. `LOCAL_NOT_FOUND` for an alias means this
+CLI has no session with that alias for the current tenant and backend: run
+`xdr --backend portal-cookie device live-response sessions list --all`. An
+alias is never guessed and never opens a new session.
+
+If the registry is damaged, has loose permissions, or no longer matches the
+tenant, alias lookups fail closed (`ARTIFACT_WRITE_FAILED`, exit 12, or
+`STATE_CONFLICT`, exit 13) and commands warn that aliases are unavailable.
+Keep working with the native `CLR…` session ID shown in `sessions list` or
+`show` output; it never depends on the registry. Do **not** delete or reset
+the registry to repair it: alias numbers must never be reused, and a reset
+could make an old copied alias point at a different device. Restore the
+directory's `0700` / file `0600` permissions, or move the damaged files aside
+for inspection and keep using native IDs.
+
+### `sessions refresh` exited 14
+
+Some remembered sessions could not be checked. Rows with `verification:
+"error"` name a `refresh_error` code; `not-checked` rows were not looked up
+because a sign-in, permission, throttling, timeout, network or configuration
+failure stopped the run. Their remembered state is unchanged. Fix the cause
+(and honour `retry_after_seconds`), then run `sessions refresh` again. If
+the receipt reports `unreadable_handles`, some local session files could not
+be read, so the list may be incomplete.
 
 ## Authentication and consent
 
@@ -709,7 +742,7 @@ argument vector as typed, with secret-bearing values (`--refresh-token`)
 redacted:
 
 ```
-2026-10-03 09:14:22,118 CMD: device isolate 1a2b3c... --yes --comment IR-1234
+2026-10-03 09:14:22,118 CMD: device isolate 1a2b3c... --comment IR-1234
 ```
 
 Commands that are logged (matched against the command Click actually
@@ -717,7 +750,16 @@ dispatches, so every accepted syntax is covered and an argument that
 happens to equal a command name does not count):
 
 - Device actions: `device isolate`, `device unisolate`, `device scan`,
-  `device collect-package`, `device restrict`, `device unrestrict`
+  `device collect-package`, `device restrict`, `device unrestrict`,
+  `device contain`, `device uncontain`, `device start-investigation`,
+  `device collect-support-logs`, `device troubleshoot`,
+  `device cancel-action`, and `device tags set`/`add`/`remove`
+- Remote Live Response commands (`connect`, `disconnect`, `exec`, the
+  `findfile`/`fileinfo`/`dir`/`getfile`/`putfile`/`run` shortcuts, `cancel`,
+  `library upload`/`delete`, `batch submit`/`cancel`). Their argv keeps only
+  identifiers (MachineIds, session IDs and `lr-N` aliases, command IDs) and
+  option names; console text, paths, comments and file names are redacted.
+  Each submission adds one value-free `LR:` classification line.
 - Incident updates: `incidents update`
 - Authentication: `auth login`, `auth logout`, `auth portal-cookie`,
   `auth portal-logout`
@@ -734,13 +776,15 @@ capture every command while active.
 
 Two cautions:
 
-- Apart from `--refresh-token`, any value you pass on the command line
-  (comments, UPNs, IDs) lands in the file as typed.
+- Apart from `--refresh-token` and the Live Response redaction above, any
+  value you pass on the command line (comments, UPNs, IDs) lands in the
+  file as typed.
 - This is a local convenience log, not a tamper-evident audit trail. It
   can be edited or deleted by anyone with access to the home directory.
   The line is written when the command is dispatched, before it runs, so
-  it records that a command was *attempted* (including `--dry-run` runs and
-  ones refused for a missing `--yes` or declined at the prompt), not whether
+  it records that a command was *attempted* (including `--dry-run` runs and,
+  for commands that still confirm, ones refused for a missing `--yes` or
+  declined at the prompt), not whether
   it succeeded. `--help` and argument errors never dispatch a command and
   are not logged. For authoritative records of device actions and incident
   changes, use the Defender portal's action center and Microsoft Entra

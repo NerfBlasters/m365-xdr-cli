@@ -25,7 +25,8 @@ tenant settings, RBAC role, OS and sensor version.
 | Command reference | `live-response catalog` | local | cli-live (31 rows), synthetic |
 | Initiate session | `live-response connect MACHINE --wait N` | unavailable | cli-live, synthetic |
 | Session details | `live-response show SESSION` | unavailable | cli-live, synthetic |
-| Session list | `live-response sessions` (locally known sessions) | unavailable | synthetic; no tenant-wide list contract |
+| Session list | `live-response sessions [list]` (local state, no network) and `sessions refresh` (one lookup per remembered active session) | unavailable | synthetic; no tenant-wide list contract |
+| Session aliases | `lr-N` accepted wherever a session is taken | n/a (local) | synthetic |
 | Disconnect | `live-response disconnect SESSION` | unavailable | cli-live, synthetic |
 | Command definitions | used by `exec` and shortcuts | unavailable | backend-live (21 Windows definitions) |
 | dir | `live-response dir --wait`, `exec` | unavailable | cli-live, synthetic |

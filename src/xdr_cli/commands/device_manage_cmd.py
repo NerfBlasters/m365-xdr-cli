@@ -19,15 +19,14 @@ from xdr_cli.backend_contract import Backend
 from xdr_cli.backends import create_client
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
-from xdr_cli.exceptions import ConflictError, UsageError
-from xdr_cli.output import OutputFormatter, err_console
+from xdr_cli.exceptions import UsageError
+from xdr_cli.output import OutputFormatter
 from xdr_cli.results import emit_result, write_result
 
 tags_app = click.Group(
     name="tags", help="Read and change a device's manual tags.", no_args_is_help=True,
 )
 
-_yes_option = click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
 _dry_run_option = click.option("--dry-run", is_flag=True, help="Show what would happen.")
 _machine_argument = click.argument("machine_id", type=str, required=True)
 
@@ -73,23 +72,7 @@ def _with_client(ctx: AppContext, work: Callable[[Backend], Awaitable[dict]]) ->
     asyncio.run(run())
 
 
-def _confirm(ctx: AppContext, action: str, target: str, yes: bool) -> None:
-    if yes:
-        return
-    if not ctx.is_interactive:
-        raise UsageError(
-            f"Non-interactive mode requires --yes to {action}.",
-            invalid={"kind": "missing_option", "value": "--yes"},
-            help_command="xdr device --help",
-        )
-    err_console.print(f"[bold yellow]About to {action} on {target}.[/bold yellow]")
-    if not click.confirm("Proceed?"):
-        raise ConflictError("Device operation was cancelled by the operator.")
-
-
-def _mutate(ctx: AppContext, action: str, target: str, yes: bool,
-            work: Callable[[Backend], Awaitable[dict]]) -> None:
-    _confirm(ctx, action, target, yes)
+def _mutate(ctx: AppContext, work: Callable[[Backend], Awaitable[dict]]) -> None:
     ctx.config.check_mutation_backend()
     _with_client(ctx, work)
 
@@ -106,7 +89,7 @@ def tags_list(ctx: AppContext, machine_id: str) -> None:
         return {
             **tags, "machine_id": machine_id,
             "set_command": f"xdr device tags set {machine_id} "
-                           f"{expect or '--expect-none'} --tag TAG ... --yes",
+                           f"{expect or '--expect-none'} --tag TAG ...",
         }
 
     _with_client(ctx, work)
@@ -119,11 +102,10 @@ def tags_list(ctx: AppContext, machine_id: str) -> None:
 @click.option("--expect", "expected", multiple=True, default=(),
               help="A manual tag you expect the device to have now; repeatable.")
 @click.option("--expect-none", is_flag=True, help="Expect the device to have no manual tags.")
-@_yes_option
 @_dry_run_option
 @click.pass_obj
 def tags_set(ctx: AppContext, machine_id: str, tags: tuple[str, ...],
-             expected: tuple[str, ...], expect_none: bool, yes: bool, dry_run: bool) -> None:
+             expected: tuple[str, ...], expect_none: bool, dry_run: bool) -> None:
     """Replace a device's whole manual tag set (portal-cookie).
 
     The current manual tags must match --expect (or --expect-none); otherwise
@@ -146,7 +128,7 @@ def tags_set(ctx: AppContext, machine_id: str, tags: tuple[str, ...],
         return {**await client.set_device_tags(
             machine_id, list(tags), expected_current=list(expected)), "machine_id": machine_id}
 
-    _mutate(ctx, "replace manual tags", f"device {machine_id}", yes, work)
+    _mutate(ctx, work)
 
 
 def _tag_update(name: str, remove: bool):
@@ -158,10 +140,9 @@ def _tag_update(name: str, remove: bool):
     @tags_app.command(name, help=summary)
     @_machine_argument
     @click.argument("tag", type=str)
-    @_yes_option
     @_dry_run_option
     @click.pass_obj
-    def command(ctx: AppContext, machine_id: str, tag: str, yes: bool, dry_run: bool) -> None:
+    def command(ctx: AppContext, machine_id: str, tag: str, dry_run: bool) -> None:
         if dry_run:
             _emit(ctx, {"dry_run": True, "action": f"tags {name}", "machine_id": machine_id,
                         "tag": tag})
@@ -171,7 +152,7 @@ def _tag_update(name: str, remove: bool):
             result = await client.update_device_tag(machine_id, tag, remove=remove)
             return {**result, "machine_id": machine_id}
 
-        _mutate(ctx, f"{name} tag '{tag}'", f"device {machine_id}", yes, work)
+        _mutate(ctx, work)
 
     return command
 
@@ -200,10 +181,9 @@ def action_permissions(ctx: AppContext, machine_id: str) -> None:
 @click.argument("action_id", type=str, required=True)
 @click.option("--device", "device_id", required=True, help="MachineId the action targets.")
 @click.option("--comment", "-c", required=True, help="Reason for cancellation.")
-@_yes_option
 @_dry_run_option
 @click.pass_obj
-def cancel_action(ctx: AppContext, action_id: str, device_id: str, comment: str, yes: bool,
+def cancel_action(ctx: AppContext, action_id: str, device_id: str, comment: str,
                   dry_run: bool) -> None:
     """Cancel a pending device response action (portal-cookie).
 
@@ -220,17 +200,16 @@ def cancel_action(ctx: AppContext, action_id: str, device_id: str, comment: str,
     async def work(client: Backend) -> dict:
         return await client.cancel_device_action(action_id, device_id=device_id, comment=comment)
 
-    _mutate(ctx, f"cancel action {action_id}", f"device {device_id}", yes, work)
+    _mutate(ctx, work)
 
 
 def _containment(name: str, summary: str) -> click.Command:
     @click.command(name, help=summary)
     @_machine_argument
     @click.option("--comment", "-c", required=True, help="Reason recorded with the action.")
-    @_yes_option
     @_dry_run_option
     @click.pass_obj
-    def command(ctx: AppContext, machine_id: str, comment: str, yes: bool,
+    def command(ctx: AppContext, machine_id: str, comment: str,
                 dry_run: bool) -> None:
         if dry_run:
             _emit(ctx, {"dry_run": True, "action": name, "machine_id": machine_id})
@@ -239,7 +218,7 @@ def _containment(name: str, summary: str) -> click.Command:
         async def work(client: Backend) -> dict:
             return await client.submit_device_action(machine_id, name, comment=comment)
 
-        _mutate(ctx, name, f"device {machine_id}", yes, work)
+        _mutate(ctx, work)
 
     return command
 
@@ -262,10 +241,9 @@ uncontain = _containment(
 @_machine_argument
 @click.option("--comment", "-c", required=True,
               help="Reason. The official API records it; the portal protocol does not.")
-@_yes_option
 @_dry_run_option
 @click.pass_obj
-def start_investigation(ctx: AppContext, machine_id: str, comment: str, yes: bool,
+def start_investigation(ctx: AppContext, machine_id: str, comment: str,
                         dry_run: bool) -> None:
     """Start an automated investigation on a device.
 
@@ -282,7 +260,7 @@ def start_investigation(ctx: AppContext, machine_id: str, comment: str, yes: boo
     async def work(client: Backend) -> dict:
         return await client.start_device_investigation(machine_id, comment=comment)
 
-    _mutate(ctx, "start an automated investigation", f"device {machine_id}", yes, work)
+    _mutate(ctx, work)
 
 
 @click.command("action-history")
@@ -326,10 +304,9 @@ def action_history(ctx: AppContext, machine_id: str, limit: int) -> None:
 @click.command("collect-support-logs")
 @_machine_argument
 @click.option("--comment", "-c", required=True, help="Reason recorded with the request.")
-@_yes_option
 @_dry_run_option
 @click.pass_obj
-def collect_support_logs(ctx: AppContext, machine_id: str, comment: str, yes: bool,
+def collect_support_logs(ctx: AppContext, machine_id: str, comment: str,
                          dry_run: bool) -> None:
     """Request a Defender support-log collection from a device (portal-cookie).
 
@@ -344,7 +321,7 @@ def collect_support_logs(ctx: AppContext, machine_id: str, comment: str, yes: bo
     async def work(client: Backend) -> dict:
         return await client.collect_device_support_logs(machine_id, comment=comment)
 
-    _mutate(ctx, "collect support logs", f"device {machine_id}", yes, work)
+    _mutate(ctx, work)
 
 
 @click.command("troubleshoot")
@@ -352,10 +329,9 @@ def collect_support_logs(ctx: AppContext, machine_id: str, comment: str, yes: bo
 @click.option("--on/--off", "enabled", required=True,
               help="Turn troubleshooting mode on (a fixed four-hour window) or off.")
 @click.option("--comment", "-c", required=True, help="Reason recorded with the request.")
-@_yes_option
 @_dry_run_option
 @click.pass_obj
-def troubleshoot(ctx: AppContext, machine_id: str, enabled: bool, comment: str, yes: bool,
+def troubleshoot(ctx: AppContext, machine_id: str, enabled: bool, comment: str,
                  dry_run: bool) -> None:
     """Turn Defender troubleshooting mode on or off for a device (portal-cookie).
 
@@ -373,8 +349,7 @@ def troubleshoot(ctx: AppContext, machine_id: str, enabled: bool, comment: str, 
         return await client.set_device_troubleshooting(
             machine_id, enabled=enabled, duration_minutes=None, comment=comment)
 
-    _mutate(ctx, f"turn troubleshooting mode {'on' if enabled else 'off'}",
-            f"device {machine_id}", yes, work)
+    _mutate(ctx, work)
 
 
 def register(group: click.Group) -> None:

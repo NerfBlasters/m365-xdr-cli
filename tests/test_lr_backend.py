@@ -1,6 +1,7 @@
 """Synthetic Live Response lifecycle, identity and non-replay regression tests."""
 
 import json
+import logging
 from unittest.mock import AsyncMock
 
 import httpx
@@ -10,7 +11,7 @@ import respx
 from xdr_cli.backends import PortalBackend
 from xdr_cli.backend_contract import UnsupportedBackendCapability
 from xdr_cli.config import Config
-from xdr_cli.exceptions import APIError, ConflictError, NetworkError, UsageError
+from xdr_cli.exceptions import APIError, ArtifactError, ConflictError, NetworkError, UsageError
 from xdr_cli.live_response.handles import load_session
 from xdr_cli.live_response.models import LRPlatform
 from xdr_cli.live_response.parser import parse_console_line
@@ -285,3 +286,124 @@ async def test_metadata_cap_stops_streaming_before_all_bytes_and_closes(portal, 
         _ = [f async for f in portal.lr_iter_library()]
     assert stream.yielded == 3 and stream.closed
     await portal.close()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_alias_resolves_for_session_commands_history_and_transfer(portal, caplog):
+    """Every public interactive path translates aliases before portal dispatch."""
+    caplog.set_level(logging.INFO, logger="xdr.audit")
+    observed = portal._lr_session(session())
+    assert observed.alias == "lr-1"
+    assert observed.last_verified_at is not None
+    respx.get(BASE + "/sessions/" + SESSION).respond(json=session())
+    respx.get(BASE + "/get_command_definitions").respond(json=[
+        {"command_definition_id": "dir", "params": [{"param_id": "path", "optional": True}],
+         "flags": []},
+    ])
+    respx.post(BASE + "/create_command").respond(json=command(0))
+    respx.get(BASE + "/commands/" + COMMAND).respond(
+        json=command(1, context={"download_token": "synthetic-transfer-token"})
+    )
+    respx.get(BASE + "/sessions/" + SESSION + "/commands").respond(json=[command()])
+    respx.post(BASE + "/commands/" + COMMAND + "/cancel").respond(json={})
+    respx.post(BASE + "/close_session").respond(json={})
+    transfer_route = respx.get(BASE + "/download_file").respond(content=b"synthetic")
+    try:
+        assert (await portal.lr_get_session("lr-1")).session_id == SESSION
+        assert await portal.lr_command_definitions("lr-1")
+        submitted = await portal.lr_submit("lr-1", parse_console_line("dir"))
+        assert submitted.session_id == SESSION and submitted.session_alias == "lr-1"
+        assert (await portal.lr_get_command("lr-1", COMMAND)).session_alias == "lr-1"
+        assert [row async for row in portal.lr_iter_commands("lr-1")]
+        await portal.lr_cancel("lr-1", COMMAND)
+        assert [row async for row in portal.lr_iter_output("lr-1", COMMAND)] == []
+        transfer = await portal.lr_result_transfer("lr-1", COMMAND)
+        async with transfer._stream_factory() as response:
+            assert await response.aread() == b"synthetic"
+        assert transfer_route.call_count == 1
+        assert transfer_route.calls[0].request.url.params["session_id"] == SESSION
+        await portal.lr_close_session("lr-1")
+        identities = [r.getMessage() for r in caplog.records
+                      if r.getMessage().startswith("LR_IDENTITY:")]
+        assert len(identities) == 2
+        for action in ("cancel", "disconnect"):
+            assert any(f"action={action}" in line and f"session_id={SESSION}" in line
+                       and f"machine_id={DEVICE}" in line and "alias=lr-1" in line
+                       for line in identities)
+        for call in respx.calls:
+            assert "lr-1" not in str(call.request.url)
+            assert b"lr-1" not in call.request.content
+    finally:
+        await portal.close()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_native_clr_session_remains_recoverable_when_alias_registry_corrupt(portal, tmp_path):
+    portal._lr_session(session())
+    registry = next(tmp_path.glob("live_response/**/aliases.json"))
+    registry.write_text("broken")
+    respx.get(BASE + "/sessions/" + SESSION).respond(json=session())
+    try:
+        observed = await portal.lr_get_session(SESSION)
+        assert observed.session_id == SESSION and observed.alias is None
+        assert load_session(TENANT, "portal-cookie", SESSION).alias is None
+        with pytest.raises(ArtifactError) as caught:
+            await portal.lr_get_session("lr-1")
+        assert caught.value.exit_code == 12
+        assert registry.read_text() == "broken"
+    finally:
+        await portal.close()
+
+
+@pytest.mark.asyncio
+async def test_preflight_not_found_does_not_mark_remembered_session_dead(portal):
+    from xdr_cli.exceptions import NotFoundError
+
+    portal._lr_session(session())
+    portal.verify_tenant = AsyncMock(side_effect=NotFoundError("portal tenant metadata"))
+    try:
+        with pytest.raises(NotFoundError):
+            await portal.lr_get_session("lr-1")
+        assert load_session(TENANT, "portal-cookie", SESSION).state == "running"
+    finally:
+        await portal.close()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_only_session_lookup_404_marks_missing_and_retains_alias(portal):
+    from xdr_cli.exceptions import LiveResponseSessionNotFoundError
+
+    portal._lr_session(session())
+    respx.get(BASE + "/sessions/" + SESSION).respond(status_code=404)
+    try:
+        with pytest.raises(LiveResponseSessionNotFoundError):
+            await portal.lr_get_session("lr-1")
+        cached = load_session(TENANT, "portal-cookie", SESSION)
+        assert cached.state == "not-found" and cached.alias == "lr-1"
+    finally:
+        await portal.close()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_session_404_local_write_failure_reports_both_outcomes(portal, monkeypatch):
+    portal._lr_session(session())
+    respx.get(BASE + "/sessions/" + SESSION).respond(status_code=404)
+
+    def unavailable(*args):
+        raise OSError("synthetic-private-path")
+
+    monkeypatch.setattr("xdr_cli.live_response.portal.mark_session_missing", unavailable)
+    try:
+        with pytest.raises(ArtifactError, match="Defender no longer knows") as caught:
+            await portal.lr_get_session("lr-1")
+        assert "could not be saved" in str(caught.value)
+        assert SESSION in str(caught.value)
+        assert caught.value.error_code == "LIVE_RESPONSE_SESSION_NOT_FOUND_STATE_UNSAVED"
+        assert "synthetic-private-path" not in str(caught.value)
+        assert load_session(TENANT, "portal-cookie", SESSION).state == "running"
+    finally:
+        await portal.close()

@@ -125,9 +125,12 @@ read-like console commands:
 - `xdr device live-response batch submit` / `cancel`
 
 For these: print the exact command, explain the effect in one sentence, then ask the human to run it themselves.
+None of these commands prompts or takes `--yes`: invoking one dispatches it
+immediately, so the CLI will not stop you. This rule is the only safeguard.
 Where one of these offers `--dry-run`, that form is local and safe; dry-runs do
 not validate identifiers against the tenant. The Live Response `catalog`,
-`sessions`, `show`, `status`, `history`, `output`, `download`, `library
+`sessions` / `sessions list` (local state only), `sessions refresh` (one
+read-only lookup per remembered session), `show`, `status`, `history`, `output`, `download`, `library
 list/show/download` and `batch status/output/download` commands read existing
 state and may be used, as may `xdr device tags list`, `xdr device
 action-permissions` (the portal's reported action availability, not an
@@ -135,7 +138,9 @@ authorization grant) and `xdr device action-history` (an artifact whose final
 `device-action-history-coverage` row states the window and completeness; the
 portal reads seven days, and the official scope excludes portal Live
 Response). Treat downloaded files as hostile and never open,
-extract or execute them. See `docs/live_response.md`.
+extract or execute them. Sessions have short `lr-N` aliases (for example
+`lr-1`) that work wherever a session ID does; use the alias in commands you
+hand to the human. See `docs/live_response.md`.
 
 `xdr incidents update` is permitted **only** when the human has explicitly authorized this specific incident and action in the current turn (e.g., "close it", "mark as false positive"). It must never be run on the agent's own initiative.
 
@@ -184,8 +189,9 @@ Control-plane success output is command-specific:
 - `xdr results query` emits raw KQL;
 - `xdr device live-response` lifecycle, job-status, download and library
   write commands return one `{status,data,metadata}` envelope. Its `catalog`,
-  `sessions`, `history`, `output`, `library list` and `batch output` commands
-  use the artifact receipt. `output` has zero preview rows so full transcripts
+  `sessions` (`list` and `refresh`), `history`, `output`, `library list` and
+  `batch output` commands use the artifact receipt; `sessions refresh` returns
+  exit 14 after its receipt when any session could not be checked. `output` has zero preview rows so full transcripts
   remain private until explicitly inspected.
 
 Do not assume the artifact receipt or `{status,data,metadata}` shape for these

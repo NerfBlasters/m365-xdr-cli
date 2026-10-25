@@ -75,7 +75,7 @@ def test_dry_run_needs_no_client_and_echoes_no_values(no_client, args):
     assert result.exit_code == 0, result.output
     data = _json_lines(result)[0]["data"]
     assert data["verb"] == "run" and data["risk"] == "execute"
-    assert data["requires_confirmation"] is True
+    assert "requires_confirmation" not in data
     assert "hunter2" not in result.output
     no_client.assert_not_called()
 
@@ -101,16 +101,16 @@ def test_read_command_submits_once_and_polls_to_completion(fake):
     assert fake.closed
 
 
-def test_state_changing_command_requires_yes_when_non_interactive(fake):
+def test_state_changing_command_dispatches_once_without_confirmation(fake):
     result = _invoke("exec", SESSION, "--command", "getfile C:\\x.txt")
-    assert result.exit_code == 6
-    assert _json_lines(result)[0]["error"]["invalid"]["value"] == "--yes"
-    assert "submit" not in fake.calls
+    assert result.exit_code == 0, result.output
+    assert fake.calls.count("submit") == 1
+    assert _json_lines(result)[0]["data"]["risk"] == "collect"
 
 
 def test_rejections_happen_before_submission(fake):
     for text, code in (("dir; run x.ps1", 6), ("cls", 6), ("bogus", 6)):
-        result = _invoke("exec", SESSION, "--command", text, "--yes")
+        result = _invoke("exec", SESSION, "--command", text)
         assert result.exit_code == code, (text, result.output)
     assert "submit" not in fake.calls
 
@@ -166,7 +166,7 @@ def test_redirect_saves_rendered_output_privately(fake, tmp_path):
 
 
 def test_background_flag_reaches_the_backend(fake):
-    result = _invoke("getfile", SESSION, "C:\\big.bin", "--background", "--wait", "0", "--yes")
+    result = _invoke("getfile", SESSION, "C:\\big.bin", "--background", "--wait", "0")
     assert result.exit_code == 0, result.output
     assert fake.submitted[0].background is True
     assert _json_lines(result)[0]["data"]["state"] == "running"
@@ -181,7 +181,7 @@ def test_getfile_downloads_after_completion(fake, tmp_path, monkeypatch):
 
     monkeypatch.setattr(f"{_MODULE}.download_transfer", download)
     out = tmp_path / "sample.bin"
-    result = _invoke("getfile", SESSION, "C:\\Temp\\sample.bin", "--output", str(out), "--yes")
+    result = _invoke("getfile", SESSION, "C:\\Temp\\sample.bin", "--output", str(out))
     assert result.exit_code == 0, result.output
     (record,) = _json_lines(result)
     state = receipt = record["data"]
@@ -197,7 +197,7 @@ def test_getfile_downloads_after_completion(fake, tmp_path, monkeypatch):
 ])
 def test_getfile_does_not_download_an_unsuccessful_command(fake, tmp_path, state, errors, reason):
     fake.states, fake.error_count = [state], errors
-    result = _invoke("getfile", SESSION, "C:\\a", "--output", str(tmp_path / "a"), "--yes",
+    result = _invoke("getfile", SESSION, "C:\\a", "--output", str(tmp_path / "a"),
                      "--wait", "0")
     assert result.exit_code == 0
     assert "transfer" not in fake.calls
@@ -210,7 +210,7 @@ def test_getfile_does_not_download_an_unsuccessful_command(fake, tmp_path, state
 def test_completed_with_errors_neither_downloads_nor_saves(fake, tmp_path):
     fake.error_count = 1
     result = _invoke("getfile", SESSION, "C:\\empty.txt", "--output", str(tmp_path / "e"),
-                     "--yes", "--wait", "5")
+                     "--wait", "5")
     assert result.exit_code == 0, result.output
     data = _json_lines(result)[0]["data"]
     assert (data["state"], data["error_count"]) == ("completed", 1)
@@ -227,7 +227,7 @@ def test_unknown_error_count_still_allows_download(fake, tmp_path, monkeypatch):
 
     monkeypatch.setattr(f"{_MODULE}.download_transfer", download)
     fake.error_count = None
-    result = _invoke("getfile", SESSION, "C:\\a", "--output", str(tmp_path / "a"), "--yes")
+    result = _invoke("getfile", SESSION, "C:\\a", "--output", str(tmp_path / "a"))
     assert result.exit_code == 0, result.output
     assert "transfer" in fake.calls
     (record,) = _json_lines(result)
@@ -237,7 +237,7 @@ def test_unknown_error_count_still_allows_download(fake, tmp_path, monkeypatch):
 
 
 def test_getfile_without_destination_emits_one_state_and_does_not_download(fake):
-    result = _invoke("getfile", SESSION, "C:\\a", "--yes")
+    result = _invoke("getfile", SESSION, "C:\\a")
     assert result.exit_code == 0, result.output
     (record,) = _json_lines(result)
     assert record["data"]["state"] == "completed"
@@ -246,18 +246,18 @@ def test_getfile_without_destination_emits_one_state_and_does_not_download(fake)
 
 def test_submit_timeout_is_not_replayed(fake):
     fake.submit_error = timeout()
-    result = _invoke("putfile", SESSION, "tool.ps1", "--overwrite", "--yes")
+    result = _invoke("putfile", SESSION, "tool.ps1", "--overwrite")
     assert result.exit_code == 10
     assert fake.calls.count("submit") == 1
     assert fake.submitted[0].flags == {"overwrite"}
 
 
 def test_run_reads_parameters_from_stdin(fake):
-    result = _invoke("run", SESSION, "collect.ps1", "--parameters-stdin", "--yes",
+    result = _invoke("run", SESSION, "collect.ps1", "--parameters-stdin",
                      input="-Days 2\n")
     assert result.exit_code == 0, result.output
     assert fake.submitted[0].params == (("id", "collect.ps1"), ("parameters", "-Days 2"))
-    forbidden = _invoke("run", SESSION, "c.ps1", "--parameters-stdin", "--yes", input="a;b")
+    forbidden = _invoke("run", SESSION, "c.ps1", "--parameters-stdin", input="a;b")
     assert forbidden.exit_code == 6
     assert len(fake.submitted) == 1
 
@@ -273,15 +273,15 @@ def test_output_keeps_transcripts_private_without_stdout_preview(fake):
 
 
 def test_session_lifecycle_records(fake):
-    connect = _invoke("connect", MACHINE, "--yes")
+    connect = _invoke("connect", MACHINE)
     assert connect.exit_code == 0, connect.output
     data = _json_lines(connect)[0]["data"]
     assert data["session_id"] == SESSION and "raw" not in data
     assert data["disconnect_command"].endswith(f"disconnect {SESSION}")
-    assert _invoke("connect", MACHINE).exit_code == 6
-    closed = _invoke("disconnect", SESSION, "--yes")
+    assert fake.calls.count("open") == 1
+    closed = _invoke("disconnect", SESSION)
     assert _json_lines(closed)[0]["data"]["state"] == "terminatedByUser"
-    cancel = _invoke("cancel", SESSION, "7", "--yes")
+    cancel = _invoke("cancel", SESSION, "7")
     assert _json_lines(cancel)[0]["data"]["device_outcome"] == "unknown"
     assert fake.calls.count("open") == 1
 
@@ -292,7 +292,7 @@ def test_connect_wait_polls_a_pending_session(fake, monkeypatch):
     states = iter(["pending", "running"])
     monkeypatch.setattr(FakeLRBackend, "lr_open_session", _session_with("pending"))
     monkeypatch.setattr(FakeLRBackend, "lr_get_session", _session_with(states))
-    result = _invoke("connect", MACHINE, "--yes", "--wait", "10")
+    result = _invoke("connect", MACHINE, "--wait", "10")
     assert _json_lines(result)[0]["data"]["state"] == "running"
 
 
@@ -308,9 +308,7 @@ def test_connect_and_disconnect_dry_runs_are_local(no_client):
     assert _invoke("disconnect", SESSION, "--dry-run").exit_code == 0
 
 
-def test_history_and_sessions_are_artifacts(fake):
-    sessions = _json_lines(_invoke("sessions"))[0]
-    assert sessions["context"]["coverage"] == "locally-known-sessions"
+def test_history_is_an_artifact(fake):
     history = _json_lines(_invoke("history", SESSION))[0]
     assert history["rows"] == 1
 
@@ -321,15 +319,14 @@ def test_library_lifecycle(fake, tmp_path):
     dry = _invoke("library", "upload", "--from-file", str(script), "--dry-run")
     assert _json_lines(dry)[0]["data"]["name"] == "collect logs.ps1"
     assert "upload" not in fake.calls
-    assert _invoke("library", "upload", "--from-file", str(script)).exit_code == 6
     uploaded = _invoke("library", "upload", "--from-file", str(script),
-                       "--parameters-description", "-Days N", "--yes")
+                       "--parameters-description", "-Days N")
     assert _json_lines(uploaded)[0]["data"]["has_parameters"] is True
     fake.library = [LRLibraryFile("collect logs.ps1", size=8)]
     assert _json_lines(_invoke("library", "show", "collect logs.ps1"))[0]["data"]["size"] == 8
     assert _invoke("library", "show", "missing.ps1").exit_code == 8
-    assert _invoke("library", "delete", "../x", "--yes").exit_code == 6
-    assert _invoke("library", "delete", "collect logs.ps1", "--yes").exit_code == 0
+    assert _invoke("library", "delete", "../x").exit_code == 6
+    assert _invoke("library", "delete", "collect logs.ps1").exit_code == 0
     assert fake.calls.count("delete") == 1
 
 
@@ -341,8 +338,7 @@ def _official(*args, input=None):
 def test_batch_submits_official_commands_in_order(fake, tmp_path):
     commands = tmp_path / "batch.txt"
     commands.write_text('putfile tool.ps1\nrun tool.ps1 -parameters "-Days 2"\ngetfile C:\\o.zip\n')
-    result = _official("submit", MACHINE, "--command-file", str(commands), "--comment", "IR-1",
-                       "--yes")
+    result = _official("submit", MACHINE, "--command-file", str(commands), "--comment", "IR-1")
     assert result.exit_code == 0, result.output
     data = _json_lines(result)[0]["data"]
     assert data["command_id"] == "act-1" and data["status_command"].endswith("act-1 --wait 60")
@@ -351,16 +347,17 @@ def test_batch_submits_official_commands_in_order(fake, tmp_path):
 
 
 def test_batch_rejects_session_only_commands_and_needs_official(fake):
-    result = _official("submit", MACHINE, "--command", "dir", "--comment", "x", "--yes")
+    result = _official("submit", MACHINE, "--command", "dir", "--comment", "x")
     assert result.exit_code == 6
     assert _json_lines(result)[0]["error"]["invalid"]["kind"] == "batch_unsupported"
     portal = runner.invoke(app, ["--backend", "portal-cookie", "device", "live-response",
                                  "batch", "submit", MACHINE, "--command", "getfile C:\\x",
-                                 "--comment", "x", "--yes"])
+                                 "--comment", "x"])
     assert portal.exit_code == 3
-    assert _official("submit", MACHINE, "--command", "getfile C:\\x",
-                     "--comment", "x").exit_code == 6
     assert "submit_batch" not in fake.calls
+    result = _official("submit", MACHINE, "--command", "getfile C:\\x", "--comment", "x")
+    assert result.exit_code == 0, result.output
+    assert fake.calls.count("submit_batch") == 1
 
 
 def test_batch_dry_run_is_value_free(no_client):
@@ -394,7 +391,7 @@ def test_poll_failure_after_acceptance_is_not_retryable(fake, monkeypatch, failu
         raise error
 
     monkeypatch.setattr(FakeLRBackend, "lr_get_command", broken)
-    result = _invoke("run", SESSION, "fix.ps1", "--yes", "--wait", "30")
+    result = _invoke("run", SESSION, "fix.ps1", "--wait", "30")
     assert result.exit_code == (11 if failure == "network" else 9)
     error = _accepted_error(result, "7")
     assert error["help_command"] == (
@@ -421,7 +418,7 @@ def test_getfile_download_failure_has_one_error_and_safe_status_recovery(fake, t
         raise NetworkError("reset")
 
     monkeypatch.setattr(f"{_MODULE}.download_transfer", broken)
-    result = _invoke("getfile", SESSION, "C:\\a", "--output", str(tmp_path / "a"), "--yes")
+    result = _invoke("getfile", SESSION, "C:\\a", "--output", str(tmp_path / "a"))
     assert result.exit_code == 11
     (record,) = _json_lines(result)
     assert record["status"] == "error"
@@ -434,9 +431,9 @@ def test_getfile_download_failure_has_one_error_and_safe_status_recovery(fake, t
 
 
 def test_getfile_upload_only_refuses_a_download_destination_without_client(no_client, tmp_path):
-    result = _invoke("getfile", SESSION, "C:\\a", "--upload-only", "--output", str(tmp_path / "a"),
-                     "--yes")
+    result = _invoke("getfile", SESSION, "C:\\a", "--upload-only", "--output", str(tmp_path / "a"))
     assert result.exit_code == 6
+    assert _json_lines(result)[0]["error"]["invalid"]["kind"] == "conflicting_options"
     no_client.assert_not_called()
 
 
@@ -448,7 +445,7 @@ def test_connect_wait_failure_keeps_the_session_id(fake, monkeypatch):
 
     monkeypatch.setattr(FakeLRBackend, "lr_open_session", _session_with("pending"))
     monkeypatch.setattr(FakeLRBackend, "lr_get_session", broken)
-    result = _invoke("connect", MACHINE, "--yes", "--wait", "10")
+    result = _invoke("connect", MACHINE, "--wait", "10")
     error = _accepted_error(result, SESSION)
     assert error["suggestions"][0]["commands"][1].endswith(f"disconnect {SESSION}")
 
@@ -461,7 +458,7 @@ def test_batch_wait_failure_keeps_the_action_id(fake, monkeypatch):
 
     monkeypatch.setattr(FakeLRBackend, "lr_get_command", broken)
     result = _official("submit", MACHINE, "--command", "getfile C:\\x", "--comment", "IR",
-                       "--yes", "--wait", "10")
+                       "--wait", "10")
     error = _accepted_error(result, "act-1")
     assert error["help_command"] == (
         "xdr --backend official device live-response batch status act-1 --wait 60")
@@ -495,3 +492,13 @@ def test_command_file_byte_order_mark_is_ignored(fake, tmp_path):
     path.write_bytes(b"\xef\xbb\xbfdir C:\\\r\n")
     assert _invoke("exec", SESSION, "--command-file", str(path)).exit_code == 0
     assert fake.submitted[0].console_line == "dir C:\\"
+
+
+def test_getfile_unknown_native_state_has_distinct_skip_reason(fake, monkeypatch, tmp_path):
+    from dataclasses import replace
+    original = fake._state
+    monkeypatch.setattr(fake, "_state", lambda index: replace(original(index), terminal=None))
+    result = _invoke("getfile", SESSION, "C:\\a", "--output", str(tmp_path / "a"), "--wait", "0")
+    assert result.exit_code == 0, result.output
+    assert _json_lines(result)[0]["data"]["download_skipped_reason"] == "state_unknown"
+    assert "transfer" not in fake.calls

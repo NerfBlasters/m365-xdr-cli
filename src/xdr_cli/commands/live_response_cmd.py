@@ -1,9 +1,9 @@
 """Live Response commands: remote console sessions, command jobs and the file library.
 
 Every console line is parsed and classified locally before anything is sent.
-Commands that move data off the device, place files, execute scripts or act
-on the device need confirmation (or ``--yes``); ``--dry-run`` validates
-against the pinned catalog without authentication or network activity.
+Commands are explicit operator requests and dispatch without confirmation prompts.
+``--dry-run`` validates against the pinned catalog without authentication or
+network activity; risk classification and backend mutation checks still apply.
 Submissions are never replayed after a timeout or transport loss.
 """
 from __future__ import annotations
@@ -28,17 +28,19 @@ from xdr_cli.auth import AuthManager
 from xdr_cli.backend_contract import Backend, UnsupportedBackendCapability
 from xdr_cli.backends import create_client
 from xdr_cli.client import XDRClient
+from xdr_cli.commands.live_response_sessions_cmd import sessions_app
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import ArtifactError, ConflictError, NotFoundError, UsageError, XDRError
 from xdr_cli.live_response.catalog import LIBRARY_NAME_PATTERN, PINNED, catalog, merge_definitions
 from xdr_cli.live_response.models import (
-    CONFIRM_RISKS,
+    MUTATION_POLICY_RISKS,
     LRCommandState,
     LRPlatform,
     LRRisk,
     ParsedCommand,
 )
 from xdr_cli.live_response.parser import build_command, parse_console_line
+from xdr_cli.live_response.session_aliases import is_alias
 from xdr_cli.live_response.transfer import download_transfer
 from xdr_cli.output import OutputFormatter, err_console
 from xdr_cli.package_download import DEFAULT_MAX_BYTES, package_destination
@@ -49,7 +51,7 @@ live_response_app = click.Group(
     help=(
         "Live Response sessions: inspect, search, fetch and place files, run library scripts.\n\n"
         "Interactive sessions need the portal-cookie backend. Console commands are "
-        "classified locally; anything beyond a read needs confirmation or --yes."
+        "classified locally and dispatch directly. Use --dry-run for local validation."
     ),
     no_args_is_help=True,
 )
@@ -57,6 +59,7 @@ library_app = click.Group(
     name="library", help="Tenant Live Response file library.", no_args_is_help=True,
 )
 live_response_app.add_command(library_app)
+live_response_app.add_command(sessions_app)
 
 _PREFIX = "xdr device live-response"
 _PORTAL_PREFIX = "xdr --backend portal-cookie device live-response"
@@ -70,18 +73,17 @@ _wait_option = click.option(
     "--wait", "wait_seconds", type=click.IntRange(min=0, max=3600), default=0, show_default=True,
     help="Poll up to this many seconds for a terminal state (0 returns immediately).",
 )
-_yes_option = click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
 _dry_run_option = click.option(
     "--dry-run", is_flag=True, help="Validate and show what would be sent; no network.",
 )
-_session_argument = click.argument("session_id", type=str, required=True)
+_session_argument = click.argument("session_id", type=str, required=True, metavar="SESSION")
 _command_id_argument = click.argument("command_id", type=str, required=True)
 _output_path = click.Path(path_type=Path, dir_okay=False, allow_dash=False)
 
 # Identifier shapes, checked locally so a dry-run fails for IDs the real call rejects.
 _ID_SHAPES = {
     "machine_id": (re.compile(r"[0-9a-fA-F]{40}"), "a 40-character MachineId"),
-    "session_id": (re.compile(r"CLR[A-Za-z0-9_-]{1,125}"), "a V3 session ID starting with CLR"),
+    "session_id": (re.compile(r"CLR[A-Za-z0-9_-]{1,125}"), "a CLR session ID or an lr-N alias"),
     "command_id": (re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"),
                    "a command GUID"),
     "action_id": (re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"),
@@ -98,6 +100,8 @@ def _get_client(ctx: AppContext) -> Backend:
 
 def _emit_dry_run(ctx: AppContext, data: dict) -> None:
     for key, value in data.items():
+        if key == "session_id" and is_alias(value):
+            continue
         shape = _ID_SHAPES.get(key)
         if shape is not None and not shape[0].fullmatch(str(value)):
             raise UsageError(f"{key} must be {shape[1]}.", invalid={"kind": "identifier",
@@ -156,26 +160,6 @@ def _require_sessions(ctx: AppContext) -> None:
             "No request was sent and no authentication fallback was attempted.",
             suggested_fix="Use --backend portal-cookie with an imported portal cookie.",
         )
-
-
-def _confirm(ctx: AppContext, parsed: ParsedCommand, target: str, yes: bool) -> None:
-    if parsed.risk not in CONFIRM_RISKS:
-        return
-    _confirm_text(ctx, f"run '{parsed.verb}' ({parsed.risk.value})", target, yes)
-
-
-def _confirm_text(ctx: AppContext, action: str, target: str, yes: bool) -> None:
-    if yes:
-        return
-    if not ctx.is_interactive:
-        raise UsageError(
-            f"Non-interactive mode requires --yes to {action}.",
-            invalid={"kind": "missing_option", "value": "--yes"},
-            help_command=f"{_PREFIX} --help",
-        )
-    err_console.print(f"[bold yellow]About to {action} on {target}.[/bold yellow]")
-    if not click.confirm("Proceed?"):
-        raise ConflictError("Live Response operation was cancelled by the operator.")
 
 
 def _read_text(text: str | None, path: Path | None, stdin: bool, *, what: str) -> str | None:
@@ -244,7 +228,6 @@ def _spec_row(spec) -> dict:
 def _dry_run(ctx: AppContext, parsed: ParsedCommand, target: str) -> None:
     _emit_dry_run(ctx, {
         "session_id": target, **parsed.redacted_summary(),
-        "requires_confirmation": parsed.risk in CONFIRM_RISKS,
         "validated_against": "pinned-catalog",
     })
 
@@ -262,7 +245,7 @@ def _audit_submission(ctx: AppContext, target: str, parsed: ParsedCommand) -> No
 
 def _state_record(state: LRCommandState, *, waited: bool) -> dict:
     record = _record(state)
-    session = state.session_id or "-"
+    session = state.session_alias or state.session_id or "-"
     record["status_command"] = f"{_PORTAL_PREFIX} status {session} {state.command_id} --wait 60"
     if state.has_output is not False:
         record["output_command"] = f"{_PORTAL_PREFIX} output {session} {state.command_id}"
@@ -367,9 +350,9 @@ def _write_local_output(path: Path, rows: list[dict], *, force: bool) -> dict:
 
 
 async def _submit(ctx: AppContext, client: Backend, session_id: str, parsed_from: Callable,
-                  *, yes: bool, wait_seconds: int, force: bool = False,
+                  *, wait_seconds: int, force: bool = False,
                   emit_record: bool = True) -> LRCommandState | None:
-    """Validate against the session's live definitions, confirm, submit once and poll."""
+    """Validate against the session's live definitions, submit once and poll."""
     session = await client.lr_get_session(session_id)
     commands, _ = merge_definitions(await client.lr_command_definitions(session_id))
     parsed: ParsedCommand = parsed_from(commands, session.platform)
@@ -381,12 +364,16 @@ async def _submit(ctx: AppContext, client: Backend, session_id: str, parsed_from
                          invalid={"kind": "local_only"}, help_command=f"{_PREFIX} --help")
     if parsed.output_to is not None:
         package_destination(Path(parsed.output_to), force=force)
-    _confirm(ctx, parsed, f"Live Response session {session_id}", yes)
-    if parsed.risk is not LRRisk.READ:
+    if parsed.risk in MUTATION_POLICY_RISKS:
         ctx.config.check_mutation_backend()
-    _audit_submission(ctx, session_id, parsed)
+    _audit_submission(ctx, session.session_id, parsed)
+    logging.getLogger("xdr.audit").info(
+        "LR_IDENTITY: session_id=%s machine_id=%s alias=%s",
+        session.session_id, session.machine_id, session.alias or "-",
+    )
     state = await client.lr_submit(session_id, parsed)
-    with _accepted("command", state.command_id, _command_recovery(session_id, state.command_id)):
+    reference = session.alias or session_id
+    with _accepted("command", state.command_id, _command_recovery(reference, state.command_id)):
         state = await _poll(client, session_id, state, wait_seconds)
         record = _state_record(state, waited=wait_seconds > 0)
         record.update(risk=parsed.risk.value, background=parsed.background)
@@ -436,11 +423,10 @@ def lr_catalog(ctx: AppContext, platform: str | None, risk: str | None) -> None:
 @click.option("--comment", "-c", default=None, help="Reason recorded locally with the request.")
 @click.option("--wait", "wait_seconds", type=click.IntRange(min=0, max=600), default=0,
               show_default=True, help="Poll up to this many seconds while the session is pending.")
-@_yes_option
 @_dry_run_option
 @click.pass_obj
 def lr_connect(ctx: AppContext, machine_id: str, comment: str | None, wait_seconds: int,
-               yes: bool, dry_run: bool) -> None:
+               dry_run: bool) -> None:
     """Open a Live Response session on a device (MachineId).
 
     Opening a session is recorded by the service against your account. Use
@@ -450,36 +436,23 @@ def lr_connect(ctx: AppContext, machine_id: str, comment: str | None, wait_secon
         _emit_dry_run(ctx, {"action": "connect", "machine_id": machine_id})
         return
     _require_sessions(ctx)
-    _confirm_text(ctx, "open a Live Response session", f"device {machine_id}", yes)
     ctx.config.check_mutation_backend()
 
     async def work(client: Backend) -> None:
         session = await client.lr_open_session(machine_id, comment=comment)
-        recovery = [f"{_PORTAL_PREFIX} show {session.session_id}",
-                    f"{_PORTAL_PREFIX} disconnect {session.session_id}"]
+        reference = session.alias or session.session_id
+        recovery = [f"{_PORTAL_PREFIX} show {reference}",
+                    f"{_PORTAL_PREFIX} disconnect {reference}"]
         with _accepted("session", session.session_id, recovery):
             deadline = monotonic() + wait_seconds
             while session.state == "pending" and monotonic() < deadline:
                 await asyncio.sleep(min(_POLL_SECONDS, max(0.0, deadline - monotonic())))
                 session = await client.lr_get_session(session.session_id)
         record = _record(session)
-        record["next_command"] = f"{_PORTAL_PREFIX} exec {session.session_id} --command-stdin"
-        record["disconnect_command"] = f"{_PORTAL_PREFIX} disconnect {session.session_id}"
+        reference = session.alias or session.session_id
+        record["next_command"] = f"{_PORTAL_PREFIX} exec {reference} --command-stdin"
+        record["disconnect_command"] = f"{_PORTAL_PREFIX} disconnect {reference}"
         _emit(ctx, record)
-
-    _with_client(ctx, work)
-
-
-@live_response_app.command("sessions")
-@click.option("--device", "machine_id", default=None, help="Only sessions for this MachineId.")
-@click.pass_obj
-def lr_sessions(ctx: AppContext, machine_id: str | None) -> None:
-    """List Live Response sessions this CLI knows about for the tenant and backend."""
-    _require_sessions(ctx)
-
-    async def work(client: Backend) -> None:
-        rows = await _collect(client.lr_iter_sessions(machine_id=machine_id))
-        _emit_rows(ctx, rows, context={"coverage": "locally-known-sessions"})
 
     _with_client(ctx, work)
 
@@ -499,16 +472,14 @@ def lr_show(ctx: AppContext, session_id: str) -> None:
 
 @live_response_app.command("disconnect")
 @_session_argument
-@_yes_option
 @_dry_run_option
 @click.pass_obj
-def lr_disconnect(ctx: AppContext, session_id: str, yes: bool, dry_run: bool) -> None:
+def lr_disconnect(ctx: AppContext, session_id: str, dry_run: bool) -> None:
     """Close a Live Response session. Running commands may be stopped by the service."""
     if dry_run:
         _emit_dry_run(ctx, {"action": "disconnect", "session_id": session_id})
         return
     _require_sessions(ctx)
-    _confirm_text(ctx, "close the Live Response session", session_id, yes)
     ctx.config.check_mutation_backend()
 
     async def work(client: Backend) -> None:
@@ -529,12 +500,11 @@ def lr_disconnect(ctx: AppContext, session_id: str, yes: bool, dry_run: bool) ->
 @click.option("--command-stdin", is_flag=True, help="Read the console command from stdin.")
 @click.option("--force", is_flag=True, help="Replace an existing '> FILE' local output.")
 @_wait_option
-@_yes_option
 @_dry_run_option
 @click.pass_obj
 def lr_exec(ctx: AppContext, session_id: str, command_text: str | None,
             command_file: Path | None, command_stdin: bool, force: bool, wait_seconds: int,
-            yes: bool, dry_run: bool) -> None:
+            dry_run: bool) -> None:
     """Run one console command in a session, e.g. 'findfile evil.exe' or 'dir C:\\Temp'.
 
     A trailing '&' asks for background mode; a final '> FILE' saves the
@@ -555,7 +525,7 @@ def lr_exec(ctx: AppContext, session_id: str, command_text: str | None,
             ctx, client, session_id,
             lambda commands, platform: parse_console_line(
                 text, platform=platform, commands=commands),
-            yes=yes, wait_seconds=wait_seconds, force=force,
+            wait_seconds=wait_seconds, force=force,
         )
 
     _with_client(ctx, work)
@@ -568,7 +538,7 @@ def _sugar(verb: str, params: dict, flags: frozenset[str] = frozenset(),
         commands=commands)
 
 
-def _run_sugar(ctx: AppContext, session_id: str, builder: Callable, *, yes: bool,
+def _run_sugar(ctx: AppContext, session_id: str, builder: Callable, *,
                dry_run: bool, wait_seconds: int) -> None:
     if dry_run:
         _dry_run(ctx, builder(None, None), session_id)
@@ -576,7 +546,7 @@ def _run_sugar(ctx: AppContext, session_id: str, builder: Callable, *, yes: bool
     _require_sessions(ctx)
 
     async def work(client: Backend) -> None:
-        await _submit(ctx, client, session_id, builder, yes=yes, wait_seconds=wait_seconds)
+        await _submit(ctx, client, session_id, builder, wait_seconds=wait_seconds)
 
     _with_client(ctx, work)
 
@@ -590,7 +560,7 @@ def _run_sugar(ctx: AppContext, session_id: str, builder: Callable, *, yes: bool
 def lr_findfile(ctx: AppContext, session_id: str, name: str, wait_seconds: int,
                 dry_run: bool) -> None:
     """Search the device for files by name (read)."""
-    _run_sugar(ctx, session_id, _sugar("findfile", {"name": name}), yes=False,
+    _run_sugar(ctx, session_id, _sugar("findfile", {"name": name}),
                dry_run=dry_run, wait_seconds=wait_seconds)
 
 
@@ -603,7 +573,7 @@ def lr_findfile(ctx: AppContext, session_id: str, name: str, wait_seconds: int,
 def lr_fileinfo(ctx: AppContext, session_id: str, path: str, wait_seconds: int,
                 dry_run: bool) -> None:
     """Show file metadata and hashes (read)."""
-    _run_sugar(ctx, session_id, _sugar("fileinfo", {"path": path}), yes=False,
+    _run_sugar(ctx, session_id, _sugar("fileinfo", {"path": path}),
                dry_run=dry_run, wait_seconds=wait_seconds)
 
 
@@ -618,7 +588,7 @@ def lr_dir(ctx: AppContext, session_id: str, path: str | None, full_path: bool,
            wait_seconds: int, dry_run: bool) -> None:
     """List a directory on the device (read)."""
     flags = frozenset({"full_path"}) if full_path else frozenset()
-    _run_sugar(ctx, session_id, _sugar("dir", {"path": path}, flags), yes=False,
+    _run_sugar(ctx, session_id, _sugar("dir", {"path": path}, flags),
                dry_run=dry_run, wait_seconds=wait_seconds)
 
 
@@ -635,15 +605,15 @@ def lr_dir(ctx: AppContext, session_id: str, path: str | None, full_path: bool,
               help="Only upload the file to the cloud (-upload_to_cloud); no download.")
 @click.option("--wait", "wait_seconds", type=click.IntRange(min=0, max=3600), default=300,
               show_default=True, help="Poll up to this many seconds before downloading.")
-@_yes_option
 @_dry_run_option
 @click.pass_obj
 def lr_getfile(ctx: AppContext, session_id: str, path: str, output: Path | None, force: bool,
                max_bytes: int, background: bool, upload_only: bool, wait_seconds: int,
-               yes: bool, dry_run: bool) -> None:
+               dry_run: bool) -> None:
     """Fetch a file from the device (collect). Downloads are private and never opened."""
     if upload_only and output is not None:
-        raise UsageError("--upload-only cannot be combined with --output.")
+        raise UsageError("--upload-only cannot be combined with --output.",
+                         invalid={"kind": "conflicting_options"})
     flags = frozenset({"upload"}) if upload_only else frozenset()
     builder = _sugar("getfile", {"path": path}, flags, background)
     if output is not None and not dry_run:
@@ -654,13 +624,15 @@ def lr_getfile(ctx: AppContext, session_id: str, path: str, output: Path | None,
     _require_sessions(ctx)
 
     async def work(client: Backend) -> None:
-        state = await _submit(ctx, client, session_id, builder, yes=yes,
+        state = await _submit(ctx, client, session_id, builder,
                               wait_seconds=wait_seconds, emit_record=output is None)
         if state is None or output is None:
             return
         if not state.succeeded:
-            skipped = "not_terminal" if state.terminal is not True else (
-                "completed_with_errors" if state.state == "completed" else "failed"
+            skipped = "state_unknown" if state.terminal is None else (
+                "not_terminal" if state.terminal is False else (
+                    "completed_with_errors" if state.state == "completed" else "failed"
+                )
             )
             _emit(ctx, {**_state_record(state, waited=wait_seconds > 0),
                         "risk": LRRisk.COLLECT.value, "background": background,
@@ -668,7 +640,7 @@ def lr_getfile(ctx: AppContext, session_id: str, path: str, output: Path | None,
             err_console.print("getfile has not completed without errors; nothing was "
                               "downloaded. Check status and output before using download.")
             return
-        recovery = _command_recovery(session_id, state.command_id)
+        recovery = _command_recovery(state.session_alias or session_id, state.command_id)
         with _accepted("command", state.command_id, recovery, completed=True):
             transfer = await client.lr_result_transfer(session_id, state.command_id)
             receipt = await download_transfer(transfer, output, force=force,
@@ -686,14 +658,13 @@ def lr_getfile(ctx: AppContext, session_id: str, path: str, output: Path | None,
 @click.option("--overwrite", is_flag=True, help="Overwrite the file if it exists on the device.")
 @click.option("--keep", is_flag=True, help="Keep the file on the device after a restart.")
 @_wait_option
-@_yes_option
 @_dry_run_option
 @click.pass_obj
 def lr_putfile(ctx: AppContext, session_id: str, library_name: str, overwrite: bool,
-               keep: bool, wait_seconds: int, yes: bool, dry_run: bool) -> None:
+               keep: bool, wait_seconds: int, dry_run: bool) -> None:
     """Place a library file on the device (place). Upload it first with library upload."""
     flags = frozenset(name for name, on in (("overwrite", overwrite), ("keep", keep)) if on)
-    _run_sugar(ctx, session_id, _sugar("putfile", {"id": library_name}, flags), yes=yes,
+    _run_sugar(ctx, session_id, _sugar("putfile", {"id": library_name}, flags),
                dry_run=dry_run, wait_seconds=wait_seconds)
 
 
@@ -705,16 +676,15 @@ def lr_putfile(ctx: AppContext, session_id: str, library_name: str, overwrite: b
 @click.option("--parameters-stdin", is_flag=True, help="Read script parameters from stdin.")
 @click.option("--background", is_flag=True, help="Submit in background mode.")
 @_wait_option
-@_yes_option
 @_dry_run_option
 @click.pass_obj
 def lr_run(ctx: AppContext, session_id: str, script: str, parameters_file: Path | None,
-           parameters_stdin: bool, background: bool, wait_seconds: int, yes: bool,
+           parameters_stdin: bool, background: bool, wait_seconds: int,
            dry_run: bool) -> None:
     """Run a library script on the device (execute)."""
     parameters = _read_text(None, parameters_file, parameters_stdin, what="script parameters")
     builder = _sugar("run", {"id": script, "parameters": parameters}, background=background)
-    _run_sugar(ctx, session_id, builder, yes=yes, dry_run=dry_run, wait_seconds=wait_seconds)
+    _run_sugar(ctx, session_id, builder, dry_run=dry_run, wait_seconds=wait_seconds)
 
 
 # --- Command jobs ------------------------------------------------------------------------------
@@ -770,10 +740,9 @@ def lr_output(ctx: AppContext, session_id: str, command_id: str) -> None:
 @live_response_app.command("cancel")
 @_session_argument
 @_command_id_argument
-@_yes_option
 @_dry_run_option
 @click.pass_obj
-def lr_cancel(ctx: AppContext, session_id: str, command_id: str, yes: bool,
+def lr_cancel(ctx: AppContext, session_id: str, command_id: str,
               dry_run: bool) -> None:
     """Cancel a command in the portal. The device may still finish it."""
     if dry_run:
@@ -781,7 +750,6 @@ def lr_cancel(ctx: AppContext, session_id: str, command_id: str, yes: bool,
                             "command_id": command_id})
         return
     _require_sessions(ctx)
-    _confirm_text(ctx, f"cancel command {command_id}", f"session {session_id}", yes)
     ctx.config.check_mutation_backend()
 
     async def work(client: Backend) -> None:
@@ -893,11 +861,10 @@ def library_download(ctx: AppContext, name: str, output: Path, force: bool,
 @click.option("--parameters-description", default=None,
               help="Describe the script's parameters (marks the script as taking parameters).")
 @click.option("--overwrite", is_flag=True, help="Replace a library file with the same name.")
-@_yes_option
 @_dry_run_option
 @click.pass_obj
 def library_upload(ctx: AppContext, path: Path, description: str | None,
-                   parameters_description: str | None, overwrite: bool, yes: bool,
+                   parameters_description: str | None, overwrite: bool,
                    dry_run: bool) -> None:
     """Upload a file to the tenant library (library-write)."""
     _library_name(path.name)
@@ -906,7 +873,6 @@ def library_upload(ctx: AppContext, path: Path, description: str | None,
                     "bytes": path.stat().st_size, "overwrite": overwrite})
         return
     _require_library(ctx)
-    _confirm_text(ctx, f"upload '{path.name}' to the tenant library", "the tenant", yes)
     ctx.config.check_mutation_backend()
 
     async def work(client: Backend) -> None:
@@ -921,17 +887,15 @@ def library_upload(ctx: AppContext, path: Path, description: str | None,
 
 @library_app.command("delete")
 @click.argument("name", type=str)
-@_yes_option
 @_dry_run_option
 @click.pass_obj
-def library_delete(ctx: AppContext, name: str, yes: bool, dry_run: bool) -> None:
+def library_delete(ctx: AppContext, name: str, dry_run: bool) -> None:
     """Delete a file from the tenant library (library-write)."""
     _library_name(name)
     if dry_run:
         _emit(ctx, {"dry_run": True, "action": "library delete", "name": name})
         return
     _require_library(ctx)
-    _confirm_text(ctx, f"delete '{name}' from the tenant library", "the tenant", yes)
     ctx.config.check_mutation_backend()
 
     async def work(client: Backend) -> None:
@@ -994,11 +958,10 @@ def _action_record(state: LRCommandState) -> dict:
               help="Read commands from a file, one per line (keeps script arguments out of argv).")
 @click.option("--comment", "-c", required=True, help="Reason recorded with the machine action.")
 @_wait_option
-@_yes_option
 @_dry_run_option
 @click.pass_obj
 def batch_submit(ctx: AppContext, machine_id: str, command_texts: tuple[str, ...],
-                 command_file: Path | None, comment: str, wait_seconds: int, yes: bool,
+                 command_file: Path | None, comment: str, wait_seconds: int,
                  dry_run: bool) -> None:
     """Submit one official runliveresponse machine action."""
     texts = list(command_texts)
@@ -1011,8 +974,6 @@ def batch_submit(ctx: AppContext, machine_id: str, command_texts: tuple[str, ...
                             "commands": [command.redacted_summary() for command in parsed]})
         return
     _require_batch(ctx)
-    risks = ", ".join(sorted({command.risk.value for command in parsed}))
-    _confirm_text(ctx, f"submit a Live Response batch ({risks})", f"device {machine_id}", yes)
     ctx.config.check_mutation_backend()
 
     async def work(client: Backend) -> None:
@@ -1084,16 +1045,14 @@ def batch_download(ctx: AppContext, action_id: str, index: int, output: Path, fo
 
 @batch_app.command("cancel")
 @click.argument("action_id", type=str, required=True)
-@_yes_option
 @_dry_run_option
 @click.pass_obj
-def batch_cancel(ctx: AppContext, action_id: str, yes: bool, dry_run: bool) -> None:
+def batch_cancel(ctx: AppContext, action_id: str, dry_run: bool) -> None:
     """Cancel a pending batch action. Commands already running may still finish."""
     if dry_run:
         _emit_dry_run(ctx, {"action": "batch cancel", "action_id": action_id})
         return
     _require_batch(ctx)
-    _confirm_text(ctx, f"cancel batch action {action_id}", "the tenant", yes)
     ctx.config.check_mutation_backend()
 
     async def work(client: Backend) -> None:

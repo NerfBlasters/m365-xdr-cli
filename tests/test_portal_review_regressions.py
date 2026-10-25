@@ -275,7 +275,7 @@ def test_invalid_action_mode_fails_before_confirmation_or_network(
 ):
     confirm = Mock(side_effect=AssertionError('Must reject before confirmation'))
     client = Mock(side_effect=AssertionError('No API allowed'))
-    monkeypatch.setattr('xdr_cli.commands.device_cmd._confirm_action', confirm)
+    monkeypatch.setattr('click.confirm', confirm)
     monkeypatch.setattr('xdr_cli.commands.device_cmd._get_client', client)
     result = CliRunner().invoke(app, [
         'device', command, DEVICE, flag, 'wrong', '--comment', 'test',
@@ -298,7 +298,7 @@ def test_action_modes_are_canonical_before_dispatch(
     action = AsyncMock()
     monkeypatch.setattr('xdr_cli.commands.device_cmd._device_action', action)
     result = CliRunner().invoke(app, [
-        'device', command, DEVICE, flag, value, '--comment', 'test', '--yes',
+        'device', command, DEVICE, flag, value, '--comment', 'test',
     ])
     assert result.exit_code == 0, result.output
     assert action.await_args.kwargs[key] == canonical
@@ -327,7 +327,7 @@ def invalid_backend_with_both_credentials(home):
 
 
 @pytest.mark.parametrize('argv', [
-    ['device', action, DEVICE, '--comment', 'test', '--yes']
+    ['device', action, DEVICE, '--comment', 'test']
     for action in ('isolate', 'unisolate', 'scan', 'collect-package', 'restrict', 'unrestrict')
 ] + [['incidents', 'update', '1', '--status', 'active', '--yes'],
      ['incidents', 'update', '1', '--comment', 'test', '--yes']])
@@ -338,7 +338,7 @@ def test_recovered_backend_cannot_authorize_tenant_writes(local, monkeypatch, ne
     confirmation = Mock(side_effect=AssertionError('Must reject before confirmation'))
     monkeypatch.setattr('xdr_cli.commands.device_cmd._device_action', device)
     monkeypatch.setattr('xdr_cli.commands.incidents_cmd._update', incident)
-    monkeypatch.setattr('xdr_cli.commands.device_cmd._confirm_action', confirmation)
+    monkeypatch.setattr('click.confirm', confirmation)
     result = CliRunner().invoke(app, argv)
     assert result.exit_code == 4, result.output
     error = json.loads(result.stdout)['error']
@@ -360,7 +360,7 @@ def test_explicit_backend_allows_write_despite_invalid_saved_preference(
     action = AsyncMock()
     monkeypatch.setattr('xdr_cli.commands.device_cmd._device_action', action)
     result = CliRunner().invoke(app, [
-        '--backend', override, 'device', 'isolate', DEVICE, '--comment', 'test', '--yes',
+        '--backend', override, 'device', 'isolate', DEVICE, '--comment', 'test',
     ])
     assert result.exit_code == 0, result.output
     assert action.await_args.args[0].config.api_backend == expected
@@ -415,7 +415,7 @@ def test_portal_timeout_retryability_at_cli_boundary(
             'SenseMachineId': DEVICE, 'OsPlatform': 'Windows11', 'SenseClientVersion': '1.2.3',
         })
         route = network.post(BASE + 'mtp/responseApiPortal/requests/create')
-        argv = ['device', 'isolate', DEVICE, '--comment', 'test', '--yes']
+        argv = ['device', 'isolate', DEVICE, '--comment', 'test']
     elif operation == 'hunt':
         route = network.post(BASE + 'hunting/huntingQueryExecutorService/queryExecutor/v1/external')
         argv = ['hunt', 'run', 'print value=1']

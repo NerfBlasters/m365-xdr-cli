@@ -173,6 +173,12 @@ class NotFoundError(APIError):
         )
 
 
+class LiveResponseSessionNotFoundError(NotFoundError):
+    """Only an actual GET of the named Live Response session returned HTTP 404."""
+
+    error_code = "LIVE_RESPONSE_SESSION_NOT_FOUND"
+
+
 class LocalNotFoundError(XDRError):
     """A requested local artifact/session/cache entry does not exist."""
 

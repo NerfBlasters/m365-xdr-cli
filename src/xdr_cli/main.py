@@ -135,7 +135,9 @@ _LIVE_RESPONSE_SAFE_WORDS = frozenset(
 
 
 def _live_response_value(value: str, words: frozenset[str]) -> str:
-    if value in words or _LIVE_RESPONSE_SAFE_VALUE.fullmatch(value):
+    from xdr_cli.live_response.session_aliases import is_alias
+
+    if value in words or _LIVE_RESPONSE_SAFE_VALUE.fullmatch(value) or is_alias(value):
         return value
     return _REDACTED_PLACEHOLDER
 

@@ -40,10 +40,10 @@ class FollowupFailure(FakeLRBackend):
 
 
 @pytest.mark.parametrize("backend,default_backend,args,submission", [
-    ("portal-cookie", "official", ["run", SESSION, "test.ps1", "--wait", "30", "--yes"],
+    ("portal-cookie", "official", ["run", SESSION, "test.ps1", "--wait", "30"],
      "submit"),
     ("official", "portal-cookie", ["batch", "submit", MACHINE, "--command",
-     r"getfile C:\Windows\file.txt", "--comment", "test", "--wait", "30", "--yes"],
+     r"getfile C:\Windows\file.txt", "--comment", "test", "--wait", "30"],
      "submit_batch"),
 ])
 def test_failed_wait_recovery_works_with_opposite_backend_default(

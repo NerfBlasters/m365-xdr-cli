@@ -12,7 +12,7 @@ from xdr_cli.live_response.catalog import (
     build_alias_index,
     catalog,
 )
-from xdr_cli.live_response.models import CONFIRM_RISKS, LRCommandSpec, LRRisk
+from xdr_cli.live_response.models import MUTATION_POLICY_RISKS, LRCommandSpec, LRRisk
 
 # Every command in Microsoft's documented basic and advanced tables.
 DOCUMENTED = {
@@ -43,8 +43,8 @@ def test_only_reads_and_local_commands_skip_confirmation():
     for spec in catalog():
         risks = {spec.risk, *(risk for _, _, risk in spec.risk_by_value)}
         for risk in risks:
-            assert (risk in CONFIRM_RISKS) == (risk not in {LRRisk.LOCAL, LRRisk.READ})
-    state_changing = {s.name for s in catalog() if s.risk in CONFIRM_RISKS}
+            assert (risk in MUTATION_POLICY_RISKS) == (risk not in {LRRisk.LOCAL, LRRisk.READ})
+    state_changing = {s.name for s in catalog() if s.risk in MUTATION_POLICY_RISKS}
     assert state_changing == {
         "getfile", "analyze", "collect", "processdump", "putfile", "run", "remediate", "undo",
         "isolate", "release", "scan",

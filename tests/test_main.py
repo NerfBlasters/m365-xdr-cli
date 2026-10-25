@@ -1007,7 +1007,7 @@ def _run_cli(monkeypatch, *argv):
         # Syntax Click accepts that a raw-argv matcher can misread.
         ["-q", "--", "device", "isolate", "abc", "--comment", "x", "--dry-run"],
         ["--rationale=why", "-q", "device", "isolate", "abc", "--comment", "x", "--dry-run"],
-        ["--rationale", "update", "device", "isolate", "abc", "-yc", "note", "--dry-run"],
+        ["--rationale", "update", "device", "isolate", "abc", "-cnote", "--dry-run"],
     ],
 )
 def test_audit_log_records_dispatched_write_commands(tmp_path, monkeypatch, argv):

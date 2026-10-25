@@ -96,101 +96,64 @@
       "action_id": "sample",
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": true,
-      "yes": false
-    },
-    "device cancel-action:--yes": {
-      "action_id": "sample",
-      "comment": "sample",
-      "device_id": "sample",
-      "dry_run": false,
-      "yes": true
+      "dry_run": true
     },
     "device cancel-action:required": {
       "action_id": "sample",
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": false,
-      "yes": false
+      "dry_run": false
     },
     "device cancel-action:supplied": {
       "action_id": "sample",
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": true,
-      "yes": true
+      "dry_run": true
     },
     "device collect-package:--dry-run": {
       "comment": "Forensic package requested via xdr-cli",
       "device_id": "sample",
-      "dry_run": true,
-      "yes": false
-    },
-    "device collect-package:--yes": {
-      "comment": "Forensic package requested via xdr-cli",
-      "device_id": "sample",
-      "dry_run": false,
-      "yes": true
+      "dry_run": true
     },
     "device collect-package:required": {
       "comment": "Forensic package requested via xdr-cli",
       "device_id": "sample",
-      "dry_run": false,
-      "yes": false
+      "dry_run": false
     },
     "device collect-package:supplied": {
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": true,
-      "yes": true
+      "dry_run": true
     },
     "device collect-support-logs:--dry-run": {
       "comment": "sample",
       "dry_run": true,
-      "machine_id": "sample",
-      "yes": false
-    },
-    "device collect-support-logs:--yes": {
-      "comment": "sample",
-      "dry_run": false,
-      "machine_id": "sample",
-      "yes": true
+      "machine_id": "sample"
     },
     "device collect-support-logs:required": {
       "comment": "sample",
       "dry_run": false,
-      "machine_id": "sample",
-      "yes": false
+      "machine_id": "sample"
     },
     "device collect-support-logs:supplied": {
       "comment": "sample",
       "dry_run": true,
-      "machine_id": "sample",
-      "yes": true
+      "machine_id": "sample"
     },
     "device contain:--dry-run": {
       "comment": "sample",
       "dry_run": true,
-      "machine_id": "sample",
-      "yes": false
-    },
-    "device contain:--yes": {
-      "comment": "sample",
-      "dry_run": false,
-      "machine_id": "sample",
-      "yes": true
+      "machine_id": "sample"
     },
     "device contain:required": {
       "comment": "sample",
       "dry_run": false,
-      "machine_id": "sample",
-      "yes": false
+      "machine_id": "sample"
     },
     "device contain:supplied": {
       "comment": "sample",
       "dry_run": true,
-      "machine_id": "sample",
-      "yes": true
+      "machine_id": "sample"
     },
     "device download-package:--force": {
       "action_id": "sample",
@@ -226,18 +189,7 @@
       "isolation_type": {
         "enum": "IsolationType",
         "value": "Full"
-      },
-      "yes": false
-    },
-    "device isolate:--yes": {
-      "comment": "sample",
-      "device_id": "sample",
-      "dry_run": false,
-      "isolation_type": {
-        "enum": "IsolationType",
-        "value": "Full"
-      },
-      "yes": true
+      }
     },
     "device isolate:required": {
       "comment": "sample",
@@ -246,8 +198,7 @@
       "isolation_type": {
         "enum": "IsolationType",
         "value": "Full"
-      },
-      "yes": false
+      }
     },
     "device isolate:supplied": {
       "comment": "sample",
@@ -256,28 +207,19 @@
       "isolation_type": {
         "enum": "IsolationType",
         "value": "Full"
-      },
-      "yes": true
+      }
     },
     "device live-response batch cancel:--dry-run": {
       "action_id": "sample",
-      "dry_run": true,
-      "yes": false
-    },
-    "device live-response batch cancel:--yes": {
-      "action_id": "sample",
-      "dry_run": false,
-      "yes": true
+      "dry_run": true
     },
     "device live-response batch cancel:required": {
       "action_id": "sample",
-      "dry_run": false,
-      "yes": false
+      "dry_run": false
     },
     "device live-response batch cancel:supplied": {
       "action_id": "sample",
-      "dry_run": true,
-      "yes": true
+      "dry_run": true
     },
     "device live-response batch download:--force": {
       "action_id": "sample",
@@ -328,19 +270,7 @@
       "comment": "sample",
       "dry_run": true,
       "machine_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
-    },
-    "device live-response batch submit:--yes": {
-      "command_file": null,
-      "command_texts": {
-        "tuple": []
-      },
-      "comment": "sample",
-      "dry_run": false,
-      "machine_id": "sample",
-      "wait_seconds": 0,
-      "yes": true
+      "wait_seconds": 0
     },
     "device live-response batch submit:required": {
       "command_file": null,
@@ -350,8 +280,7 @@
       "comment": "sample",
       "dry_run": false,
       "machine_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
+      "wait_seconds": 0
     },
     "device live-response batch submit:supplied": {
       "command_file": {
@@ -366,32 +295,22 @@
       "comment": "sample",
       "dry_run": true,
       "machine_id": "sample",
-      "wait_seconds": 1,
-      "yes": true
+      "wait_seconds": 1
     },
     "device live-response cancel:--dry-run": {
       "command_id": "sample",
       "dry_run": true,
-      "session_id": "sample",
-      "yes": false
-    },
-    "device live-response cancel:--yes": {
-      "command_id": "sample",
-      "dry_run": false,
-      "session_id": "sample",
-      "yes": true
+      "session_id": "sample"
     },
     "device live-response cancel:required": {
       "command_id": "sample",
       "dry_run": false,
-      "session_id": "sample",
-      "yes": false
+      "session_id": "sample"
     },
     "device live-response cancel:supplied": {
       "command_id": "sample",
       "dry_run": true,
-      "session_id": "sample",
-      "yes": true
+      "session_id": "sample"
     },
     "device live-response catalog:required": {
       "platform": null,
@@ -405,29 +324,19 @@
       "comment": null,
       "dry_run": true,
       "machine_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
-    },
-    "device live-response connect:--yes": {
-      "comment": null,
-      "dry_run": false,
-      "machine_id": "sample",
-      "wait_seconds": 0,
-      "yes": true
+      "wait_seconds": 0
     },
     "device live-response connect:required": {
       "comment": null,
       "dry_run": false,
       "machine_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
+      "wait_seconds": 0
     },
     "device live-response connect:supplied": {
       "comment": "sample",
       "dry_run": true,
       "machine_id": "sample",
-      "wait_seconds": 1,
-      "yes": true
+      "wait_seconds": 1
     },
     "device live-response dir:--dry-run": {
       "dry_run": true,
@@ -459,23 +368,15 @@
     },
     "device live-response disconnect:--dry-run": {
       "dry_run": true,
-      "session_id": "sample",
-      "yes": false
-    },
-    "device live-response disconnect:--yes": {
-      "dry_run": false,
-      "session_id": "sample",
-      "yes": true
+      "session_id": "sample"
     },
     "device live-response disconnect:required": {
       "dry_run": false,
-      "session_id": "sample",
-      "yes": false
+      "session_id": "sample"
     },
     "device live-response disconnect:supplied": {
       "dry_run": true,
-      "session_id": "sample",
-      "yes": true
+      "session_id": "sample"
     },
     "device live-response download:--force": {
       "command_id": "sample",
@@ -511,8 +412,7 @@
       "dry_run": false,
       "force": false,
       "session_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
+      "wait_seconds": 0
     },
     "device live-response exec:--dry-run": {
       "command_file": null,
@@ -521,8 +421,7 @@
       "dry_run": true,
       "force": false,
       "session_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
+      "wait_seconds": 0
     },
     "device live-response exec:--force": {
       "command_file": null,
@@ -531,18 +430,7 @@
       "dry_run": false,
       "force": true,
       "session_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
-    },
-    "device live-response exec:--yes": {
-      "command_file": null,
-      "command_stdin": false,
-      "command_text": null,
-      "dry_run": false,
-      "force": false,
-      "session_id": "sample",
-      "wait_seconds": 0,
-      "yes": true
+      "wait_seconds": 0
     },
     "device live-response exec:required": {
       "command_file": null,
@@ -551,8 +439,7 @@
       "dry_run": false,
       "force": false,
       "session_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
+      "wait_seconds": 0
     },
     "device live-response exec:supplied": {
       "command_file": {
@@ -563,8 +450,7 @@
       "dry_run": true,
       "force": true,
       "session_id": "sample",
-      "wait_seconds": 1,
-      "yes": true
+      "wait_seconds": 1
     },
     "device live-response fileinfo:--dry-run": {
       "dry_run": true,
@@ -611,8 +497,7 @@
       "path": "sample",
       "session_id": "sample",
       "upload_only": false,
-      "wait_seconds": 300,
-      "yes": false
+      "wait_seconds": 300
     },
     "device live-response getfile:--dry-run": {
       "background": false,
@@ -623,8 +508,7 @@
       "path": "sample",
       "session_id": "sample",
       "upload_only": false,
-      "wait_seconds": 300,
-      "yes": false
+      "wait_seconds": 300
     },
     "device live-response getfile:--force": {
       "background": false,
@@ -635,8 +519,7 @@
       "path": "sample",
       "session_id": "sample",
       "upload_only": false,
-      "wait_seconds": 300,
-      "yes": false
+      "wait_seconds": 300
     },
     "device live-response getfile:--upload-only": {
       "background": false,
@@ -647,20 +530,7 @@
       "path": "sample",
       "session_id": "sample",
       "upload_only": true,
-      "wait_seconds": 300,
-      "yes": false
-    },
-    "device live-response getfile:--yes": {
-      "background": false,
-      "dry_run": false,
-      "force": false,
-      "max_bytes": 1073741824,
-      "output": null,
-      "path": "sample",
-      "session_id": "sample",
-      "upload_only": false,
-      "wait_seconds": 300,
-      "yes": true
+      "wait_seconds": 300
     },
     "device live-response getfile:required": {
       "background": false,
@@ -671,8 +541,7 @@
       "path": "sample",
       "session_id": "sample",
       "upload_only": false,
-      "wait_seconds": 300,
-      "yes": false
+      "wait_seconds": 300
     },
     "device live-response getfile:supplied": {
       "background": true,
@@ -685,8 +554,7 @@
       "path": "sample",
       "session_id": "sample",
       "upload_only": true,
-      "wait_seconds": 1,
-      "yes": true
+      "wait_seconds": 1
     },
     "device live-response history:required": {
       "session_id": "sample"
@@ -696,23 +564,15 @@
     },
     "device live-response library delete:--dry-run": {
       "dry_run": true,
-      "name": "sample",
-      "yes": false
-    },
-    "device live-response library delete:--yes": {
-      "dry_run": false,
-      "name": "sample",
-      "yes": true
+      "name": "sample"
     },
     "device live-response library delete:required": {
       "dry_run": false,
-      "name": "sample",
-      "yes": false
+      "name": "sample"
     },
     "device live-response library delete:supplied": {
       "dry_run": true,
-      "name": "sample",
-      "yes": true
+      "name": "sample"
     },
     "device live-response library download:--force": {
       "force": true,
@@ -753,8 +613,7 @@
       "parameters_description": null,
       "path": {
         "path": "<existing-file>"
-      },
-      "yes": false
+      }
     },
     "device live-response library upload:--overwrite": {
       "description": null,
@@ -763,18 +622,7 @@
       "parameters_description": null,
       "path": {
         "path": "<existing-file>"
-      },
-      "yes": false
-    },
-    "device live-response library upload:--yes": {
-      "description": null,
-      "dry_run": false,
-      "overwrite": false,
-      "parameters_description": null,
-      "path": {
-        "path": "<existing-file>"
-      },
-      "yes": true
+      }
     },
     "device live-response library upload:required": {
       "description": null,
@@ -783,8 +631,7 @@
       "parameters_description": null,
       "path": {
         "path": "<existing-file>"
-      },
-      "yes": false
+      }
     },
     "device live-response library upload:supplied": {
       "description": "sample",
@@ -793,8 +640,7 @@
       "parameters_description": "sample",
       "path": {
         "path": "<existing-file>"
-      },
-      "yes": true
+      }
     },
     "device live-response output:required": {
       "command_id": "sample",
@@ -810,8 +656,7 @@
       "library_name": "sample",
       "overwrite": false,
       "session_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
+      "wait_seconds": 0
     },
     "device live-response putfile:--keep": {
       "dry_run": false,
@@ -819,8 +664,7 @@
       "library_name": "sample",
       "overwrite": false,
       "session_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
+      "wait_seconds": 0
     },
     "device live-response putfile:--overwrite": {
       "dry_run": false,
@@ -828,17 +672,7 @@
       "library_name": "sample",
       "overwrite": true,
       "session_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
-    },
-    "device live-response putfile:--yes": {
-      "dry_run": false,
-      "keep": false,
-      "library_name": "sample",
-      "overwrite": false,
-      "session_id": "sample",
-      "wait_seconds": 0,
-      "yes": true
+      "wait_seconds": 0
     },
     "device live-response putfile:required": {
       "dry_run": false,
@@ -846,8 +680,7 @@
       "library_name": "sample",
       "overwrite": false,
       "session_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
+      "wait_seconds": 0
     },
     "device live-response putfile:supplied": {
       "dry_run": true,
@@ -855,8 +688,7 @@
       "library_name": "sample",
       "overwrite": true,
       "session_id": "sample",
-      "wait_seconds": 1,
-      "yes": true
+      "wait_seconds": 1
     },
     "device live-response run:--background": {
       "background": true,
@@ -865,8 +697,7 @@
       "parameters_stdin": false,
       "script": "sample",
       "session_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
+      "wait_seconds": 0
     },
     "device live-response run:--dry-run": {
       "background": false,
@@ -875,8 +706,7 @@
       "parameters_stdin": false,
       "script": "sample",
       "session_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
+      "wait_seconds": 0
     },
     "device live-response run:--parameters-stdin": {
       "background": false,
@@ -885,18 +715,7 @@
       "parameters_stdin": true,
       "script": "sample",
       "session_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
-    },
-    "device live-response run:--yes": {
-      "background": false,
-      "dry_run": false,
-      "parameters_file": null,
-      "parameters_stdin": false,
-      "script": "sample",
-      "session_id": "sample",
-      "wait_seconds": 0,
-      "yes": true
+      "wait_seconds": 0
     },
     "device live-response run:required": {
       "background": false,
@@ -905,8 +724,7 @@
       "parameters_stdin": false,
       "script": "sample",
       "session_id": "sample",
-      "wait_seconds": 0,
-      "yes": false
+      "wait_seconds": 0
     },
     "device live-response run:supplied": {
       "background": true,
@@ -917,13 +735,36 @@
       "parameters_stdin": true,
       "script": "sample",
       "session_id": "sample",
-      "wait_seconds": 1,
-      "yes": true
+      "wait_seconds": 1
+    },
+    "device live-response sessions list:--all": {
+      "include_closed": true,
+      "machine_id": null
+    },
+    "device live-response sessions list:required": {
+      "include_closed": false,
+      "machine_id": null
+    },
+    "device live-response sessions list:supplied": {
+      "include_closed": true,
+      "machine_id": "sample"
+    },
+    "device live-response sessions refresh:required": {
+      "machine_id": null
+    },
+    "device live-response sessions refresh:supplied": {
+      "machine_id": "sample"
+    },
+    "device live-response sessions:--all": {
+      "include_closed": true,
+      "machine_id": null
     },
     "device live-response sessions:required": {
+      "include_closed": false,
       "machine_id": null
     },
     "device live-response sessions:supplied": {
+      "include_closed": true,
       "machine_id": "sample"
     },
     "device live-response show:required": {
@@ -945,26 +786,17 @@
     "device restrict:--dry-run": {
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": true,
-      "yes": false
-    },
-    "device restrict:--yes": {
-      "comment": "sample",
-      "device_id": "sample",
-      "dry_run": false,
-      "yes": true
+      "dry_run": true
     },
     "device restrict:required": {
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": false,
-      "yes": false
+      "dry_run": false
     },
     "device restrict:supplied": {
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": true,
-      "yes": true
+      "dry_run": true
     },
     "device scan:--dry-run": {
       "comment": "Scan triggered via xdr-cli",
@@ -973,18 +805,7 @@
       "scan_type": {
         "enum": "ScanType",
         "value": "Quick"
-      },
-      "yes": false
-    },
-    "device scan:--yes": {
-      "comment": "Scan triggered via xdr-cli",
-      "device_id": "sample",
-      "dry_run": false,
-      "scan_type": {
-        "enum": "ScanType",
-        "value": "Quick"
-      },
-      "yes": true
+      }
     },
     "device scan:required": {
       "comment": "Scan triggered via xdr-cli",
@@ -993,8 +814,7 @@
       "scan_type": {
         "enum": "ScanType",
         "value": "Quick"
-      },
-      "yes": false
+      }
     },
     "device scan:supplied": {
       "comment": "sample",
@@ -1003,8 +823,7 @@
       "scan_type": {
         "enum": "ScanType",
         "value": "Quick"
-      },
-      "yes": true
+      }
     },
     "device show:required": {
       "device": "sample"
@@ -1015,50 +834,32 @@
     "device start-investigation:--dry-run": {
       "comment": "sample",
       "dry_run": true,
-      "machine_id": "sample",
-      "yes": false
-    },
-    "device start-investigation:--yes": {
-      "comment": "sample",
-      "dry_run": false,
-      "machine_id": "sample",
-      "yes": true
+      "machine_id": "sample"
     },
     "device start-investigation:required": {
       "comment": "sample",
       "dry_run": false,
-      "machine_id": "sample",
-      "yes": false
+      "machine_id": "sample"
     },
     "device start-investigation:supplied": {
       "comment": "sample",
       "dry_run": true,
-      "machine_id": "sample",
-      "yes": true
+      "machine_id": "sample"
     },
     "device tags add:--dry-run": {
       "dry_run": true,
       "machine_id": "sample",
-      "tag": "sample",
-      "yes": false
-    },
-    "device tags add:--yes": {
-      "dry_run": false,
-      "machine_id": "sample",
-      "tag": "sample",
-      "yes": true
+      "tag": "sample"
     },
     "device tags add:required": {
       "dry_run": false,
       "machine_id": "sample",
-      "tag": "sample",
-      "yes": false
+      "tag": "sample"
     },
     "device tags add:supplied": {
       "dry_run": true,
       "machine_id": "sample",
-      "tag": "sample",
-      "yes": true
+      "tag": "sample"
     },
     "device tags list:required": {
       "machine_id": "sample"
@@ -1069,26 +870,17 @@
     "device tags remove:--dry-run": {
       "dry_run": true,
       "machine_id": "sample",
-      "tag": "sample",
-      "yes": false
-    },
-    "device tags remove:--yes": {
-      "dry_run": false,
-      "machine_id": "sample",
-      "tag": "sample",
-      "yes": true
+      "tag": "sample"
     },
     "device tags remove:required": {
       "dry_run": false,
       "machine_id": "sample",
-      "tag": "sample",
-      "yes": false
+      "tag": "sample"
     },
     "device tags remove:supplied": {
       "dry_run": true,
       "machine_id": "sample",
-      "tag": "sample",
-      "yes": true
+      "tag": "sample"
     },
     "device tags set:--dry-run": {
       "dry_run": true,
@@ -1099,8 +891,7 @@
       "machine_id": "sample",
       "tags": {
         "tuple": []
-      },
-      "yes": false
+      }
     },
     "device tags set:--expect-none": {
       "dry_run": false,
@@ -1111,20 +902,7 @@
       "machine_id": "sample",
       "tags": {
         "tuple": []
-      },
-      "yes": false
-    },
-    "device tags set:--yes": {
-      "dry_run": false,
-      "expect_none": false,
-      "expected": {
-        "tuple": []
-      },
-      "machine_id": "sample",
-      "tags": {
-        "tuple": []
-      },
-      "yes": true
+      }
     },
     "device tags set:required": {
       "dry_run": false,
@@ -1135,8 +913,7 @@
       "machine_id": "sample",
       "tags": {
         "tuple": []
-      },
-      "yes": false
+      }
     },
     "device tags set:supplied": {
       "dry_run": true,
@@ -1153,8 +930,7 @@
           "sample",
           "sample"
         ]
-      },
-      "yes": true
+      }
     },
     "device timeline:--force": {
       "days": null,
@@ -1214,106 +990,69 @@
       "comment": "sample",
       "dry_run": true,
       "enabled": true,
-      "machine_id": "sample",
-      "yes": false
+      "machine_id": "sample"
     },
     "device troubleshoot:--off": {
       "comment": "sample",
       "dry_run": false,
       "enabled": false,
-      "machine_id": "sample",
-      "yes": false
+      "machine_id": "sample"
     },
     "device troubleshoot:--on": {
       "comment": "sample",
       "dry_run": false,
       "enabled": true,
-      "machine_id": "sample",
-      "yes": false
-    },
-    "device troubleshoot:--yes": {
-      "comment": "sample",
-      "dry_run": false,
-      "enabled": true,
-      "machine_id": "sample",
-      "yes": true
+      "machine_id": "sample"
     },
     "device troubleshoot:required": {
       "comment": "sample",
       "dry_run": false,
       "enabled": true,
-      "machine_id": "sample",
-      "yes": false
+      "machine_id": "sample"
     },
     "device troubleshoot:supplied": {
       "comment": "sample",
       "dry_run": true,
       "enabled": true,
-      "machine_id": "sample",
-      "yes": true
+      "machine_id": "sample"
     },
     "device uncontain:--dry-run": {
       "comment": "sample",
       "dry_run": true,
-      "machine_id": "sample",
-      "yes": false
-    },
-    "device uncontain:--yes": {
-      "comment": "sample",
-      "dry_run": false,
-      "machine_id": "sample",
-      "yes": true
+      "machine_id": "sample"
     },
     "device uncontain:required": {
       "comment": "sample",
       "dry_run": false,
-      "machine_id": "sample",
-      "yes": false
+      "machine_id": "sample"
     },
     "device uncontain:supplied": {
       "comment": "sample",
       "dry_run": true,
-      "machine_id": "sample",
-      "yes": true
-    },
-    "device unisolate:--yes": {
-      "comment": "sample",
-      "device_id": "sample",
-      "yes": true
+      "machine_id": "sample"
     },
     "device unisolate:required": {
       "comment": "sample",
-      "device_id": "sample",
-      "yes": false
+      "device_id": "sample"
     },
     "device unisolate:supplied": {
       "comment": "sample",
-      "device_id": "sample",
-      "yes": true
+      "device_id": "sample"
     },
     "device unrestrict:--dry-run": {
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": true,
-      "yes": false
-    },
-    "device unrestrict:--yes": {
-      "comment": "sample",
-      "device_id": "sample",
-      "dry_run": false,
-      "yes": true
+      "dry_run": true
     },
     "device unrestrict:required": {
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": false,
-      "yes": false
+      "dry_run": false
     },
     "device unrestrict:supplied": {
       "comment": "sample",
       "device_id": "sample",
-      "dry_run": true,
-      "yes": true
+      "dry_run": true
     },
     "domains list:required": {
       "source": {
@@ -3044,28 +2783,6 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
           "help": "Show what would happen.",
           "hidden": false,
           "is_eager": false,
@@ -3132,28 +2849,6 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
           }
         },
         {
@@ -3232,28 +2927,6 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
           "help": "Show what would happen.",
           "hidden": false,
           "is_eager": false,
@@ -3320,28 +2993,6 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
           }
         },
         {
@@ -3573,28 +3224,6 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
           "help": "Show what would happen.",
           "hidden": false,
           "is_eager": false,
@@ -3615,7 +3244,7 @@
       ]
     },
     "device live-response": {
-      "help": "Live Response sessions: inspect, search, fetch and place files, run library scripts. Interactive sessions need the portal-cookie backend. Console commands are classified locally; anything beyond a read needs confirmation or --yes.",
+      "help": "Live Response sessions: inspect, search, fetch and place files, run library scripts. Interactive sessions need the portal-cookie backend. Console commands are classified locally and dispatch directly. Use --dry-run for local validation.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": true,
@@ -3653,28 +3282,6 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
           }
         },
         {
@@ -4045,28 +3652,6 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
           "help": "Validate and show what would be sent; no network.",
           "hidden": false,
           "is_eager": false,
@@ -4132,28 +3717,6 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
           }
         },
         {
@@ -4324,28 +3887,6 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
           "help": "Validate and show what would be sent; no network.",
           "hidden": false,
           "is_eager": false,
@@ -4508,28 +4049,6 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
           }
         },
         {
@@ -4823,28 +4342,6 @@
             "min": 0,
             "min_open": false,
             "name": "integer range"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
           }
         },
         {
@@ -5260,28 +4757,6 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
           "help": "Validate and show what would be sent; no network.",
           "hidden": false,
           "is_eager": false,
@@ -5362,28 +4837,6 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
           }
         },
         {
@@ -5651,28 +5104,6 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
           "help": "Validate and show what would be sent; no network.",
           "hidden": false,
           "is_eager": false,
@@ -5862,28 +5293,6 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
           "help": "Validate and show what would be sent; no network.",
           "hidden": false,
           "is_eager": false,
@@ -6051,28 +5460,6 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
           "help": "Validate and show what would be sent; no network.",
           "hidden": false,
           "is_eager": false,
@@ -6093,7 +5480,107 @@
       ]
     },
     "device live-response sessions": {
-      "help": "List Live Response sessions this CLI knows about for the tenant and backend.",
+      "help": "Live Response sessions this CLI remembers (local state; no tenant-wide list). With no subcommand, lists the remembered active sessions, like ``list``.",
+      "hidden": false,
+      "invoke_without_command": true,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Only sessions for this MachineId.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "--device"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Include sessions remembered as closed, failed or not found.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_closed",
+          "nargs": 1,
+          "opts": [
+            "--all"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response sessions list": {
+      "help": "List remembered sessions from local state, with no network or authentication. States are as last seen by this CLI; run ``sessions refresh`` to check them.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Only sessions for this MachineId.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "machine_id",
+          "nargs": 1,
+          "opts": [
+            "--device"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Include sessions remembered as closed, failed or not found.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_closed",
+          "nargs": 1,
+          "opts": [
+            "--all"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "device live-response sessions refresh": {
+      "help": "Look up each remembered active session's current state (read-only). Sessions the service no longer knows are marked not found. A failed lookup never marks a session closed; it keeps the remembered state. Nothing is closed or reconnected.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,
@@ -6279,28 +5766,6 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
           "help": "Show what would happen.",
           "hidden": false,
           "is_eager": false,
@@ -6393,28 +5858,6 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
           }
         },
         {
@@ -6522,28 +5965,6 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
           "help": "Show what would happen.",
           "hidden": false,
           "is_eager": false,
@@ -6616,28 +6037,6 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
           }
         },
         {
@@ -6738,28 +6137,6 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
           }
         },
         {
@@ -6872,28 +6249,6 @@
           "nargs": 1,
           "opts": [
             "--expect-none"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
           ],
           "required": false,
           "secondary_opts": [],
@@ -7256,28 +6611,6 @@
           "count": false,
           "default": false,
           "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
           "help": "Show what would happen.",
           "hidden": false,
           "is_eager": false,
@@ -7344,28 +6677,6 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
           }
         },
         {
@@ -7439,28 +6750,6 @@
           "type": {
             "name": "text"
           }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
-          }
         }
       ]
     },
@@ -7511,28 +6800,6 @@
           "secondary_opts": [],
           "type": {
             "name": "text"
-          }
-        },
-        {
-          "count": false,
-          "default": false,
-          "envvar": null,
-          "help": "Skip confirmation.",
-          "hidden": false,
-          "is_eager": false,
-          "is_flag": true,
-          "kind": "option",
-          "multiple": false,
-          "name": "yes",
-          "nargs": 1,
-          "opts": [
-            "--yes",
-            "-y"
-          ],
-          "required": false,
-          "secondary_opts": [],
-          "type": {
-            "name": "boolean"
           }
         },
         {

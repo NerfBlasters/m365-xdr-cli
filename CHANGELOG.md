@@ -16,17 +16,28 @@ for the current checks.
 
 - `xdr device live-response` for Microsoft Defender for Endpoint Live Response.
   Interactive sessions on the portal-cookie backend cover connect (with
-  `--wait` for pending sessions), show, locally known sessions and disconnect.
+  `--wait` for pending sessions), show and disconnect.
   `exec` sends one console command, and shortcuts cover findfile, fileinfo,
   dir, getfile (with private download), putfile and run. Jobs are covered by
   status `--wait`, history, output, download and cancel. The tenant file
   library gets list, show, upload, download and delete.
 - Console commands are validated against each session's server definitions
   and classified with a pinned local risk table (read, collect, place, execute,
-  device-action, library-write). Anything beyond a read needs confirmation or
-  `--yes`. `--dry-run` works without authentication or network. Compound
+  device-action, library-write). Anything beyond a read is audited and refused
+  under an invalid backend preference without an explicit `--backend`.
+  `--dry-run` works without authentication or network. Compound
   syntax and pipes are rejected. A trailing `&` requests background mode, and
   `> FILE` saves rendered output to a private local file.
+- Live Response sessions get short `lr-N` aliases that work wherever a session
+  ID does. Aliases are resolved locally (only the native ID is sent), bound to
+  one tenant, backend, session and device, and never reused. Recovery and
+  follow-up commands in output use the alias.
+- `xdr device live-response sessions` (or `sessions list`) lists remembered
+  sessions from local state with no authentication or network; `--all`
+  includes closed ones. `sessions refresh` looks up each remembered active
+  session once, marks sessions the service no longer knows as `not-found`,
+  keeps the remembered state when a lookup fails, and returns exit 14 when any
+  session could not be checked. Neither is a tenant-wide session list.
 - `xdr device live-response batch` exposes official-API one-shot
   `runliveresponse` actions (PutFile, RunScript, GetFile) with status, output,
   per-command download and cancel.
@@ -75,6 +86,17 @@ for the current checks.
   to tenant and backend. Downloads are size-bounded, staged privately and
   published atomically with a SHA-256, and are never opened or extracted.
 
+### Removed
+
+- `--yes`/`-y` and confirmation prompts from every `xdr device` response
+  action (isolate, unisolate, restrict, unrestrict, scan, collect-package,
+  contain, uncontain, start-investigation, collect-support-logs, troubleshoot,
+  cancel-action, tags set/add/remove) and from Live Response. Running the
+  command is the intent; `--dry-run` previews remain. Scripts that pass
+  `--yes` to these commands now fail with a usage error (exit 6) and must drop
+  the flag. `incidents update`, `results prune` and other local maintenance
+  commands keep their confirmation.
+
 ### Security
 
 - Remote Live Response commands are always written to the audit log. Their
@@ -90,6 +112,10 @@ for the current checks.
   keeps its exit code but is `retryable: false`. It names the accepted ID and
   the read-only commands that follow it, so it never invites a duplicate run on
   the device.
+- `getfile --output` prints exactly one result: the combined state and download
+  receipt, or the command state with `downloaded: false` and a
+  `download_skipped_reason`. Combining `--upload-only` with `--output` is
+  refused before anything is sent.
 - `--debug` logging removes URL query strings, fragments and user info, so
   signed download tokens never reach stderr.
 - A mistyped `device` subcommand is redacted like a Live Response command in

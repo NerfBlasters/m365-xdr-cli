@@ -7,6 +7,7 @@ import logging
 import re
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from xdr_cli.exceptions import (
     ArtifactError,
     ConflictError,
     ForbiddenError,
+    LiveResponseSessionNotFoundError,
     NetworkError,
     NotAuthenticatedError,
     NotFoundError,
@@ -34,7 +36,9 @@ from .handles import (
     iter_sessions,
     load_session,
     mark_directory_submission,
+    mark_session_missing,
     remember_session,
+    resolve_session_id,
     validate_session_id,
 )
 from .models import LRCommandState, LRLibraryFile, LRPlatform, LRSession, ParsedCommand
@@ -115,8 +119,7 @@ def _platform(value) -> LRPlatform | None:
 
 
 class PortalLiveResponse(UnsupportedLiveResponse):
-    @staticmethod
-    def _lr_uncertain(error: XDRError, route: LRRoute, *, params=None, body=None):
+    def _lr_uncertain(self, error: XDRError, route: LRRoute, *, params=None, body=None):
         """A failed mutation response is not evidence that the request did not run."""
         message = (
             "Live Response request may have been accepted. Outcome unknown; "
@@ -137,9 +140,10 @@ class PortalLiveResponse(UnsupportedLiveResponse):
             error.detail = None
         session_id = (params or {}).get("session_id") or (body or {}).get("session_id")
         if session_id:
+            reference = getattr(self, "_lr_session_aliases", {}).get(session_id, session_id)
             verb = "show" if route is LRRoute.CLOSE else "history"
             error.help_command = (
-                f"xdr --backend portal-cookie device live-response {verb} {session_id}"
+                f"xdr --backend portal-cookie device live-response {verb} {reference}"
             )
         elif route in (LRRoute.UPLOAD, LRRoute.DELETE):
             error.help_command = "xdr --backend portal-cookie device live-response library list"
@@ -152,7 +156,7 @@ class PortalLiveResponse(UnsupportedLiveResponse):
         """Expose the accepted job when private cwd upkeep fails after submission."""
         recovery = (
             "xdr --backend portal-cookie device live-response status "
-            f"{command.session_id} {command.command_id}"
+            f"{command.session_alias or command.session_id} {command.command_id}"
         )
         failure = ArtifactError(
             f"Command {command.command_id} was submitted, but local working-directory "
@@ -164,6 +168,15 @@ class PortalLiveResponse(UnsupportedLiveResponse):
             "Inspect the command and use absolute paths until tracking recovers."
         )
         return failure
+
+    def _lr_resolve(self, reference: str) -> str:
+        native = resolve_session_id(self._tenant_id, "portal-cookie", reference)
+        if reference != native:
+            aliases = getattr(self, "_lr_session_aliases", None)
+            if aliases is None:
+                aliases = self._lr_session_aliases = {}
+            aliases[native] = reference.lower()
+        return native
 
     async def _lr_bounded_response(self, request: httpx.Request) -> httpx.Response:
         return await read_bounded_response(self._client, request, max_bytes=_MAX_METADATA_BYTES)
@@ -208,6 +221,8 @@ class PortalLiveResponse(UnsupportedLiveResponse):
         if response.status_code == 403:
             raise ForbiddenError("Defender Live Response role/permissions")
         if response.status_code == 404:
+            if route is LRRoute.SESSION:
+                raise LiveResponseSessionNotFoundError("Live Response session")
             raise NotFoundError("Live Response object")
         if response.status_code == 409:
             raise ConflictError(
@@ -293,10 +308,14 @@ class PortalLiveResponse(UnsupportedLiveResponse):
             platform=_platform(info.get("os_platform")),
             created_by=value.get("user"),
             created_at=value.get("start_date"),
+            last_verified_at=(
+                datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+            ),
             raw=value,
         )
         try:
-            remember_session(self._tenant_id, "portal-cookie", result)
+            saved = remember_session(self._tenant_id, "portal-cookie", result)
+            local = load_session(self._tenant_id, "portal-cookie", identity) if saved else None
         except (ArtifactError, OSError):
             error = ArtifactError(
                 f"Session {identity} exists, but its private local state could not be saved.",
@@ -306,6 +325,12 @@ class PortalLiveResponse(UnsupportedLiveResponse):
             )
             error.suggested_fix = "Check the private Live Response handle directory permissions."
             raise error from None
+        if local is not None:
+            result = replace(result, alias=local.alias)
+            aliases = getattr(self, "_lr_session_aliases", None)
+            if aliases is None:
+                aliases = self._lr_session_aliases = {}
+            aliases[identity] = local.alias or identity
         return result
 
     async def lr_capabilities(self, machine_id: str) -> dict:
@@ -346,10 +371,25 @@ class PortalLiveResponse(UnsupportedLiveResponse):
             raise self._lr_uncertain(failure, LRRoute.OPEN) from None
 
     async def lr_get_session(self, session_id: str) -> LRSession:
-        validate_session_id(session_id)
-        return self._lr_session(
-            await self._lr_request(LRRoute.SESSION, identifier=session_id), session_id
-        )
+        session_id = self._lr_resolve(session_id)
+        try:
+            value = await self._lr_request(LRRoute.SESSION, identifier=session_id)
+        except LiveResponseSessionNotFoundError:
+            try:
+                if load_session(self._tenant_id, "portal-cookie", session_id) is not None:
+                    mark_session_missing(self._tenant_id, "portal-cookie", session_id)
+            except (ArtifactError, OSError):
+                failure = ArtifactError(
+                    f"Defender no longer knows Live Response session {session_id}, but its "
+                    "local not-found state could not be saved.",
+                    help_command=(
+                        "xdr --backend portal-cookie device live-response sessions refresh"
+                    ),
+                )
+                failure.error_code = "LIVE_RESPONSE_SESSION_NOT_FOUND_STATE_UNSAVED"
+                raise failure from None
+            raise
+        return self._lr_session(value, session_id)
 
     async def lr_iter_sessions(self, *, machine_id: str | None):
         if machine_id is not None and not _DEVICE.fullmatch(machine_id):
@@ -358,7 +398,7 @@ class PortalLiveResponse(UnsupportedLiveResponse):
             yield await self.lr_get_session(local.session_id)
 
     def _lr_known(self, session_id: str) -> LRSession:
-        validate_session_id(session_id)
+        session_id = self._lr_resolve(session_id)
         session = load_session(self._tenant_id, "portal-cookie", session_id)
         if session is None:
             raise ConflictError(
@@ -367,8 +407,17 @@ class PortalLiveResponse(UnsupportedLiveResponse):
             )
         return session
 
+    @staticmethod
+    def _lr_audit_identity(action: str, session: LRSession) -> None:
+        logging.getLogger("xdr.audit").info(
+            "LR_IDENTITY: action=%s session_id=%s machine_id=%s alias=%s",
+            action, session.session_id, session.machine_id, session.alias or "-",
+        )
+
     async def lr_close_session(self, session_id: str) -> LRSession:
-        self._lr_known(session_id)
+        session_id = self._lr_resolve(session_id)
+        local = self._lr_known(session_id)
+        self._lr_audit_identity("disconnect", local)
         await self._lr_request(LRRoute.CLOSE, body={"session_id": session_id})
         try:
             return await self.lr_get_session(session_id)
@@ -378,7 +427,7 @@ class PortalLiveResponse(UnsupportedLiveResponse):
             ) from None
 
     async def lr_command_definitions(self, session_id: str) -> list[dict]:
-        validate_session_id(session_id)
+        session_id = self._lr_resolve(session_id)
         value = await self._lr_request(LRRoute.DEFINITIONS, params={"session_id": session_id})
         if not isinstance(value, list) or any(
             not isinstance(d, dict) or not isinstance(d.get("command_definition_id"), str)
@@ -417,6 +466,7 @@ class PortalLiveResponse(UnsupportedLiveResponse):
         result = LRCommandState(
             command_id=identity,
             session_id=session.session_id,
+            session_alias=session.alias,
             machine_id=session.machine_id,
             verb=value["command_definition_id"],
             state=_COMMAND_STATES.get(native, str(native)),
@@ -450,6 +500,7 @@ class PortalLiveResponse(UnsupportedLiveResponse):
             )
 
     async def lr_submit(self, session_id: str, command: ParsedCommand) -> LRCommandState:
+        session_id = self._lr_resolve(session_id)
         local = self._lr_known(session_id)
         session = await self.lr_get_session(session_id)
         if session.machine_id.lower() != local.machine_id.lower():
@@ -515,6 +566,7 @@ class PortalLiveResponse(UnsupportedLiveResponse):
 
     async def lr_get_command(self, session_id: str | None, command_id: str) -> LRCommandState:
         _command_id(command_id)
+        session_id = self._lr_resolve(session_id)
         local = self._lr_known(session_id)
         value = await self._lr_request(
             LRRoute.COMMAND, identifier=command_id, params={"session_id": session_id}
@@ -523,13 +575,19 @@ class PortalLiveResponse(UnsupportedLiveResponse):
         try:
             self._lr_apply_directory(result)
         except (ArtifactError, OSError):
-            logging.getLogger(__name__).warning(
-                "Local working-directory tracking is unavailable; use absolute paths."
-            )
+            warned = getattr(self, "_lr_directory_warnings", None)
+            if warned is None:
+                warned = self._lr_directory_warnings = set()
+            if command_id not in warned:
+                logging.getLogger(__name__).warning(
+                    "Local working-directory tracking is unavailable; use absolute paths."
+                )
+                warned.add(command_id)
             return replace(result, directory_tracking="unavailable")
         return result
 
     async def lr_iter_commands(self, session_id: str):
+        session_id = self._lr_resolve(session_id)
         local = self._lr_known(session_id)
         values = await self._lr_request(
             LRRoute.COMMANDS, identifier=session_id, params={"session_id": session_id}
@@ -541,7 +599,9 @@ class PortalLiveResponse(UnsupportedLiveResponse):
 
     async def lr_cancel(self, session_id: str | None, command_id: str) -> LRCommandState:
         _command_id(command_id)
-        self._lr_known(session_id)
+        session_id = self._lr_resolve(session_id)
+        local = self._lr_known(session_id)
+        self._lr_audit_identity("cancel", local)
         await self.lr_get_command(session_id, command_id)
         await self._lr_request(
             LRRoute.CANCEL, identifier=command_id, params={"session_id": session_id}
@@ -554,6 +614,7 @@ class PortalLiveResponse(UnsupportedLiveResponse):
             ) from None
 
     async def lr_iter_output(self, session_id: str | None, command_id: str):
+        session_id = self._lr_resolve(session_id)
         command = await self.lr_get_command(session_id, command_id)
         outputs = command.raw.get("outputs") or []
         if not isinstance(outputs, list):
@@ -612,6 +673,7 @@ class PortalLiveResponse(UnsupportedLiveResponse):
     async def lr_result_transfer(self, session_id: str | None, command_id: str, *, index: int = 0):
         if index != 0:
             raise UsageError("Portal Live Response results have one transfer per command.")
+        session_id = self._lr_resolve(session_id)
         command = await self.lr_get_command(session_id, command_id)
         if not command.succeeded:
             raise ConflictError("Live Response command has not completed successfully.")

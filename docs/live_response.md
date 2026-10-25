@@ -19,27 +19,64 @@ that session's own server definitions.
 ## Sessions
 
 ```bash
-xdr --backend portal-cookie device live-response connect <machine-id> --wait 120 --yes
-xdr device live-response show <session-id>
-xdr device live-response sessions [--device <machine-id>]
-xdr device live-response disconnect <session-id> --yes
+xdr --backend portal-cookie device live-response connect <machine-id> --wait 120
+xdr device live-response show lr-1
+xdr device live-response sessions [list] [--device <machine-id>] [--all]
+xdr device live-response sessions refresh [--device <machine-id>]
+xdr device live-response disconnect lr-1
 ```
 
 `connect` takes the 40-hex MachineId (`xdr device show HOST` prints it).
 `--wait` polls while the session is `pending`. The record it prints includes
-`next_command` and `disconnect_command`. The service limits a device to one
-session and a user to five, and ends idle sessions after 30 minutes.
+the session's `alias`, its native `session_id`, `next_command` and
+`disconnect_command`. The service limits a device to one session and a user
+to five, and ends idle sessions after 30 minutes.
 
-`sessions` lists sessions this CLI opened for the current tenant and backend
-(`context.coverage: "locally-known-sessions"`). It is not a tenant-wide
-session inventory.
+### Session aliases
+
+Each session this CLI opens or remembers gets a short alias: `lr-1`, `lr-2`,
+and so on. Use the alias anywhere a session is expected; the native `CLR…`
+ID still works too. Aliases are resolved locally and only the native ID is
+sent to the service. An alias is bound to one tenant, backend, session and
+device, and is never reused, even after the session ends. An unknown alias is
+an error; it never opens a new session. Sessions remembered from earlier
+versions get aliases the first time they are listed, without any request.
+Recovery and follow-up commands in CLI output use the alias.
+
+### Remembered sessions
+
+`sessions` (or `sessions list`) shows the sessions this CLI remembers for the
+current tenant, from local state only: no authentication or network. It shows
+active sessions by default; `--all` adds those remembered as closed, failed or
+not found. Each row has the alias, native IDs, the last seen `state`, an
+`activity` of `active`, `inactive` or `unknown` (for native states the CLI
+cannot map), and `last_verified_at`. The receipt says
+`context.coverage: "locally-known-sessions"` and `verification: "cached"`. It
+is not a tenant-wide inventory, which the service does not offer.
+
+`sessions refresh` looks up each remembered active or unknown session once and
+updates the local state. It never closes, reconnects or retries anything.
+Rows report `previous_state`, the current `state` and `verification`:
+
+- `remote`: looked up; `state` is current.
+- `not-found`: the service no longer knows the session; it is remembered as
+  `not-found` from now on.
+- `error`: the lookup failed; the remembered state is unchanged and
+  `refresh_error` names the error code.
+- `not-checked`: not looked up, because an earlier sign-in, permission,
+  throttling, timeout or network failure stopped the refresh.
+
+A failed lookup never marks a session closed. Any `error` or `not-checked`
+row returns exit 14 after the receipt (with `retry_after_seconds` when the
+service set one). If the very first lookup fails that way, the error is
+returned directly with no receipt. `--all` applies to `list` only.
 
 ## Console commands
 
 ```bash
-xdr device live-response exec <session-id> --command 'processes -name notepad.exe'
-xdr device live-response exec <session-id> --command-file cmd.txt --wait 60
-echo 'dir C:\Users\Public -output json' | xdr device live-response exec <session-id> --command-stdin
+xdr device live-response exec lr-1 --command 'processes -name notepad.exe'
+xdr device live-response exec lr-1 --command-file cmd.txt --wait 60
+echo 'dir C:\Users\Public -output json' | xdr device live-response exec lr-1 --command-stdin
 ```
 
 Each submission is **one** console command. A trailing `&` requests the
@@ -62,22 +99,24 @@ console behaviours, so they are not sent. `help COMMAND` is answered from the
 catalog. For the others, the error names the CLI equivalent (`history`,
 `status --wait`, `library ...`).
 
-### Risk classes and confirmation
+### Risk classes
 
-Every command is classified locally after alias resolution. The server never
-supplies the class:
+Every command is classified locally after command-name alias resolution. The
+server never supplies the class:
 
-| Class | Commands | Confirmation |
+| Class | Commands | Changes or takes from the device |
 |---|---|---|
 | `read` | cd, connections, dir, drivers, fileinfo, findfile, persistence, processes, registry, scheduledtasks, services, startupfolders, `remediate list` | no |
-| `collect` | getfile, analyze, collect, processdump | yes |
+| `collect` | getfile, analyze, collect, processdump | data leaves the device |
 | `place` | putfile | yes |
 | `execute` | run, remediate, undo | yes |
 | `device-action` | isolate, release, scan (macOS/Linux console) | yes |
-| `library-write` | library upload, library delete | yes |
+| `library-write` | library upload, library delete | tenant library |
 
-Confirmation-class commands prompt, or need `--yes` when non-interactive.
-Command files and stdin are read as UTF-8, and a leading byte-order mark is
+There is no confirmation prompt and no `--yes`: running the command is the
+intent. Everything beyond `read` is still classified, recorded in the audit
+log, and refused when the backend preference in `config.toml` is invalid and
+no explicit `--backend` was given. Command files and stdin are read as UTF-8, and a leading byte-order mark is
 ignored. `--dry-run` validates against the pinned catalog and prints the verb, class and
 parameter names without authentication or network activity. Commands that a
 session's definitions do not offer, and server commands without a pinned class,
@@ -86,16 +125,16 @@ are refused.
 ### Shortcuts
 
 ```bash
-xdr device live-response findfile <session-id> invoice.pdf.exe --wait 120
-xdr device live-response fileinfo <session-id> 'C:\Temp\a.exe'
-xdr device live-response dir <session-id> 'C:\Users\Public' --full-path
-xdr device live-response getfile <session-id> 'C:\Temp\a.exe' --output a.bin --yes
-xdr device live-response putfile <session-id> collect.ps1 --overwrite --yes
-xdr device live-response run <session-id> collect.ps1 --parameters-file args.txt --yes
+xdr device live-response findfile lr-1 invoice.pdf.exe --wait 120
+xdr device live-response fileinfo lr-1 'C:\Temp\a.exe'
+xdr device live-response dir lr-1 'C:\Users\Public' --full-path
+xdr device live-response getfile lr-1 'C:\Temp\a.exe' --output a.bin
+xdr device live-response putfile lr-1 collect.ps1 --overwrite
+xdr device live-response run lr-1 collect.ps1 --parameters-file args.txt
 ```
 
 Shortcuts build the same console command and go through the same validation
-and confirmation. `getfile --output` waits (`--wait`, default 300 seconds) and
+and classification. `getfile --output` waits (`--wait`, default 300 seconds) and
 downloads only after the command reports `completed` with no errors. A
 completed command can still carry errors (for example `fileinfo` on an empty
 placeholder file); records show the count as `error_count`. Otherwise it
@@ -106,11 +145,11 @@ argv. The service forbids `; & | ! $` in script parameters.
 ## Command jobs
 
 ```bash
-xdr device live-response status <session-id> <command-id> --wait 60
-xdr device live-response history <session-id>
-xdr device live-response output <session-id> <command-id>
-xdr device live-response download <session-id> <command-id> --output sample.bin
-xdr device live-response cancel <session-id> <command-id> --yes
+xdr device live-response status lr-1 <command-id> --wait 60
+xdr device live-response history lr-1
+xdr device live-response output lr-1 <command-id>
+xdr device live-response download lr-1 <command-id> --output sample.bin
+xdr device live-response cancel lr-1 <command-id>
 ```
 
 `status` reports the native state and polls with `--wait` while the state is
@@ -157,9 +196,9 @@ system that supports them.
 ```bash
 xdr device live-response library list
 xdr device live-response library show collect.ps1
-xdr device live-response library upload --from-file ./collect.ps1 --description 'IR collection' --yes
+xdr device live-response library upload --from-file ./collect.ps1 --description 'IR collection'
 xdr device live-response library download collect.ps1 --output collect.ps1.copy
-xdr device live-response library delete collect.ps1 --yes
+xdr device live-response library delete collect.ps1
 ```
 
 Library names allow letters, digits, `_`, `.`, `-` and inner spaces. Uploading
@@ -175,11 +214,11 @@ cancel are tested with synthetic responses only. See
 
 ```bash
 xdr --backend official device live-response batch submit <machine-id> \
-    --command-file batch.txt --comment 'IR-42' --yes
+    --command-file batch.txt --comment 'IR-42'
 xdr --backend official device live-response batch status <action-id> --wait 120
 xdr --backend official device live-response batch output <action-id>
 xdr --backend official device live-response batch download <action-id> --index 2 --output result.zip
-xdr --backend official device live-response batch cancel <action-id> --yes
+xdr --backend official device live-response batch cancel <action-id>
 ```
 
 `batch.txt` holds one command per line, in the order putfile, run, getfile.
@@ -194,8 +233,8 @@ directory only you can write to (or a sticky one such as `/tmp`).
 
 Every remote Live Response command is written to `~/.xdr-cli/audit.log` at
 dispatch, including `--dry-run`. For these commands, the recorded argv keeps
-only MachineIds, session and command IDs, numbers, option names and fixed
-words. Console text, paths, comments, script parameters and local file names
+only MachineIds, session IDs and `lr-N` aliases, command IDs, numbers, option
+names and fixed words. Console text, paths, comments, script parameters and local file names
 are replaced with `***REDACTED***` in both the audit log and the session log.
 Each submission also records one `LR:` line with the session or MachineId,
 verb, class and parameter names. Signed download URLs and raw service payloads
