@@ -18,6 +18,7 @@ from xdr_cli.exceptions import (
     APIError,
     ArtifactError,
     ConflictError,
+    LiveResponseSizeLimitError,
     NetworkError,
     RateLimitError,
     TimeoutError,
@@ -117,11 +118,13 @@ async def download_transfer(
                     raise APIError("Live Response transfer returned an invalid Content-Length.")
                 expected = int(length) if length is not None else None
                 if expected is not None and expected > max_bytes:
-                    raise APIError("Live Response download exceeds --max-bytes.")
+                    raise LiveResponseSizeLimitError("Live Response download exceeds --max-bytes.")
                 async for chunk in response.aiter_bytes(chunk_size=65536):
                     total += len(chunk)
                     if total > max_bytes:
-                        raise APIError("Live Response download exceeds --max-bytes.")
+                        raise LiveResponseSizeLimitError(
+                            "Live Response download exceeds --max-bytes."
+                        )
                     if len(head) < 2:
                         head += chunk[:2 - len(head)]
                     sink.write(chunk)

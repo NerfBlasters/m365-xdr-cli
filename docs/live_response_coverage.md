@@ -34,6 +34,7 @@ tenant settings, RBAC role, OS and sensor version.
 | fileinfo | `live-response fileinfo` | unavailable | backend-live, synthetic |
 | getfile + download | `live-response getfile --output`, `download` | `batch` | cli-live for `getfile --output` (360,448-byte system binary, independent SHA-256 matches receipt, local copy removed, session closed); backend-live (37-byte test file, exact SHA-256 round trip); standalone `download`: synthetic CLI |
 | putfile | `live-response putfile` | `batch` | backend-live, synthetic |
+| Event-log collection (dir + getfile per log) | `live-response collect-event-logs` | unavailable | cli-live: a MachineId target fetched System and Security (23,142,400 bytes; session opened, then closure verified from state) and an existing alias fetched PowerShell/Operational (15,732,736 bytes; session left open); EVTX headers and SHA-256s matched the manifest, copies deleted. Failure, budget and cleanup paths: synthetic |
 | run (library script) | `live-response run` | `batch` | backend-live (benign script), synthetic |
 | Command output | `live-response output` | `batch output` | cli-live, synthetic |
 | jobs / command log | `live-response history` | unavailable | cli-live, synthetic |

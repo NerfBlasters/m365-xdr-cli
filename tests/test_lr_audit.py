@@ -27,7 +27,7 @@ def test_every_remote_live_response_chain_is_audited():
                if name in {"upload", "delete"}}
     remote |= {f"device live-response batch {name}" for name in batch_app.commands
                if name in {"submit", "cancel"}}
-    assert len(remote) == 14 and remote <= _WRITE_COMMANDS
+    assert len(remote) == 15 and remote <= _WRITE_COMMANDS
     assert {"device live-response exec", "device live-response dir"}.isdisjoint(
         _TENANT_MUTATION_COMMANDS)
     assert "device live-response run" in _TENANT_MUTATION_COMMANDS

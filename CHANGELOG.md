@@ -38,6 +38,15 @@ for the current checks.
   session once, marks sessions the service no longer knows as `not-found`,
   keeps the remembered state when a lookup fails, and returns exit 14 when any
   session could not be checked. Neither is a tenant-wide session list.
+- `xdr device live-response collect-event-logs` fetches Windows event logs in
+  one command: one listing of the event-log folder, then a `getfile` per log
+  (a curated triage set by default, `--log NAME`, or `--all`). Logs are saved
+  privately with SHA-256s into a new 0700 directory, never replace an existing
+  file and are never opened. A total byte budget is enforced against actual
+  downloaded bytes. A private manifest records provenance and every accepted
+  command ID with read-only recovery commands; nothing is ever resubmitted. A
+  MachineId target opens and closes its own session. This is separate from
+  Defender support logs.
 - `xdr device live-response batch` exposes official-API one-shot
   `runliveresponse` actions (PutFile, RunScript, GetFile) with status, output,
   per-command download and cancel.

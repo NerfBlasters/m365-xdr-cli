@@ -470,6 +470,7 @@ query budgets, what session end does, BloodHound export, and portable bundles
 | `xdr device tags list / set / add / remove` | Read and change manual device tags (`set` replaces the whole manual set and needs `--expect`; no atomic compare-and-swap) |
 | `xdr device action-permissions ID` / `cancel-action ACTION --device ID --comment R` | Portal-reported action availability; cancel a pending response action (cookie backend) |
 | `xdr device live-response connect / sessions [list\|refresh] / exec / findfile / getfile / putfile / run / status / history / output / download / disconnect` | Live Response sessions with `lr-N` aliases (cookie backend) — [docs/live_response.md](docs/live_response.md) |
+| `xdr device live-response collect-event-logs TARGET --output-dir DIR` | Fetch Windows event logs (curated set, `--log`, or `--all`) privately with a provenance manifest — [docs/live_response.md](docs/live_response.md#event-log-collection) |
 | `xdr device live-response library list / show / upload / download / delete`, `batch submit / status / output / download / cancel` | Live Response file library; official one-shot batch actions |
 | `xdr device timeline DEVICE` | Download a device's portal timeline (unofficial API) — [docs/device_timeline.md](docs/device_timeline.md) |
 | `xdr domains list [--source all\|entra\|active-directory]` | Source-labelled Entra and observed AD domains (AD is cookie-only) |

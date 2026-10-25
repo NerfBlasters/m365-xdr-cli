@@ -106,3 +106,26 @@ async def test_shared_output_directory_names_the_actual_recovery(tmp_path):
     messages = [item["message"] for item in caught.value.suggestions]
     assert any("chmod 700" in message for message in messages)
     assert not any("~/.xdr-cli/results" in message for message in messages)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("declared_length", [True, False])
+async def test_size_cap_has_specific_code_for_declared_and_streamed_overflow(
+    tmp_path, declared_length,
+):
+    from xdr_cli.exceptions import LiveResponseSizeLimitError
+
+    @asynccontextmanager
+    async def stream():
+        response = httpx.Response(200, content=b"too big")
+        if not declared_length:
+            del response.headers["content-length"]
+        yield response
+
+    target = tmp_path / "bounded"
+    with pytest.raises(LiveResponseSizeLimitError) as caught:
+        await download_transfer(SignedTransfer(_stream_factory=stream), target, max_bytes=3)
+    assert caught.value.error_code == "LIVE_RESPONSE_DOWNLOAD_SIZE_LIMIT"
+    assert caught.value.exit_code == 3
+    assert not target.exists()
+    assert not list(tmp_path.glob(".xdr-lr-*"))

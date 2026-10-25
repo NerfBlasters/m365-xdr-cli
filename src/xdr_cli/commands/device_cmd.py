@@ -41,6 +41,7 @@ from xdr_cli.cli_params import EnumValueChoice
 from xdr_cli.client import XDRClient
 from xdr_cli.commands import device_manage_cmd
 from xdr_cli.commands.live_response_cmd import live_response_app
+from xdr_cli.commands.live_response_collect_cmd import collect_event_logs
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import (
     ArtifactError,
@@ -71,6 +72,7 @@ device_app = click.Group(
     help="Device info and response actions.",
     no_args_is_help=True,
 )
+live_response_app.add_command(collect_event_logs)
 device_app.add_command(live_response_app)
 device_manage_cmd.register(device_app)
 

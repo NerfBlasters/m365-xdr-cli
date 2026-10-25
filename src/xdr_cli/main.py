@@ -59,6 +59,7 @@ _TENANT_MUTATION_COMMANDS = frozenset(
         "device live-response connect",
         "device live-response disconnect",
         "device live-response getfile",
+        "device live-response collect-event-logs",
         "device live-response putfile",
         "device live-response run",
         "device live-response cancel",
@@ -146,7 +147,8 @@ def _live_response_value(value: str, words: frozenset[str]) -> str:
 # vocabulary; the value is still kept only when it matches the safe patterns.
 # Every other option value is redacted regardless of its content.
 _LIVE_RESPONSE_SAFE_VALUE_OPTIONS = frozenset(
-    {"--wait", "--max-bytes", "--index", "--os", "--risk", "--backend", "--device"}
+    {"--wait", "--max-bytes", "--max-total-bytes", "--min-bytes", "--index",
+     "--os", "--risk", "--backend", "--device"}
 )
 
 
@@ -221,7 +223,10 @@ def _redact_live_response_argv(argv: list[str], chain: str) -> list[str]:
                 continue
             arguments = [p for p in current.params if isinstance(p, click.Argument)]
             role = arguments[argument_index].name if argument_index < len(arguments) else None
-            if role in {"machine_id", "session_id", "command_id", "action_id"}:
+            identifier = role in {"machine_id", "session_id", "command_id", "action_id"}
+            collector_target = (chain == "device live-response collect-event-logs"
+                                and role == "target")
+            if identifier or collector_target:
                 redacted.append(_live_response_value(arg, frozenset()))
             else:
                 redacted.append(_REDACTED_PLACEHOLDER)

@@ -320,6 +320,73 @@
       "platform": "windows",
       "risk": "local"
     },
+    "device live-response collect-event-logs:--all": {
+      "comment": null,
+      "dry_run": false,
+      "include_all": true,
+      "logs": {
+        "tuple": []
+      },
+      "max_bytes": 3221225472,
+      "max_total_bytes": 4294967296,
+      "min_bytes": 0,
+      "output_dir": {
+        "path": "<output-path>"
+      },
+      "target": "sample",
+      "wait_seconds": 300
+    },
+    "device live-response collect-event-logs:--dry-run": {
+      "comment": null,
+      "dry_run": true,
+      "include_all": false,
+      "logs": {
+        "tuple": []
+      },
+      "max_bytes": 3221225472,
+      "max_total_bytes": 4294967296,
+      "min_bytes": 0,
+      "output_dir": {
+        "path": "<output-path>"
+      },
+      "target": "sample",
+      "wait_seconds": 300
+    },
+    "device live-response collect-event-logs:required": {
+      "comment": null,
+      "dry_run": false,
+      "include_all": false,
+      "logs": {
+        "tuple": []
+      },
+      "max_bytes": 3221225472,
+      "max_total_bytes": 4294967296,
+      "min_bytes": 0,
+      "output_dir": {
+        "path": "<output-path>"
+      },
+      "target": "sample",
+      "wait_seconds": 300
+    },
+    "device live-response collect-event-logs:supplied": {
+      "comment": "sample",
+      "dry_run": true,
+      "include_all": true,
+      "logs": {
+        "tuple": [
+          "sample",
+          "sample"
+        ]
+      },
+      "max_bytes": 1,
+      "max_total_bytes": 1,
+      "min_bytes": 1,
+      "output_dir": {
+        "path": "<output-path>"
+      },
+      "target": "sample",
+      "wait_seconds": 1
+    },
     "device live-response connect:--dry-run": {
       "comment": null,
       "dry_run": true,
@@ -3804,6 +3871,254 @@
               "library-write"
             ],
             "name": "choice"
+          }
+        }
+      ]
+    },
+    "device live-response collect-event-logs": {
+      "help": "Fetch Windows event logs (.evtx) from a device over Live Response (collect). TARGET is a session (lr-N or CLR\u2026) or a MachineId; for a MachineId this command opens a session and closes it afterwards. It lists the event-log folder once, then fetches each selected log with getfile. Files are saved privately with SHA-256s and are never opened. This is not Defender's support-log collection.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "target",
+          "nargs": 1,
+          "opts": [
+            "target"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "New or empty private directory for the logs and manifest.json.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output_dir",
+          "nargs": 1,
+          "opts": [
+            "--output-dir"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": true,
+            "exists": false,
+            "file_okay": false,
+            "name": "directory",
+            "readable": true,
+            "resolve_path": false,
+            "writable": false
+          }
+        },
+        {
+          "count": false,
+          "default": {
+            "tuple": []
+          },
+          "envvar": null,
+          "help": "Event log to fetch (repeatable), e.g. Security or Microsoft-Windows-PowerShell/Operational. Default: a curated triage set.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "logs",
+          "nargs": 1,
+          "opts": [
+            "--log"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Fetch every .evtx in the folder.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "include_all",
+          "nargs": 1,
+          "opts": [
+            "--all"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        },
+        {
+          "count": false,
+          "default": 0,
+          "envvar": null,
+          "help": "Skip logs listed smaller than this. A size filter only: a small log can still hold events.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "min_bytes",
+          "nargs": 1,
+          "opts": [
+            "--min-bytes"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 3221225472,
+          "envvar": null,
+          "help": "Skip, or stop downloading, any single larger log.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_bytes",
+          "nargs": 1,
+          "opts": [
+            "--max-bytes"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 4294967296,
+          "envvar": null,
+          "help": "Maximum total saved file bytes; bounds each transfer by the remaining budget. Failed transfers stop collection.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "max_total_bytes",
+          "nargs": 1,
+          "opts": [
+            "--max-total-bytes"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": 300,
+          "envvar": null,
+          "help": "Seconds to wait for each job.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "wait_seconds",
+          "nargs": 1,
+          "opts": [
+            "--wait"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": 3600,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Reason recorded locally when this command opens the session.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Show the plan; no network, nothing written.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
           }
         }
       ]

@@ -120,7 +120,7 @@ read-like console commands:
 
 - `xdr device live-response connect` / `disconnect`
 - `xdr device live-response exec`, `findfile`, `fileinfo`, `dir`, `getfile`,
-  `putfile`, `run`, `cancel`
+  `putfile`, `run`, `cancel`, `collect-event-logs`
 - `xdr device live-response library upload` / `delete`
 - `xdr device live-response batch submit` / `cancel`
 

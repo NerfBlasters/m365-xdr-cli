@@ -1,4 +1,4 @@
-"""Live Response CLI: local validation, confirmation, submission and transfers."""
+"""Live Response CLI: local validation, direct submission and transfers."""
 from __future__ import annotations
 
 import json

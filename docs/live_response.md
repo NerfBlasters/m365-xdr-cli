@@ -191,6 +191,79 @@ file that appears concurrently. File systems without hard links (FAT32, exFAT,
 some network shares) therefore need `--force`, or a destination on a file
 system that supports them.
 
+## Event-log collection
+
+```bash
+xdr --backend portal-cookie device live-response collect-event-logs <machine-id> --output-dir ./ir-42-logs
+xdr device live-response collect-event-logs lr-1 --output-dir ./ir-42-ps --log Security --log Microsoft-Windows-PowerShell/Operational
+xdr device live-response collect-event-logs lr-1 --output-dir ./ir-42-all --all
+```
+
+`collect-event-logs` fetches Windows event logs (`.evtx`) in one command. It
+lists `C:\Windows\System32\winevt\Logs` once, then runs an ordinary `getfile`
+for each selected log. Logs that Windows holds open download normally. This is
+a forensic collection of event logs. It is **not** Defender's support-log
+package (`device collect-support-logs`), which holds sensor diagnostics.
+
+- **Target:** an `lr-N` alias or session ID reuses that session and leaves it
+  open. A MachineId opens a session, collects, and makes one attempt to close
+  that session afterwards, also after a failure, Ctrl-C or an unexpected error.
+  The original error always wins. The session counts as closed
+  (`context.session_closed: true`) only when the service reports it inactive.
+  Otherwise closure is unconfirmed: do **not** repeat the close; inspect the
+  session with the `show` command in `context.cleanup_recovery_command` (or
+  the error's `owned_session_not_closed` suggestion). Windows sessions only.
+- **Selection:** by default a curated triage set: Security, System,
+  Application, Windows PowerShell, PowerShell/Operational, Sysmon, Task
+  Scheduler, Defender, Terminal Services (local session and remote connection
+  managers), WMI-Activity, WinRM, BITS, NTLM and CodeIntegrity. Logs the device
+  doesn't have are listed as `absent`. `--log NAME` (repeatable) picks specific
+  logs; `/` in a channel name is accepted. `--all` takes every `.evtx` in the
+  folder, typically about 180 on Windows 11.
+- **`--min-bytes`** skips logs listed below a size and reports them as
+  `skipped-min-bytes`. It is only a size filter. Channel files are
+  pre-allocated, so a 68 KiB (69,632-byte) file can still contain events (a
+  4 KiB header plus a 64 KiB chunk of records; see the
+  [EVTX format notes](https://github.com/libyal/libevtx/blob/main/documentation/Windows%20XML%20Event%20Log%20(EVTX).asciidoc)).
+  The default is 0, so nothing is skipped.
+- **Limits:** `--max-bytes` skips any log listed above it (`skipped-max-bytes`)
+  and caps each download. `--max-total-bytes` (default 4 GiB) limits the bytes
+  saved locally. The selection's listed sizes are checked before any
+  `getfile`. Because logs keep growing after the listing, each download is also
+  capped at the budget that remains after the files already saved. A download
+  that would exceed it is abandoned and the run stops
+  (`context.stopped: "total-budget-exhausted"`). This bounds what is saved,
+  not the exact network traffic of an abandoned transfer. Each `getfile` is a
+  separate job, typically 15–30 s.
+- **Output:** `--output-dir` must be new or empty and private (0700), because
+  event logs, Security especially, are sensitive. Each log is saved under its
+  on-disk name with its SHA-256, never replaces an existing file, and is never
+  opened. Each file is a copy of a live log taken at the moment it was
+  fetched, not an atomic snapshot of all logs together.
+- **Manifest:** `manifest.json` records the tenant fingerprint, backend,
+  session, alias, MachineId and whether this command opened the session, then
+  each log's name, listed size, status, command ID, bytes and hash, never
+  content. It is rewritten after every step. The receipt rows are the manifest
+  rows.
+
+Nothing is ever resubmitted. A `getfile` the service accepted keeps its
+command ID. If it hasn't finished, or its download failed, its row is
+`accepted` with exact `recovery` commands (`status` and `download` by that ID)
+to follow it in its session. Any failure while downloading a completed job's
+file stops the run, so one bad transfer never repeats across many logs; a
+job that merely fails on the device does not stop it. A submission whose
+outcome is unknown (for example a timeout while sending) is
+`outcome-unknown`; check `history` before fetching that log again. A session
+this command opened is closed at the end, so follow incomplete jobs promptly,
+or collect through a session you opened yourself (`lr-N`) when you expect to
+follow up. Sign-in, permission,
+throttling, timeout, network, configuration and local manifest failures stop
+the run. Anything not collected returns exit 14 after the receipt.
+
+`--dry-run` shows the plan (target kind, folder, selection and limits) without
+authentication, network or writing anything. The listing and every `getfile`
+are recorded in the audit log with the native session and device IDs.
+
 ## Library
 
 ```bash
