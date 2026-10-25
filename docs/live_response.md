@@ -236,7 +236,10 @@ package (`device collect-support-logs`), which holds sensor diagnostics.
   not the exact network traffic of an abandoned transfer. Each `getfile` is a
   separate job, typically 15–30 s.
 - **Output:** `--output-dir` must be new or empty and private (0700), because
-  event logs, Security especially, are sensitive. Each log is saved under its
+  event logs, Security especially, are sensitive. The directory is claimed
+  before anything is sent, so a second collection into the same directory is
+  refused (`STATE_CONFLICT`, exit 13); a leftover `manifest.json.lock` file
+  alone does not count as content. Each log is saved under its
   on-disk name with its SHA-256, never replaces an existing file, and is never
   opened. Each file is a copy of a live log taken at the moment it was
   fetched, not an atomic snapshot of all logs together.
