@@ -948,8 +948,8 @@ batch_app = click.Group(
     help=(
         "Official API Live Response machine actions: PutFile, RunScript and GetFile in one "
         "request, without an interactive session.\n\n"
-        "Tested with synthetic API responses only; not yet verified against a live tenant. "
-        "See docs/live_response_coverage.md."
+        "GetFile results are saved exactly as delivered (gzip-wrapped); the receipt's kind "
+        "says so. See docs/live_response_coverage.md."
     ),
     no_args_is_help=True,
 )

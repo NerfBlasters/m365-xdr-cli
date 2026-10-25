@@ -210,7 +210,7 @@ def cancel_action(ctx: AppContext, action_id: str, device_id: str, comment: str,
     Only pending or in-progress isolation, package collection, scan,
     app-restriction and log-collection requests are eligible. Cancellation
     does not confirm any rollback on the device; check action-status afterwards.
-    Not yet verified against a live tenant; see docs/live_response_coverage.md.
+    A device that already picked the action up may still complete it.
     """
     if dry_run:
         _emit(ctx, {"dry_run": True, "action": "cancel-action", "action_id": action_id,
@@ -271,8 +271,9 @@ def start_investigation(ctx: AppContext, machine_id: str, comment: str, yes: boo
 
     The portal-cookie backend selects the tenant's investigation protocol from
     fresh tenant features and sends exactly one request. The result reports
-    request acceptance only; follow the investigation in Defender.
-    Not yet verified against a live tenant; see docs/live_response_coverage.md.
+    request acceptance only; follow the investigation in Defender. Tenants
+    where Microsoft has withdrawn manual investigations report
+    TENANT_FEATURE_UNAVAILABLE; see docs/live_response_coverage.md.
     """
     if dry_run:
         _emit(ctx, {"dry_run": True, "action": "start-investigation", "machine_id": machine_id})
@@ -360,7 +361,7 @@ def troubleshoot(ctx: AppContext, machine_id: str, enabled: bool, comment: str, 
 
     On starts the portal's fixed four-hour window; off ends the one active
     window. Acceptance does not confirm the device changed state; check
-    action-status. Not yet verified against a live tenant; see docs/live_response_coverage.md.
+    action-status.
     """
     action = "troubleshoot --on" if enabled else "troubleshoot --off"
     if dry_run:

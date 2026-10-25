@@ -169,8 +169,8 @@ from the portal console requires the **Manage Security Settings** permission.
 
 ## Official batch actions
 
-The official batch path is tested with synthetic API responses only and has
-not yet been run against a live tenant; see
+The official batch path has been run live for GetFile; PutFile, RunScript and
+cancel are tested with synthetic responses only. See
 [the coverage matrix](live_response_coverage.md).
 
 ```bash
@@ -184,6 +184,11 @@ xdr --backend official device live-response batch cancel <action-id> --yes
 
 `batch.txt` holds one command per line, in the order putfile, run, getfile.
 Other console commands are rejected locally.
+
+The official service delivers GetFile results gzip-compressed. Downloads are
+saved byte-for-byte and never decompressed; the receipt reports `kind: "gzip"`
+when the saved bytes are gzip and `"raw"` otherwise. `--output` must be in a
+directory only you can write to (or a sticky one such as `/tmp`).
 
 ## Privacy and audit
 

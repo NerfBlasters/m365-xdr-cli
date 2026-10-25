@@ -2971,7 +2971,7 @@
       ]
     },
     "device cancel-action": {
-      "help": "Cancel a pending device response action (portal-cookie). Only pending or in-progress isolation, package collection, scan, app-restriction and log-collection requests are eligible. Cancellation does not confirm any rollback on the device; check action-status afterwards. Not yet verified against a live tenant; see docs/live_response_coverage.md.",
+      "help": "Cancel a pending device response action (portal-cookie). Only pending or in-progress isolation, package collection, scan, app-restriction and log-collection requests are eligible. Cancellation does not confirm any rollback on the device; check action-status afterwards. A device that already picked the action up may still complete it.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,
@@ -3622,7 +3622,7 @@
       "params": []
     },
     "device live-response batch": {
-      "help": "Official API Live Response machine actions: PutFile, RunScript and GetFile in one request, without an interactive session. Tested with synthetic API responses only; not yet verified against a live tenant. See docs/live_response_coverage.md.",
+      "help": "Official API Live Response machine actions: PutFile, RunScript and GetFile in one request, without an interactive session. GetFile results are saved exactly as delivered (gzip-wrapped); the receipt's kind says so. See docs/live_response_coverage.md.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": true,
@@ -6470,7 +6470,7 @@
       ]
     },
     "device start-investigation": {
-      "help": "Start an automated investigation on a device. The portal-cookie backend selects the tenant's investigation protocol from fresh tenant features and sends exactly one request. The result reports request acceptance only; follow the investigation in Defender. Not yet verified against a live tenant; see docs/live_response_coverage.md.",
+      "help": "Start an automated investigation on a device. The portal-cookie backend selects the tenant's investigation protocol from fresh tenant features and sends exactly one request. The result reports request acceptance only; follow the investigation in Defender. Tenants where Microsoft has withdrawn manual investigations report TENANT_FEATURE_UNAVAILABLE; see docs/live_response_coverage.md.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,
@@ -7181,7 +7181,7 @@
       ]
     },
     "device troubleshoot": {
-      "help": "Turn Defender troubleshooting mode on or off for a device (portal-cookie). On starts the portal's fixed four-hour window; off ends the one active window. Acceptance does not confirm the device changed state; check action-status. Not yet verified against a live tenant; see docs/live_response_coverage.md.",
+      "help": "Turn Defender troubleshooting mode on or off for a device (portal-cookie). On starts the portal's fixed four-hour window; off ends the one active window. Acceptance does not confirm the device changed state; check action-status.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,

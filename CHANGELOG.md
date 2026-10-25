@@ -40,11 +40,17 @@ for the current checks.
   state and ambiguous containment records are refused rather than guessed.
 - `xdr device start-investigation` starts an automated investigation. On
   portal-cookie it selects the tenant's protocol from fresh tenant features and
-  sends one request; the comment is recorded only by the official API.
+  sends one request; the comment is recorded only by the official API. When
+  the tenant hides manual investigations (`HideInvestigationCreation`), nothing
+  is sent, and an HTTP 410 from either backend is reported as
+  `TENANT_FEATURE_UNAVAILABLE` with no investigation started.
 - `xdr device action-history` saves response-action history as a private
   artifact. Portal-cookie reads the last seven days of Action center history;
   the official backend reads machine actions, which exclude portal Live
   Response. A final coverage row reports native counts and completeness.
+- Live Response download receipts report `kind: "gzip"` when the saved bytes
+  are gzip, as official batch GetFile results are; files are still saved
+  unmodified. A refused shared output directory names the actual fix.
 - `xdr device collect-support-logs` requests a Defender support-log
   collection, and `xdr device troubleshoot --on|--off` turns troubleshooting
   mode on for the portal's fixed four-hour window or ends the active window

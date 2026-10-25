@@ -182,6 +182,21 @@ def _action_matches(value: object, action_id: str, device_id: str) -> bool:
     )
 
 
+def _investigation_unavailable() -> APIError:
+    """Manual investigations are hidden (portal) or gone (HTTP 410) for this tenant."""
+    error = APIError(
+        "Manual automated investigations are unavailable for this tenant; "
+        "no investigation was started.",
+        status_code=410,
+    )
+    error.error_code = "TENANT_FEATURE_UNAVAILABLE"
+    error.suggested_fix = (
+        "Defender starts automated investigations from alerts; "
+        "check investigation availability with your Defender administrator."
+    )
+    return error
+
+
 def _sanitize(error: XDRError, message: str, *, mutation: bool = False) -> XDRError:
     """Preserve typed recovery classes without echoing upstream request values."""
     error.message = message
@@ -395,12 +410,20 @@ class PortalDeviceManagement:
         _machine_id(machine_id)
         _comment(comment)
         context = await self._dm_tenant_context()
+        # The device page hides "Initiate automated investigation" behind this flag.
+        if _tenant_feature(context, "HideInvestigationCreation"):
+            raise _investigation_unavailable()
         dotnet = _tenant_feature(context, "UseDotnetAirsUiInvestigations")
         route = _Route.START_INVESTIGATION_DOTNET if dotnet else _Route.START_INVESTIGATION
         field = "machine" if dotnet else "machine_id"
-        value = await self._dm_request(
-            route, params={"useDotnetAutoIrUi": str(dotnet).lower()}, body={field: machine_id}
-        )
+        try:
+            value = await self._dm_request(
+                route, params={"useDotnetAutoIrUi": str(dotnet).lower()}, body={field: machine_id}
+            )
+        except APIError as error:
+            if error.status_code == 410:
+                raise _investigation_unavailable() from None
+            raise
         if not isinstance(value, dict) or not value:
             raise APIError(
                 "Automated-investigation response is not an interpretable native object."
@@ -600,6 +623,8 @@ class OfficialDeviceManagement:
                 json={"Comment": comment},
             )
         except XDRError as error:
+            if getattr(error, "status_code", None) == 410:
+                raise _investigation_unavailable() from None
             raise _sanitize(
                 error,
                 "Automated-investigation request failed; inspect device "

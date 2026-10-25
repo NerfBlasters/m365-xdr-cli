@@ -51,7 +51,15 @@ def package_destination(output: Path, *, force: bool) -> Path:
         if not stat.S_ISDIR(mode):
             raise ArtifactError("Package output parent must be a directory.")
         if os.name == "posix" and mode & 0o022 and not mode & stat.S_ISVTX:
-            raise ArtifactError("Package output requires a private or sticky directory.")
+            raise ArtifactError(
+                "Package output requires a private or sticky directory.",
+                suggestions=[{
+                    "reason": "recovery",
+                    "message": "Write into a directory only you can modify (chmod 700) "
+                               "or a sticky directory such as /tmp.",
+                    "confidence": "exact",
+                }],
+            )
         if os.path.lexists(destination):
             if not force:
                 raise ConflictError("Package output already exists; use --force to replace it.")

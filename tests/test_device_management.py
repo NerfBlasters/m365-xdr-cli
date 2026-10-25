@@ -550,3 +550,50 @@ async def test_official_history_filter_and_native_continuation_gap():
     assert rows[-1]["stop_reason"] == "native-continuation-unfollowed"
     assert client.transport.get.call_count == 1
     assert not rows[-1]["portal_live_response_included"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_autoir_hidden_by_tenant_feature_never_sends_a_mutation(portal):
+    respx.get(BASE + "/sccManagement/mgmt/TenantContext").respond(
+        json={
+            "AuthInfo": {"TenantId": "synthetic-tenant"},
+            "Features": {"HideInvestigationCreation": True, "UseDotnetAirsUiInvestigations": True},
+        }
+    )
+    legacy = respx.post(BASE + "/autoIr/investigations/").respond(json={"id": 1})
+    dotnet = respx.post(BASE + "/autoIr/ui/investigations/").respond(json={"id": 1})
+    with pytest.raises(APIError) as caught:
+        await portal.start_device_investigation(DEVICE, comment="reason")
+    assert caught.value.error_code == "TENANT_FEATURE_UNAVAILABLE"
+    assert not legacy.called and not dotnet.called
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_autoir_gone_is_reported_as_unavailable_not_retryable(portal):
+    respx.get(BASE + "/sccManagement/mgmt/TenantContext").respond(
+        json={
+            "AuthInfo": {"TenantId": "synthetic-tenant"},
+            "Features": {"UseDotnetAirsUiInvestigations": True},
+        }
+    )
+    dotnet = respx.post(BASE + "/autoIr/ui/investigations/").respond(410)
+    with pytest.raises(APIError) as caught:
+        await portal.start_device_investigation(DEVICE, comment="reason")
+    assert dotnet.call_count == 1
+    assert caught.value.error_code == "TENANT_FEATURE_UNAVAILABLE"
+    assert caught.value.status_code == 410 and not caught.value.retryable
+    assert "no investigation was started" in caught.value.message
+
+
+@pytest.mark.asyncio
+async def test_official_start_investigation_gone_keeps_status_and_says_why():
+    client = OfficialHarness()
+    client.transport = AsyncMock()
+    client.transport.post.side_effect = APIError("upstream private text", status_code=410)
+    with pytest.raises(APIError) as caught:
+        await client.start_device_investigation(DEVICE, comment="upstream reason")
+    assert caught.value.error_code == "TENANT_FEATURE_UNAVAILABLE"
+    assert caught.value.original["status"] == 410
+    assert "upstream private text" not in str(caught.value)

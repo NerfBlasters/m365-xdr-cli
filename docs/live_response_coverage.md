@@ -65,9 +65,9 @@ errors.
 
 | Operation | CLI command | Evidence |
 |---|---|---|
-| runliveresponse (PutFile, RunScript, GetFile) | `live-response batch submit` | synthetic |
-| status / per-command output | `batch status`, `batch output` | synthetic |
-| result download link | `batch download --index N` | synthetic |
+| runliveresponse (PutFile, RunScript, GetFile) | `live-response batch submit` | cli-live for GetFile (system binary; `--wait` reached Succeeded); PutFile/RunScript: synthetic |
+| status / per-command output | `batch status`, `batch output` | cli-live, synthetic |
+| result download link | `batch download --index N` | cli-live (gzip-wrapped payload of the expected 360,448-byte binary; receipt `kind: gzip`; non-private output directory refused), synthetic |
 | cancel | `batch cancel` | synthetic |
 
 ## Device page
@@ -78,13 +78,13 @@ errors.
 | Download investigation package | `device download-package` | unavailable | existing coverage |
 | Manual tags | `device tags list/set/add/remove` | add/remove only | cli-live (read, add, remove; original tags restored); whole-set replacement: synthetic only |
 | Action availability | `device action-permissions` | unavailable | cli-live (11 rows), synthetic |
-| Cancel response action | `device cancel-action` | unavailable | source, synthetic |
-| Contain / release containment (unmanaged devices) | `device contain`, `device uncontain` | unavailable | source, synthetic; not run live |
-| Automated investigation | `device start-investigation` | yes (records the comment) | source; protocol selector read live (dotnet-ui), never started live; synthetic CLI |
+| Cancel response action | `device cancel-action` | unavailable | cli-live (pending quick scan: cancellation accepted and recorded, then the device completed the scan it had already picked up), synthetic |
+| Contain / release containment (unmanaged devices) | `device contain`, `device uncontain` | unavailable | source, synthetic; not run live. The dev tenant's only unmanaged device is the onboarded hosts' default gateway, so containing it could block the release; needs an isolated unmanaged test device |
+| Automated investigation | `device start-investigation` | yes (records the comment) | cli-live: both the portal dotnet-ui route and official `startInvestigation` returned HTTP 410 in a tenant with `HideInvestigationCreation`, which hides the device-page action. The CLI now refuses on that flag before sending and reports 410 as `TENANT_FEATURE_UNAVAILABLE`. A successful start has not been observed |
 | Action history (Action center) | `device action-history [--limit N]` | machine actions only (excludes portal Live Response) | backend-live (7-day window, 19 rows matching the native count, pagination complete), synthetic CLI |
 | Collect support logs | `device collect-support-logs` | unavailable | source, synthetic. Collection attempt returned HTTP 403; separately, tenant context reported the feature disabled. No collection was created. The new feature preflight was run live with reads only: `TENANT_FEATURE_UNAVAILABLE` after two GET requests, no mutation |
 | Support-log download | — | — | gap: download host/transfer contract unverified, and no completed collection exists to test against |
-| Troubleshooting mode (fixed 4 hours) | `device troubleshoot --on/--off` | unavailable | source, synthetic; not run live; portal stop eligibility via feature/configuration variant is not checked |
+| Troubleshooting mode (fixed 4 hours) | `device troubleshoot --on/--off` | unavailable | cli-live (on and off each reached Succeeded in about 30 seconds), synthetic; portal stop eligibility via feature/configuration variant is not checked |
 | Asset value, criticality, exclusion state | — | — | gap: source contract only |
 | Offboard, stop and quarantine, forensic artifacts, policy sync, expert consultation, Logic App playbooks | — | — | gap: no device-page wire contract inventoried |
 

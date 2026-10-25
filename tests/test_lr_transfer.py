@@ -1,13 +1,14 @@
 """Transfer failures must neither leak credentials nor publish partial evidence."""
 
 import hashlib
+import os
 from contextlib import asynccontextmanager
 
 import httpx
 import pytest
 import respx
 
-from xdr_cli.exceptions import APIError, ConflictError
+from xdr_cli.exceptions import APIError, ArtifactError, ConflictError
 from xdr_cli.live_response.transfer import SignedTransfer, download_transfer
 
 URL = "https://synthetic.blob.core.windows.net/container/item?sig=private"
@@ -71,3 +72,37 @@ async def test_private_portal_stream_and_unknown_length_respect_cap(tmp_path):
     target = tmp_path / "download"
     result = await download_transfer(SignedTransfer(_stream_factory=stream), target, max_bytes=7)
     assert result["bytes"] == 7
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("chunks", "kind"), [
+    ([b"\x1f", b"\x8b\x08rest"], "gzip"),
+    ([b"MZ\x90\x00"], "raw"),
+    ([b"\x1f"], "raw"),
+])
+async def test_receipt_labels_gzip_wrapped_bytes_without_extracting(tmp_path, chunks, kind):
+    async def body():
+        for chunk in chunks:
+            yield chunk
+
+    @asynccontextmanager
+    async def stream():
+        yield httpx.Response(200, content=body())
+
+    target = tmp_path / "download"
+    result = await download_transfer(SignedTransfer(_stream_factory=stream), target)
+    assert result["kind"] == kind and result["extracted"] is False
+    assert target.read_bytes() == b"".join(chunks)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory modes")
+@pytest.mark.asyncio
+async def test_shared_output_directory_names_the_actual_recovery(tmp_path):
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    shared.chmod(0o777)
+    with pytest.raises(ArtifactError) as caught:
+        await download_transfer(SignedTransfer(_url=URL), shared / "out.bin")
+    messages = [item["message"] for item in caught.value.suggestions]
+    assert any("chmod 700" in message for message in messages)
+    assert not any("~/.xdr-cli/results" in message for message in messages)

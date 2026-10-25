@@ -78,6 +78,7 @@ async def download_transfer(
     staged = None
     identity = None
     total = 0
+    head = b""
     digest = hashlib.sha256()
     try:
         fd, name = tempfile.mkstemp(prefix=".xdr-lr-", dir=destination.parent)
@@ -121,6 +122,8 @@ async def download_transfer(
                     total += len(chunk)
                     if total > max_bytes:
                         raise APIError("Live Response download exceeds --max-bytes.")
+                    if len(head) < 2:
+                        head += chunk[:2 - len(head)]
                     sink.write(chunk)
                     digest.update(chunk)
                 if expected is not None and total != expected:
@@ -141,7 +144,8 @@ async def download_transfer(
             "data_path": str(destination),
             "bytes": total,
             "sha256": digest.hexdigest(),
-            "kind": transfer.expected_kind,
+            # Official GetFile results arrive gzip-wrapped; label what was saved.
+            "kind": "gzip" if head == b"\x1f\x8b" else transfer.expected_kind,
             "extracted": False,
         }
     except httpx.TimeoutException:
