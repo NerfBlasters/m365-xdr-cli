@@ -10,6 +10,9 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.18.1] - 2026-10-26
+- Updated website link to talk on youtube from live cvent url.
+
 ## [0.18.0] - 2026-10-24
 
 ### Added
