@@ -127,6 +127,7 @@ def login(
     auth = AuthManager(app_ctx.config)
     auth.login()
     info = auth.get_auth_status()
+    info["cloud"] = app_ctx.config.cloud
 
     fmt = OutputFormatter(
         session_id=app_ctx.session_id,
@@ -167,14 +168,17 @@ def logout(
     click.echo(fmt.format_output(data))
 
 
-async def _verify_portal_cookies(cookie_header: str, xsrf_token: str) -> tuple[bool, str | None]:
+async def _verify_portal_cookies(
+    cookie_header: str, xsrf_token: str, cloud: str = "commercial",
+) -> tuple[bool, str | None]:
     """Issue one cheap authenticated apiproxy GET to confirm the pasted
     cookies actually work. Never raises — auth/API failures ("stale paste")
     and transient network errors (DNS/connect/timeout/TLS) are both expected
     outcomes of a best-effort probe, reported back as (False, reason) rather
     than crashing the command (the cookies are already stored at this
     point)."""
-    client = PortalClient(auth=CookieAuth(cookie_header=cookie_header, xsrf_token=xsrf_token))
+    client = PortalClient(auth=CookieAuth(cookie_header=cookie_header, xsrf_token=xsrf_token),
+                          **({"cloud": cloud} if cloud != "commercial" else {}))
     try:
         await client.probe(_PORTAL_VERIFY_PATH)
     except (
@@ -205,7 +209,10 @@ def _store_and_report_portal_cookies(
     verified: bool | None = None
     verify_error: str | None = None
     if verify:
-        verified, verify_error = asyncio.run(_verify_portal_cookies(cookie_header, xsrf_token))
+        verified, verify_error = asyncio.run(_verify_portal_cookies(
+            cookie_header, xsrf_token,
+            **({"cloud": app_ctx.config.cloud} if app_ctx.config.cloud != "commercial" else {}),
+        ))
 
     data: dict = {
         "authenticated": True,
@@ -379,10 +386,10 @@ def portal_cookie(
     verify: bool,
     keep_source: bool,
 ) -> None:
-    """Configure portal auth from a logged-in security.microsoft.com session.
+    """Configure portal auth from a logged-in Defender session in the selected cloud.
 
     Import cookies for the portal-cookie backend. Provide the WHOLE
-    browser Cookie header: in Microsoft Edge (logged in to security.microsoft.com), open
+    browser Cookie header: in Microsoft Edge (logged in to your cloud's Defender portal), open
     DevTools > Network, right-click the timeline apiproxy request > Copy >
     "Copy as cURL (bash)" (the cmd/PowerShell variants are untested), save it
     to a file, and
@@ -446,6 +453,7 @@ def portal_cookie(
         "xsrf_token": xsrf_token,
         "stored_at": datetime.now(UTC).isoformat(),
         "tenant_fingerprint": fingerprint,
+        "cloud": app_ctx.config.cloud,
     }
     _store_and_report_portal_cookies(
         app_ctx, cookie_data, verify, cookie_header=cookie_header, xsrf_token=xsrf_token
@@ -508,10 +516,10 @@ def portal_logout(
     click.echo(fmt.format_output(data))
 
 
-def _cookie_status(tenant_id: str) -> dict:
+def _cookie_status(tenant_id: str, cloud: str = "commercial") -> dict:
     """Diagnose rejected cookie stores without disabling auth status."""
     try:
-        return {"cookie_stored": load_portal_cookies(tenant_id) is not None}
+        return {"cookie_stored": load_portal_cookies(tenant_id, cloud) is not None}
     except ConfigError as exc:
         return {
             "cookie_stored": False,
@@ -526,13 +534,14 @@ def status(
 ) -> None:
     """Show current authentication status."""
     app_ctx: AppContext = ctx.obj
-    cookie_status = _cookie_status(app_ctx.config.tenant_id)
+    cookie_status = _cookie_status(app_ctx.config.tenant_id, app_ctx.config.cloud)
     if app_ctx.config.backend_profile.cookie_auth:
         fmt = OutputFormatter(session_id=app_ctx.session_id, session_label=app_ctx.session_label)
         click.echo(
             fmt.format_output(
                 {
                     "backend": "portal-cookie",
+                    "cloud": app_ctx.config.cloud,
                     "backend_preference": getattr(
                         app_ctx.config,
                         "_api_backend_requested",
@@ -589,6 +598,7 @@ def status(
     auth = AuthManager(app_ctx.config)
     main_info = auth.get_auth_status()
     main_info["backend"] = "official"
+    main_info["cloud"] = app_ctx.config.cloud
     main_info["backend_preference"] = getattr(
         app_ctx.config,
         "_api_backend_requested",

@@ -285,7 +285,10 @@ class OfficialLiveResponse(UnsupportedLiveResponse):
                 return
             validate_continuation(
                 link,
-                routes=frozenset({("api.security.microsoft.com", "/api/libraryfiles")}),
+                routes=frozenset({
+                    (self.transport.cloud_profile.mde.removeprefix("https://"),
+                     "/api/libraryfiles"),
+                }),
                 seen=seen,
             )
             path = link

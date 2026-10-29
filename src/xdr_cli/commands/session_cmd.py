@@ -91,7 +91,7 @@ def session_start(
     if ctx.obj.config.backend_profile.cookie_auth:
         from xdr_cli.portal_auth import load_portal_cookies
 
-        if load_portal_cookies(ctx.obj.config.tenant_id) is None:
+        if load_portal_cookies(ctx.obj.config.tenant_id, ctx.obj.config.cloud) is None:
             raise AuthError(
                 "No stored portal cookies. Import a browser session first.",
                 help_command="xdr auth portal-cookie --help",

@@ -17,12 +17,14 @@ from xdr_cli.secret_files import atomic_write_secret
 
 if TYPE_CHECKING:
     from xdr_cli.backend_contract import BackendProfile
+    from xdr_cli.cloud import CloudProfile
 
 
 @dataclass
 class Config:
     """XDR CLI configuration."""
 
+    cloud: str = "commercial"
     api_backend: str = "auto"
     tenant_id: str = ""
     client_id: str = ""
@@ -47,6 +49,12 @@ class Config:
     schema_collection_stale_seconds: int = 604800
 
     @property
+    def cloud_profile(self) -> CloudProfile:
+        from xdr_cli.cloud import cloud_profile
+
+        return cloud_profile(self.cloud)
+
+    @property
     def backend_profile(self) -> BackendProfile:
         from xdr_cli.backend_contract import backend_profile
         from xdr_cli.backend_selection import select_backend
@@ -54,8 +62,10 @@ class Config:
         return backend_profile(select_backend(self))
 
     def __post_init__(self) -> None:
+        from xdr_cli.cloud import cloud_profile
         from xdr_cli.exceptions import ConfigError
 
+        cloud_profile(self.cloud)
         if self.api_backend not in ("auto", "official", "portal-cookie"):
             raise ConfigError("api_backend must be auto, official, or portal-cookie.")
 
