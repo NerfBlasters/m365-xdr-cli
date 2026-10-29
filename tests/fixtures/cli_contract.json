@@ -2194,6 +2194,32 @@
         },
         {
           "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Microsoft cloud; overrides config. Saved by auth login.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "cloud",
+          "nargs": 1,
+          "opts": [
+            "--cloud"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": true,
+            "choices": [
+              "commercial",
+              "gcc-high"
+            ],
+            "name": "choice"
+          }
+        },
+        {
+          "count": false,
           "default": false,
           "envvar": null,
           "help": "Disable all interactive prompts.",
@@ -2549,7 +2575,7 @@
       "params": []
     },
     "auth portal-cookie": {
-      "help": "Configure portal auth from a logged-in security.microsoft.com session. Import cookies for the portal-cookie backend. Provide the WHOLE browser Cookie header: in Microsoft Edge (logged in to security.microsoft.com), open DevTools > Network, right-click the timeline apiproxy request > Copy > \"Copy as cURL (bash)\" (the cmd/PowerShell variants are untested), save it to a file, and pass that file (or pipe it in with `-`). xdr forwards every cookie \u2014 including the routing (`X-PortalEndpoint-RouteKey`) and session (`s.SessID`) cookies the apiproxy requires, and a chunked `sccauth` (`chunks:N` + `sccauthC1..N`) \u2014 verbatim. The sccauth-only form omits the routing/session cookies and the backend answers with an opaque 500, which is why the whole header is required. The XSRF token is auto-extracted from the header (you're prompted only if it carries no `XSRF-TOKEN` cookie). Stored in ~/.xdr-cli/portal_cookies.json (0600), bound to the configured tenant's non-reversible fingerprint \u2014 cookie values never reach argv. A store bound to a different tenant must be re-imported. On a successful import the exact regular source file is overwritten and deleted on a best-effort basis; pass `--keep-source` to keep it. Symlinks are rejected, and cleanup stops with a warning when an identity change is detected. A source without an `sccauth` cookie is never shredded.",
+      "help": "Configure portal auth from a logged-in Defender session in the selected cloud. Import cookies for the portal-cookie backend. Provide the WHOLE browser Cookie header: in Microsoft Edge (logged in to your cloud's Defender portal), open DevTools > Network, right-click the timeline apiproxy request > Copy > \"Copy as cURL (bash)\" (the cmd/PowerShell variants are untested), save it to a file, and pass that file (or pipe it in with `-`). xdr forwards every cookie \u2014 including the routing (`X-PortalEndpoint-RouteKey`) and session (`s.SessID`) cookies the apiproxy requires, and a chunked `sccauth` (`chunks:N` + `sccauthC1..N`) \u2014 verbatim. The sccauth-only form omits the routing/session cookies and the backend answers with an opaque 500, which is why the whole header is required. The XSRF token is auto-extracted from the header (you're prompted only if it carries no `XSRF-TOKEN` cookie). Stored in ~/.xdr-cli/portal_cookies.json (0600), bound to the configured tenant's non-reversible fingerprint \u2014 cookie values never reach argv. A store bound to a different tenant must be re-imported. On a successful import the exact regular source file is overwritten and deleted on a best-effort basis; pass `--keep-source` to keep it. Symlinks are rejected, and cleanup stops with a warning when an identity change is detected. A source without an `sccauth` cookie is never shredded.",
       "hidden": false,
       "invoke_without_command": false,
       "no_args_is_help": false,

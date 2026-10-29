@@ -247,7 +247,10 @@ async def test_official_batch_exact_order_and_separate_model():
 
 @pytest.mark.asyncio
 async def test_official_library_continuation_cannot_escape_operation():
+    from xdr_cli.cloud import cloud_profile
+
     transport = AsyncMock()
+    transport.cloud_profile = cloud_profile()
     transport.get.return_value = {
         "value": [],
         "@odata.nextLink": "https://attacker.invalid/api/libraryfiles?token=x",

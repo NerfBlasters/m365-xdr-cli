@@ -80,7 +80,7 @@ class PortalBackend(PortalLiveResponse, PortalDeviceManagement, PortalDeviceDiag
     def __init__(self, config: Config, timeout: float) -> None:
         if not config.tenant_id:
             raise ConfigError("portal-cookie requires a configured tenant_id.")
-        cookies = load_portal_cookies(config.tenant_id)
+        cookies = load_portal_cookies(config.tenant_id, config.cloud)
         if not cookies:
             raise self._auth_error()
         self._auth = CookieAuth(
@@ -89,12 +89,13 @@ class PortalBackend(PortalLiveResponse, PortalDeviceManagement, PortalDeviceDiag
             sccauth_chunks=cookies.get("sccauth_chunks"),
             cookie_header=cookies.get("cookie_header"),
         )
+        self.cloud_profile = config.cloud_profile
         self._tenant_id = config.tenant_id
         self._verified = False
         self._client = httpx.AsyncClient(
-            base_url="https://security.microsoft.com", timeout=timeout,
+            base_url=self.cloud_profile.portal, timeout=timeout,
             follow_redirects=False,
-            headers={"Accept": "application/json", "Origin": "https://security.microsoft.com"},
+            headers={"Accept": "application/json", "Origin": self.cloud_profile.portal},
         )
 
     @staticmethod
@@ -274,8 +275,9 @@ class PortalBackend(PortalLiveResponse, PortalDeviceManagement, PortalDeviceDiag
             path = operation.value[1]
             url = validate_continuation(
                 next_link, seen=seen_links, routes=frozenset({
-                    ("graph.microsoft.com", path.removeprefix("/apiproxy/msgraph")),
-                    ("security.microsoft.com", path),
+                    (httpx.URL(self.cloud_profile.graph).host,
+                     path.removeprefix("/apiproxy/msgraph")),
+                    (httpx.URL(self.cloud_profile.portal).host, path),
                 }),
             )
             # Transfer only query bytes onto the fixed portal route. Cookies
@@ -746,5 +748,6 @@ def create_client(
     if backend == APIBackend.PORTAL_COOKIE:
         return PortalBackend(config, effective_timeout)
     return OfficialBackend(
-        client_factory(get_token=auth_factory(config).get_token, timeout=effective_timeout),
+        client_factory(get_token=auth_factory(config).get_token, timeout=effective_timeout,
+                       **({"cloud": config.cloud} if config.cloud != "commercial" else {})),
     )

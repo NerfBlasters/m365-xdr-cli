@@ -10,6 +10,20 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.19.0] - 2026-10-29
+
+### Added
+
+- Commercial and GCC High cloud profiles selected by global `--cloud` or the
+  persisted `cloud` configuration. Authentication, Graph/MDE scopes, official
+  requests, and portal requests use the selected cloud. GCC High token caches
+  are separate; portal cookies are bound to tenant and cloud.
+
+### Fixed
+
+- Validate official API continuations against their collection and selected cloud
+  before forwarding credentials.
+
 ## [0.18.1] - 2026-10-26
 - Updated website link to talk on youtube from live cvent url.
 

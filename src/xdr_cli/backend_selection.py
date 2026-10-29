@@ -25,7 +25,7 @@ def _has_official_credentials(config: Config) -> bool:
     if config.auth_mode == 'client_credentials' and config.client_secret:
         return True
     try:
-        cache = _read_object(get_config_home() / 'token_cache.json')
+        cache = _read_object(get_config_home() / config.cloud_profile.token_cache_filename)
     except FileNotFoundError:
         return False
     except (OSError, ValueError):
@@ -67,6 +67,8 @@ def _has_portal_credentials(config: Config) -> bool:
     except (OSError, ValueError):
         return False
     if cookies.get('tenant_fingerprint') != tenant_fingerprint(config.tenant_id):
+        return False
+    if cookies.get('cloud', 'commercial') != config.cloud:
         return False
     xsrf = cookies.get('xsrf_token')
     header = cookies.get('cookie_header')
