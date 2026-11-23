@@ -25,7 +25,7 @@ from xdr_cli.exceptions import (
 )
 from xdr_cli.inquiry_entities import index_row
 from xdr_cli.queries import load_query, query_source_hash
-from xdr_cli.results import tenant_fingerprint, write_result
+from xdr_cli.results import results_page_command, tenant_fingerprint, write_result
 from xdr_cli.schema_graph.overlay import schema_evidence_lock
 
 _EVIDENCE = {"incidents show", "alerts show", "hunt run", "library run"}
@@ -324,6 +324,7 @@ def inquiry_view(ctx, inquiry, question, entity=None, prior=False):
                 {
                     "record_type": "attached-check",
                     "run_id": run,
+                    "results_command": results_page_command(run, citations=True),
                     "rationale": rationale,
                     "anchors": source.get("anchors"),
                     "row_count": source["row_count"],
@@ -523,11 +524,29 @@ def _metadata_hash(meta):
     return hashlib.sha256(encoded.encode()).hexdigest()
 
 
-def _verify_reference(db, tenant, inquiry, ref):
-    parts = ref.split(":")
-    if len(parts) not in {1, 3}:
-        raise UsageError("Supply a whole run ID or a reader-issued row citation.")
-    run = parts[0]
+def _verify_references(db, tenant, inquiry, refs):
+    """Verify each distinct bundle once and acknowledge references in caller order."""
+    by_run: dict[str, set[int]] = {}
+    for ref in refs:
+        parts = ref.split(":")
+        if len(parts) not in {1, 3}:
+            raise UsageError("Supply a whole run ID or a reader-issued row citation.")
+        indices = by_run.setdefault(parts[0], set())
+        if len(parts) == 3:
+            index = parts[1]
+            if not index.isascii() or not index.isdecimal() or len(index) > 18:
+                raise UsageError("Invalid citation row index.")
+            indices.add(int(index))
+
+    verified = {}
+    for run, indices in by_run.items():
+        verified.update(_verified_run_references(db, tenant, inquiry, run, indices))
+    if any(ref not in verified for ref in refs):
+        raise ArtifactError("Citation does not match the indicated row.")
+    return [verified[ref] for ref in refs]
+
+
+def _verified_run_references(db, tenant, inquiry, run, indices):
     attached = db.execute(
         """SELECT a.data_sha256,a.metadata_sha256 FROM attachment a JOIN question q
            ON a.question_id=q.id WHERE q.inquiry_id=? AND a.run_id=? LIMIT 1""",
@@ -535,42 +554,35 @@ def _verify_reference(db, tenant, inquiry, ref):
     ).fetchone()
     if not attached:
         raise ConflictError("The cited run is not attached to this inquiry.")
-    index = 0
-    if len(parts) == 3:
-        if not parts[1].isascii() or not parts[1].isdecimal() or len(parts[1]) > 18:
-            raise UsageError("Invalid citation row index.")
-        index = int(parts[1])
     try:
         path = _find_meta(run)
     except LocalNotFoundError as exc:
         raise ConflictError("Cited evidence has expired. Reassess the question.") from exc
     meta, rows, _ = _verified_result_rows(
-        path, limit=int(len(parts) == 3), offset=index, citations=True
+        path, row_indices=indices, citations=True
     )
     if (meta["data_sha256"], _metadata_hash(meta)) != attached:
         raise ArtifactError("Attached evidence or its provenance has changed.")
     if meta.get("tenant_binding") != {"state": "bound", "sha256": tenant}:
         raise ConflictError("Cited evidence tenant mismatch.")
-    if len(parts) == 1:
-        return {
-            "run_id": run,
-            "rows": meta["row_count"],
-            "server_truncation_state": meta["server_truncation_state"],
-        }
-    if not rows or rows[0]["citation"] != ref:
-        raise ArtifactError("Citation does not match the indicated row.")
-    row = rows[0]["row"]
-    fields = {
-        k: row[k][:128] for k in ("record_type", "Timestamp", "id") if isinstance(row.get(k), str)
+    verified = {
+        run: {"run_id": run, "rows": meta["row_count"],
+              "server_truncation_state": meta["server_truncation_state"]}
     }
-    return {"citation": ref, "identifying_fields": fields}
+    for entry in rows:
+        row = entry["row"]
+        fields = {k: row[k][:128] for k in ("record_type", "Timestamp", "id")
+                  if isinstance(row.get(k), str)}
+        token = entry["citation"]
+        verified[token] = {"citation": token, "identifying_fields": fields}
+    return verified
 
 
 def add_note(ctx, inquiry, question, text, refs, signal, entities=(), scope=""):
     with inquiry_transaction(ctx.config.tenant_id) as (db, tenant):
         validate_question(db, inquiry, question)
         references = sorted(set(refs))
-        echoes = [_verify_reference(db, tenant, inquiry, ref) for ref in references]
+        echoes = _verify_references(db, tenant, inquiry, references)
         citations = json.dumps(references)
         _check_entities(db, inquiry, entities)
         arguments = (
@@ -603,7 +615,8 @@ def add_note(ctx, inquiry, question, text, refs, signal, entities=(), scope=""):
 
 
 def _validate_basis(db, tenant, inquiry, notes):
-    for ident in notes:
+    references = set()
+    for ident in sorted(set(notes)):
         found = db.execute(
             """SELECT citations FROM note n JOIN question q ON q.id=n.question_id
             WHERE n.id=? AND q.inquiry_id=?""",
@@ -611,8 +624,8 @@ def _validate_basis(db, tenant, inquiry, notes):
         ).fetchone()
         if not found:
             raise LocalNotFoundError("inquiry observation", ident)
-        for ref in json.loads(found[0]):
-            _verify_reference(db, tenant, inquiry, ref)
+        references.update(json.loads(found[0]))
+    _verify_references(db, tenant, inquiry, references)
 
 
 def settle_check(ctx, inquiry, check, basis, reason):
@@ -709,6 +722,7 @@ def finish_inquiry(ctx, inquiry):
                 "status": "analyst-required",
                 "requests": requests,
             }
+        basis_notes = set()
         for question, state, _ in questions:
             if state in {"open", "needs-analyst"} or pending:
                 raise ConflictError(
@@ -718,14 +732,15 @@ def finish_inquiry(ctx, inquiry):
                 "SELECT basis FROM assessment WHERE question_id=? ORDER BY revision DESC LIMIT 1",
                 (question,),
             ).fetchone()
-            _validate_basis(db, tenant, inquiry, json.loads(basis))
+            basis_notes.update(json.loads(basis))
         for (basis,) in db.execute(
             """SELECT d.basis FROM disposition d JOIN impact_check c ON d.check_id=c.id
                JOIN question q ON c.question_id=q.id
                WHERE q.inquiry_id=? AND d.basis IS NOT NULL""",
             (inquiry,),
         ):
-            _validate_basis(db, tenant, inquiry, [basis])
+            basis_notes.add(basis)
+        _validate_basis(db, tenant, inquiry, basis_notes)
         explanation, basis = db.execute(
             "SELECT explanation,basis FROM assessment WHERE question_id=? "
             "ORDER BY revision DESC LIMIT 1", (root[0],)

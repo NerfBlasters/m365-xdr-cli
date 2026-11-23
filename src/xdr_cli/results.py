@@ -64,12 +64,18 @@ class ResultArtifact:
         ]
 
 
+def results_page_command(run_id: str, *, citations: bool = False) -> str:
+    flag = " --citations" if citations else ""
+    return f"xdr results rows {run_id}{flag} --offset 0 --limit 100"
+
+
 def _completed_receipt_context(
     context: dict[str, Any] | None,
     *,
     run_id: str,
     row_count: int,
     preview_count: int,
+    citations: bool = False,
 ) -> dict[str, Any]:
     """Make artifact-first stdout completeness and local continuation explicit."""
 
@@ -78,7 +84,7 @@ def _completed_receipt_context(
     completed.setdefault("total", row_count)
     completed.setdefault("has_more", row_count > preview_count)
     if row_count > preview_count:
-        results_command = f"xdr results rows {run_id} --offset 0 --limit 100"
+        results_command = results_page_command(run_id, citations=citations)
         completed.setdefault("results_command", results_command)
         completed.setdefault("next_command", results_command)
     return completed
@@ -644,6 +650,7 @@ def write_result(
                 run_id=run_id,
                 row_count=row_count,
                 preview_count=len(previews),
+                citations=cite_previews,
             ),
         )
         return ResultArtifact(

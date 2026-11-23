@@ -16,7 +16,7 @@ for the current checks.
 
 - Local question-led inquiries with tenant-bound evidence, impact checks, prior entity sightings, playbook checks and verifiable conclusions.
 - Bound reads can open a material child question before dispatch with `--ask`. Failed reads appear in its view, and finish reports unresolved limitations.
-- Row citations for saved results and optional inquiry binding for hunt and library reads.
+- Row citations for saved results and optional inquiry binding for hunt and library reads. Bound receipts and attached sources link directly to citation-bearing pages. Notes and assessments verify all cited rows from a source in one pass.
 
 ## [0.18.1] - 2026-10-26
 - Updated website link to talk on youtube from live cvent url.

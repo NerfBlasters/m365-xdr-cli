@@ -387,3 +387,80 @@ def test_existing_inquiry_survives_read_failure_schema_upgrade(tmp_path, monkeyp
             assert db.execute("PRAGMA user_version").fetchone() == (2,)
             assert db.execute("SELECT * FROM inquiry").fetchall() == [("existing", 17)]
             assert db.execute("SELECT count(*) FROM read_failure").fetchone() == (0,)
+
+
+def test_cite_as_read_replay_verifies_each_bundle_once(monkeypatch, tmp_path):
+    """Replay the six result sizes and selected positions from the paired investigation."""
+    from collections import Counter
+    from unittest.mock import patch
+    from xdr_cli.commands.results_cmd import _verified_result_rows
+
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path))
+    (tmp_path / "config.toml").write_text('tenant_id="example"\n')
+    runner = CliRunner()
+
+    def call(*args, code=0):
+        result = runner.invoke(app, list(args))
+        assert result.exit_code == code, result.output
+        return json.loads(result.stdout.splitlines()[0])
+
+    opened = call("inquiry", "open", "Assess impact")
+    inquiry, q = opened["inquiry_id"], opened["question_id"]
+    refs, ids, page_reads = [], set(), 0
+    cases = [
+        ("alerts show", 6, [3, 4, 5]),
+        ("library run", 1, [0]),
+        ("hunt run", 2, [0, 1]),
+        ("hunt run", 6, [3]),
+        ("hunt run", 4, [1, 2]),
+        ("hunt run", 3, [0, 1, 2]),
+    ]
+    for n, (command, count, positions) in enumerate(cases):
+        bound = command != "alerts show"
+        artifact = write_result(
+            [{"id": f"event-{n}-{i}"} for i in range(count)],
+            command=command,
+            tenant_id="example",
+            cite_previews=bound,
+        )
+        receipt = artifact.receipt
+        run = receipt.run_id
+        call("inquiry", "attach", inquiry, run, "--question", q)
+        preview_refs = receipt.context.get("preview_citations", [])
+        if bound:
+            refs.extend(preview_refs[i] for i in positions if i < len(preview_refs))
+        missing = [i for i in positions if i >= len(preview_refs)]
+        if missing:
+            if bound:
+                reader = receipt.context["results_command"]
+                assert receipt.context["next_command"] == reader
+            else:
+                assert "--citations" not in receipt.context["results_command"]
+                view = call("inquiry", "view", inquiry)
+                rows = map(json.loads, Path(view["data_path"]).read_text().splitlines())
+                reader = next(row["results_command"] for row in rows if row.get("run_id") == run)
+            page = call(*reader.split()[1:])["data"]
+            page_reads += 1
+            for i in missing:
+                assert page[i]["row"]["id"] == f"event-{n}-{i}"
+                refs.append(page[i]["citation"])
+        ids.update(f"event-{n}-{i}" for i in positions)
+    assert len(set(refs)) == 12 and page_reads == 4
+
+    def note(statement, citations, code=0):
+        flags = [arg for token in citations for arg in ("--cite", token)]
+        return call("inquiry", "note", inquiry, statement, "--question", q, *flags, code=code)
+
+    with patch("xdr_cli.inquiries._verified_result_rows", wraps=_verified_result_rows) as reader:
+        recorded = note("Observed activity", [*refs, run, refs[0]])
+        scans = Counter(args.args[0] for args in reader.call_args_list)
+        assert len(scans) == 6 and set(scans.values()) == {1}
+    echoes = recorded["citations"]
+    assert {r["identifying_fields"]["id"] for r in echoes if "citation" in r} == ids
+    assert any(r.get("run_id") == run and r["rows"] == count for r in echoes)
+    invalid = refs[0].rsplit(":", 1)[0] + ":" + "0" * 64
+    note("Claim with wrong hash", [*refs, invalid], code=12)
+    note("Claim with out-of-bounds index", [*refs, f"{run}:999:" + "0" * 64], code=12)
+    view = call("inquiry", "view", inquiry)
+    rows = list(map(json.loads, Path(view["data_path"]).read_text().splitlines()))
+    assert [r["id"] for r in rows if r["record_type"] == "observation"] == [recorded["note_id"]]

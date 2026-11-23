@@ -563,6 +563,7 @@ def _verified_result_rows(
     offset: int = 0,
     record_type: str | None = None,
     citations: bool = False,
+    row_indices: set[int] | None = None,
     visit: Callable[[dict, dict, int, bytes], None] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], int]:
     """Load a result bundle only after exact path, digest, and count validation."""
@@ -599,6 +600,8 @@ def _verified_result_rows(
                 if visit is not None:
                     visit(meta, value, row_count, line)
                 row_count += 1
+                if row_indices is not None and row_count - 1 not in row_indices:
+                    continue
                 if record_type is not None and value.get("record_type") != record_type:
                     continue
                 if matching_count >= offset and (limit is None or len(rows) < limit):
