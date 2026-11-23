@@ -62,6 +62,8 @@ Follow a **triage-ladder** pattern. Each step informs the next; don't skip ahead
 
 For multi-step incidents and hypothesis hunts, open a tenant-local inquiry and bind subsequent hunts to the question they test. Use the inquiry commands and row citation conventions in [AGENTS.md](../AGENTS.md#question-led-investigations). A reported click establishes a timeline anchor. Check whether navigation succeeded, which identity and endpoint were involved, and which effects could be attributed to that event. Compare suspicious sign-ins with prior activity and process launches with file origin, parent process, user and device. Record a missing endpoint timeline as a visibility gap. The analyst's scope and the evidence determine how far to expand.
 
+Across alert families, ask which plausible explanation or consequence would most change the conclusion. For instance, a failed account-wide lookup still leaves a destination logon, saved incident evidence, or a narrower time-bounded read available to test parts of the question. Respect the reason for a block. If all authorized alternatives are exhausted, describe exactly what each source covered and what remains unknown. Surface that limitation alongside any narrower finding the evidence supports.
+
 ## Writing effective hunts
 
 When no library query fits, write scoped KQL. Unscoped queries produce unreadable wide tables, exhaust the 10-min-per-hour CPU quota, and return noise instead of signal.

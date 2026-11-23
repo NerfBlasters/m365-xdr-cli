@@ -274,3 +274,116 @@ def test_passive_memory_reports_provider_relation_and_respects_opt_out(tmp_path,
     config.write_text('tenant_id="example"\nentity_memory=false\n')
     assert not relations()
     assert runner.invoke(app, ["inquiry", "index", source.receipt.run_id]).exit_code == 13
+
+
+def test_failed_and_empty_reads_keep_material_question_and_finish_shows_limit(
+    monkeypatch, tmp_path
+):
+    from unittest.mock import AsyncMock, patch
+    from xdr_cli.hunting_result import HuntingResult
+
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path))
+    (tmp_path / "config.toml").write_text('tenant_id="test"\n')
+    runner = CliRunner()
+
+    def run(*args, code=0):
+        result = runner.invoke(app, list(args))
+        assert result.exit_code == code, result.output
+        return json.loads(result.stdout.splitlines()[0])
+
+    def view(*args):
+        receipt = run("inquiry", "view", inquiry, *args)
+        return list(map(json.loads, Path(receipt["data_path"]).read_text().splitlines()))
+
+    source = write_result([{"id": "event"}], command="alerts show", tenant_id="test")
+    opened = run(
+        "inquiry", "open", "Determine observed activity", "--source", source.receipt.run_id
+    )
+    inquiry, root = opened["inquiry_id"], opened["question_id"]
+    child_args = ["--inquiry", inquiry, "--question", root, "--ask", "Who else was affected?"]
+    failure = run("library", "run", "missing_query", *child_args, code=5)
+    questions = [row for row in view() if row.get("parent_id") == root]
+    (child,) = questions
+    assert child["state"] == "open"
+    failures = [r for r in view("--question", child["id"]) if r["record_type"] == "failed-read"]
+    assert failures[0]["error_code"] == failure["error"]["code"]
+    fake = AsyncMock(return_value=HuntingResult([], [], {}))
+    with (
+        patch("xdr_cli.commands.hunt_cmd.AuthManager"),
+        patch("xdr_cli.commands.hunt_cmd.run_query", new=fake),
+    ):
+        empty = run("hunt", "run", "DeviceEvents | take 1", *child_args)
+    assert empty["rows"] == 0 and empty["context"]["question_id"] == child["id"]
+    assert empty["context"]["investigation_hint"]
+    run("inquiry", "finish", inquiry, code=13)
+    ref = run("results", "cite", source.receipt.run_id, "--line", "1")["data"]["citation"]
+    note = run(
+        "inquiry",
+        "note",
+        inquiry,
+        "One device reported activity",
+        "--question",
+        root,
+        "--cite",
+        ref,
+    )
+    checked = run(
+        "inquiry", "check", inquiry, opened["impact_check_id"], "--basis", note["note_id"]
+    )
+    limit = "Alternate endpoint source was empty. Other devices lack telemetry in this window."
+    assessed = run(
+        "inquiry",
+        "answer",
+        inquiry,
+        limit,
+        "--question",
+        child["id"],
+        "--state",
+        "inconclusive",
+        "--revision",
+        str(checked["revision"]),
+    )
+    run(
+        "inquiry",
+        "answer",
+        inquiry,
+        "Activity confirmed on the reporting device.",
+        "--question",
+        root,
+        "--state",
+        "answered",
+        "--basis",
+        note["note_id"],
+        "--revision",
+        str(assessed["revision"]),
+    )
+    done = run("inquiry", "finish", inquiry)
+    assert done["limitations"] == [
+        {"question": child["objective"], "question_id": child["id"], "reason": limit}
+    ]
+    for args in (["--ask", "private question"], ["--ask=private question"]):
+        assert "private question" not in str(_redact_argv(["hunt", "run", *args], "hunt run"))
+
+
+def test_existing_inquiry_survives_read_failure_schema_upgrade(tmp_path, monkeypatch):
+    import sqlite3
+    from xdr_cli.inquiries import _SCHEMA, inquiry_transaction
+    from xdr_cli.results import tenant_fingerprint
+
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path))
+    directory = tmp_path / "inquiries" / tenant_fingerprint("example")
+    directory.mkdir(parents=True)
+    db = sqlite3.connect(directory / "inquiries.sqlite")
+    try:
+        with db:
+            for sql in _SCHEMA:
+                db.execute(sql)
+            db.execute("INSERT INTO inquiry VALUES ('existing',17)")
+            db.execute("PRAGMA user_version=1")
+    finally:
+        db.close()
+    for _ in range(2):
+        with inquiry_transaction("example") as (db, _tenant):
+            assert db.execute("PRAGMA user_version").fetchone() == (2,)
+            assert db.execute("SELECT * FROM inquiry").fetchall() == [("existing", 17)]
+            assert db.execute("SELECT count(*) FROM read_failure").fetchone() == (0,)

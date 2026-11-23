@@ -280,6 +280,7 @@ def _redact_argv(argv: list[str], chain: str | None = None) -> list[str]:
         # `device live-respnse exec ...` that never dispatches. Fail closed
         # rather than record console text or paths in the session log.
         return _redact_live_response_argv(argv, chain)
+    private_flags = _SECRET_ARGV_FLAGS | {"--ask"}
     redacted: list[str] = []
     redact_next = False
     for arg in argv:
@@ -288,11 +289,11 @@ def _redact_argv(argv: list[str], chain: str | None = None) -> list[str]:
             redact_next = False
             continue
         name, sep, _value = arg.partition("=")
-        if sep and name in _SECRET_ARGV_FLAGS:
+        if sep and name in private_flags:
             redacted.append(f"{name}={_REDACTED_PLACEHOLDER}")
             continue
         redacted.append(arg)
-        if arg in _SECRET_ARGV_FLAGS:
+        if arg in private_flags:
             redact_next = True
     return redacted
 

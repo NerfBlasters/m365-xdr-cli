@@ -1183,6 +1183,7 @@
       ]
     },
     "hunt run:--from-stdin": {
+      "ask": null,
       "from_file": null,
       "from_stdin": true,
       "inquiry": null,
@@ -1192,6 +1193,7 @@
       "timeout": null
     },
     "hunt run:--raw": {
+      "ask": null,
       "from_file": null,
       "from_stdin": false,
       "inquiry": null,
@@ -1201,6 +1203,7 @@
       "timeout": null
     },
     "hunt run:required": {
+      "ask": null,
       "from_file": null,
       "from_stdin": false,
       "inquiry": null,
@@ -1210,6 +1213,7 @@
       "timeout": null
     },
     "hunt run:supplied": {
+      "ask": "sample",
       "from_file": {
         "path": "<output-path>"
       },
@@ -1442,6 +1446,7 @@
       "tier": "sample"
     },
     "library run:--raw": {
+      "ask": null,
       "inquiry": null,
       "name": "sample",
       "param": null,
@@ -1450,6 +1455,7 @@
       "timeout": null
     },
     "library run:required": {
+      "ask": null,
       "inquiry": null,
       "name": "sample",
       "param": null,
@@ -1458,6 +1464,7 @@
       "timeout": null
     },
     "library run:supplied": {
+      "ask": "sample",
       "inquiry": "sample",
       "name": "sample",
       "param": [
@@ -7816,7 +7823,7 @@
           "count": false,
           "default": null,
           "envvar": null,
-          "help": "Question tested by this read.",
+          "help": "Question tested, or parent when using --ask.",
           "hidden": false,
           "is_eager": false,
           "is_flag": false,
@@ -7826,6 +7833,27 @@
           "nargs": 1,
           "opts": [
             "--question"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Open or reuse this child question before the read.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "ask",
+          "nargs": 1,
+          "opts": [
+            "--ask"
           ],
           "required": false,
           "secondary_opts": [],
@@ -9186,7 +9214,7 @@
           "count": false,
           "default": null,
           "envvar": null,
-          "help": "Question tested by this read.",
+          "help": "Question tested, or parent when using --ask.",
           "hidden": false,
           "is_eager": false,
           "is_flag": false,
@@ -9196,6 +9224,27 @@
           "nargs": 1,
           "opts": [
             "--question"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Open or reuse this child question before the read.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "ask",
+          "nargs": 1,
+          "opts": [
+            "--ask"
           ],
           "required": false,
           "secondary_opts": [],

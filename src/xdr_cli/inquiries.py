@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import sys
 from contextlib import closing, contextmanager
 from functools import cache
 from importlib.resources import files
@@ -18,7 +19,9 @@ from xdr_cli.exceptions import (
     ConfigError,
     ConflictError,
     LocalNotFoundError,
+    PartialSuccessError,
     UsageError,
+    XDRError,
 )
 from xdr_cli.inquiry_entities import index_row
 from xdr_cli.queries import load_query, query_source_hash
@@ -86,8 +89,14 @@ def inquiry_transaction(tenant_id: str | None):
                 if version == 0:
                     for statement in _SCHEMA:
                         db.execute(statement)
-                    db.execute("PRAGMA user_version=1")
-                elif version != 1:
+                if version in (0, 1):
+                    db.execute(
+                        "CREATE TABLE read_failure (question_id TEXT NOT NULL REFERENCES "
+                        "question(id) ON DELETE CASCADE, command TEXT NOT NULL, "
+                        "error_code TEXT NOT NULL, recorded_at TEXT DEFAULT CURRENT_TIMESTAMP)"
+                    )
+                    db.execute("PRAGMA user_version=2")
+                elif version != 2:
                     raise ConflictError("Unsupported inquiry database version.")
                 yield db, fingerprint
     except (sqlite3.Error, OSError) as exc:
@@ -224,14 +233,42 @@ def attach_run(tenant_id, inquiry, question, run, rationale):
         return {**_receipt(db, inquiry, question), **evidence}
 
 
-def bind_read(ctx, inquiry: str | None, question: str | None) -> None:
-    if inquiry is None and question is None:
+@contextmanager
+def bound_read(ctx, inquiry, question, ask):
+    if inquiry is None and question is None and ask is None:
+        yield
         return
     if not inquiry or not question:
-        raise UsageError("Supply --inquiry and --question together.")
-    with inquiry_transaction(ctx.config.tenant_id) as (db, _):
-        validate_question(db, inquiry, question)
+        raise UsageError("Supply --inquiry and --question together, including with --ask.")
+    if ask is not None:
+        if not ask.strip():
+            raise UsageError("Supply a material question with --ask.")
+        question = add_question(ctx, inquiry, question, ask.strip())["question_id"]
+    else:
+        with inquiry_transaction(ctx.config.tenant_id) as (db, _):
+            validate_question(db, inquiry, question)
     ctx.inquiry_binding = (inquiry, question)
+    try:
+        yield
+    except PartialSuccessError:
+        # The durable result has its own recovery command.
+        raise
+    except Exception as exc:
+        code = exc.error_code if isinstance(exc, XDRError) else "READ_FAILED"
+        try:
+            with inquiry_transaction(ctx.config.tenant_id) as (db, _):
+                validate_question(db, inquiry, question)
+                db.execute(
+                    "INSERT INTO read_failure(question_id,command,error_code) VALUES (?,?,?)",
+                    (question, ctx.invoked_command, code),
+                )
+                _reopen(db, inquiry, question)
+        except XDRError as record_error:
+            # Preserve the read's exit code, retry delay and original recovery instructions.
+            print(f"Could not record failed read ({record_error.error_code}).", file=sys.stderr)
+        print(f"Review the question: xdr inquiry view {inquiry} --question {question}",
+              file=sys.stderr)
+        raise
 
 
 def inquiry_view(ctx, inquiry, question, entity=None, prior=False):
@@ -251,6 +288,12 @@ def inquiry_view(ctx, inquiry, question, entity=None, prior=False):
             "root_id": root[0],
         }
         rows = [summary]
+        for command, code, recorded_at in db.execute(
+            "SELECT command,error_code,recorded_at FROM read_failure "
+            "WHERE question_id=? ORDER BY rowid", (question,),
+        ):
+            rows.append({"record_type": "failed-read", "question_id": question,
+                         "command": command, "error_code": code, "recorded_at": recorded_at})
         for ident, description, state, trigger in db.execute(
             "SELECT id,description,state,trigger_ref FROM impact_check "
             "WHERE question_id=? ORDER BY rowid",
@@ -599,6 +642,8 @@ def settle_check(ctx, inquiry, check, basis, reason):
 
 
 def answer_question(ctx, inquiry, question, state, text, basis, revision):
+    if not text.strip():
+        raise UsageError("Explain the assessment or the remaining limit.")
     with inquiry_transaction(ctx.config.tenant_id) as (db, tenant):
         validate_question(db, inquiry, question)
         if _receipt(db, inquiry, question)["revision"] != revision:
@@ -688,6 +733,15 @@ def finish_inquiry(ctx, inquiry):
         return {
             **_receipt(db, inquiry, root[0]), "root_state": root[1], "outstanding": 0,
             "assessment": explanation, "basis": json.loads(basis),
+            "limitations": [
+                {"question_id": q, "question": objective, "reason": reason}
+                for q, objective, reason in db.execute(
+                    "SELECT q.id,q.objective,a.explanation FROM question q JOIN assessment a "
+                    "ON a.question_id=q.id WHERE q.inquiry_id=? AND q.state='inconclusive' "
+                    "AND a.revision=(SELECT MAX(revision) FROM assessment WHERE question_id=q.id) "
+                    "ORDER BY q.rowid", (inquiry,),
+                )
+            ],
         }
 
 

@@ -16,7 +16,7 @@ from xdr_cli.cli_params import optional_multiple
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import PartialSuccessError, UsageError, XDRError
-from xdr_cli.inquiries import attach_run, bind_read
+from xdr_cli.inquiries import attach_run, bound_read
 from xdr_cli.queries import load_query, parse_frontmatter, query_source_hash
 from xdr_cli.results import emit_result, write_result
 from xdr_cli.schema_graph.ingest import infer_direct_table_lineage
@@ -66,7 +66,8 @@ hunt_app = click.Group(
     ),
 )
 @click.option("--inquiry", default=None, help="Attach this read to the specified inquiry.")
-@click.option("--question", default=None, help="Question tested by this read.")
+@click.option("--question", default=None, help="Question tested, or parent when using --ask.")
+@click.option("--ask", default=None, help="Open or reuse this child question before the read.")
 @click.pass_context
 def hunt_run(
     ctx: click.Context,
@@ -76,14 +77,15 @@ def hunt_run(
     raw: bool,
     inquiry: str | None,
     question: str | None,
+    ask: str | None,
     timeout: int | None,
 ) -> None:
     """Run a KQL advanced hunting query."""
     app_ctx: AppContext = ctx.obj
-    bind_read(app_ctx, inquiry, question)
-    asyncio.run(
-        _hunt_run_with_source(app_ctx, kql, from_file, from_stdin, raw, timeout)
-    )
+    with bound_read(app_ctx, inquiry, question, ask):
+        asyncio.run(
+            _hunt_run_with_source(app_ctx, kql, from_file, from_stdin, raw, timeout)
+        )
 
 
 async def _hunt_run_with_source(
@@ -215,6 +217,12 @@ async def _hunt_run(
             ) from exc
         assert artifact.receipt.context is not None
         artifact.receipt.context["inquiry_command"] = bound["inquiry_command"]
+        artifact.receipt.context["question_id"] = question
+        if artifact.receipt.rows == 0:
+            artifact.receipt.context["investigation_hint"] = (
+                "Check source coverage, identifiers and time window. If this question still "
+                "matters, inspect another authorized source or explain the remaining limit."
+            )
     emit_result(artifact)
 
 

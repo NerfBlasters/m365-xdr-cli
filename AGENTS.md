@@ -109,6 +109,10 @@ Use `xdr results rows RUN --citations` (also available on `head`) to copy a veri
 
 Record a material observation with `xdr inquiry note I "OBSERVATION" --question Q --cite REF`. Use `--signal permitted-click` when evidence establishes navigation in a phishing investigation. Investigate account activity and endpoint download/execution, assess benign alternatives, and record material scope or visibility limits. The inquiry also recognizes clicks in physically attributed UrlClickEvents results. Use `inquiry question` for additional leads, `check` to disposition work, and `answer` with the latest revision. Run `inquiry finish I` before reporting the conclusion. Exit 15 identifies outstanding requests requiring analyst input.
 
+When a material question motivates a new hunt or library read, use `--inquiry I --question PARENT --ask "QUESTION"` to save it before dispatch. Reuse its returned question ID for follow-up reads. If the harness blocks the command before the CLI starts, record the question with `xdr inquiry question I "QUESTION" --parent PARENT` and record what was denied with `inquiry answer --state open` at the current revision. Continue investigating that question through authorized alternatives.
+
+Before concluding, ask what plausible alternative would most change the assessment and which evidence would distinguish it. Cite existing evidence if it settles the issue. After a failed or empty read, check coverage, identifiers, scope and timing. Pursue a materially different authorized source or saved artifact when available and continue independent branches. Honor denials and rate limits. When a material question remains unresolved, record the alternatives tried and the remaining limit in its inconclusive assessment, or request the specific analyst input needed. A scoped zero can support a scoped conclusion when coverage is established.
+
 ## 2. Destructive actions — guidance only
 
 Device-state-changing commands must never be executed by the agent:
