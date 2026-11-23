@@ -13,6 +13,7 @@ in the main branch ruleset; the PR-only version check may skip on other events.
 | Bandit | Medium/high-severity, high-confidence Python security patterns |
 | actionlint and zizmor | Workflow correctness and GitHub Actions security |
 | Distribution checks | Build, metadata validation, private-artifact rejection, clean wheel install |
+| PR version and changelog | Check package-impacting diffs against the base version and changelog. [Release scope and exemptions](../CONTRIBUTING.md#5-versioning-and-releases) |
 | Website | Locked Node dependencies, npm audit, content/build/link checks, browser and accessibility tests |
 
 Existing regression tests cover token/cookie output suppression, secret-file
@@ -114,7 +115,7 @@ Node version and npm lockfile, disable dependency install scripts, and fail on
 high/critical npm audit findings. Browser evidence is retained for seven days.
 See [website maintenance](../website/README.md) for local commands and domain setup.
 
-Before publishing, configure and verify these GitHub settings:
+Maintainers should verify these settings on the public repository:
 
 - Require PRs and `CI gate` on main; require the branch to be current.
 - While solo, require zero approving reviews and leave required CODEOWNER

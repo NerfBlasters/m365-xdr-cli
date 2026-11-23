@@ -236,30 +236,29 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      # Scope gate: PRs whose ENTIRE diff is under .github/ don't change the
-      # shipped package, so the version-bump/CHANGELOG policy doesn't apply
-      # (CONTRIBUTING §5). Three constructions are load-bearing:
-      #   --no-renames  — a rename src/x.py -> .github/x.py must list BOTH
-      #                   endpoints; default rename detection lists only the
-      #                   destination and would misclassify the PR as `.github/`-only.
-      #   files=$(...)  — variable capture (not a pipeline) so the default
-      #                   `bash -e` aborts the step if $base is unresolvable;
-      #                   the pipeline form fails OPEN to shipped=false.
-      #   [ -z ] branch — empty diff → shipped=true, preserving the current
-      #                   behavior that an empty PR fails the version check.
-      - name: Check if PR touches shipped code
+      - name: Classify release impact
         id: scope
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          base="$BASE_SHA"
-          files=$(git diff --name-only --no-renames "$base" HEAD)
-          if [ -z "$files" ] || grep -qv '^\.github/' <<< "$files"; then
-            echo "shipped=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "shipped=false" >> "$GITHUB_OUTPUT"
-            echo "Scope: all changed paths are under .github/ — version-bump/CHANGELOG checks skipped for this PR"
+          # Use Git pathspecs so renamed files and unusual filenames keep their scope.
+          # Empty diffs and changes outside the exemption list require release metadata.
+          shipped=true
+          if git diff --quiet --no-renames "$BASE_SHA" HEAD -- . \
+              ':(exclude).github/**' ':(exclude)website/**' ':(exclude)tests/**' \
+              ':(exclude)CONTRIBUTING.md' ':(exclude)docs/contributing-walkthrough.md' \
+              ':(exclude)docs/ci.md'; then
+            if git diff --quiet "$BASE_SHA" HEAD; then
+              echo "Empty diff"
+            elif [ "$?" -eq 1 ]; then
+              shipped=false
+            else
+              exit 1
+            fi
+          elif [ "$?" -ne 1 ]; then
+            exit 1
           fi
+          echo "shipped=$shipped" >> "$GITHUB_OUTPUT"
       - name: Verify pyproject.toml version was bumped (and increased)
         if: steps.scope.outputs.shipped == 'true'
         env:
@@ -269,7 +268,7 @@ jobs:
           base_v=$(git show "$base:pyproject.toml" | sed -n 's/^version = "\(.*\)"$/\1/p' | head -1)
           head_v=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)
           if [ "$base_v" = "$head_v" ]; then
-            echo "::error file=pyproject.toml::Version not bumped (still $head_v). Per CONTRIBUTING.md §5, every PR must bump pyproject.toml version (PATCH at minimum)."
+            echo "::error file=pyproject.toml::Version not bumped (still $head_v). Per CONTRIBUTING.md §5, this change must bump pyproject.toml version (PATCH at minimum)."
             exit 1
           fi
           larger=$(printf '%s\n%s\n' "$base_v" "$head_v" | sort -V | tail -1)
@@ -285,7 +284,7 @@ jobs:
         run: |
           base="$BASE_SHA"
           if git diff --quiet "$base" HEAD -- CHANGELOG.md; then
-            echo "::error file=CHANGELOG.md::CHANGELOG.md not updated. Per CONTRIBUTING.md §5, every PR must add an entry under a new version heading."
+            echo "::error file=CHANGELOG.md::CHANGELOG.md not updated. Per CONTRIBUTING.md §5, this change must add an entry under a new version heading."
             exit 1
           fi
           echo "CHANGELOG.md updated"
