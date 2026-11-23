@@ -28,6 +28,7 @@ class ExitCode(IntEnum):
     ARTIFACT_ERROR = 12
     CONFLICT = 13
     PARTIAL_SUCCESS = 14
+    ANALYST_REQUIRED = 15
 
 
 class XDRError(Exception):

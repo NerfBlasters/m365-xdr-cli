@@ -1,3 +1,7 @@
+---
+inquiry: {"version": 1, "titles": ["Email messages containing malicious file removed after delivery", "Email messages containing malicious URL removed after delivery", "Email messages from a campaign removed after delivery", "Email messages removed after delivery", "Messages containing malicious entity not removed after delivery"], "checks": [{"id": "email-malicious-delivery.1", "description": "Pull alert evidence"}, {"id": "email-malicious-delivery.2", "description": "Determine delivery status"}, {"id": "email-malicious-delivery.3", "description": "Assess blast radius"}, {"id": "email-malicious-delivery.4", "description": "Examine the malicious content"}, {"id": "email-malicious-delivery.5", "description": "Check for user interaction"}, {"id": "email-malicious-delivery.6", "description": "Scope the threat artifact"}, {"id": "email-malicious-delivery.7", "description": "Check for post-compromise activity"}]}
+---
+
 # Alert Type: Malicious email delivery — ZAP removals and failed removals
 
 ## Overview

@@ -1,3 +1,7 @@
+---
+inquiry: {"version": 1, "titles": ["Command and Control behavior", "Connection to a custom network indicator", "Suspicious connection blocked by network protection", "Horizontal port scan"], "checks": [{"id": "endpoint-command-and-control.1", "description": "Pull alert evidence"}, {"id": "endpoint-command-and-control.2", "description": "Identify the initiating process"}, {"id": "endpoint-command-and-control.3", "description": "Check for beaconing patterns"}, {"id": "endpoint-command-and-control.4", "description": "Build the process tree"}, {"id": "endpoint-command-and-control.5", "description": "Check for encoded commands"}, {"id": "endpoint-command-and-control.6", "description": "Assess lateral movement"}, {"id": "endpoint-command-and-control.7", "description": "Scope the C2 infrastructure"}]}
+---
+
 # Alert Type: Command and control behavior / suspicious network connections
 
 ## Overview

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -561,6 +562,8 @@ def _verified_result_rows(
     limit: int | None = None,
     offset: int = 0,
     record_type: str | None = None,
+    citations: bool = False,
+    visit: Callable[[dict, dict, int, bytes], None] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], int]:
     """Load a result bundle only after exact path, digest, and count validation."""
 
@@ -587,14 +590,22 @@ def _verified_result_rows(
             for line in handle:
                 digest.update(line)
                 if not line.strip():
+                    if citations:
+                        raise ValueError("blank line prevents physical row addressing")
                     continue
                 value = json.loads(line)
                 if not isinstance(value, dict):
                     raise ValueError("result row is not a JSON object")
+                if visit is not None:
+                    visit(meta, value, row_count, line)
                 row_count += 1
                 if record_type is not None and value.get("record_type") != record_type:
                     continue
                 if matching_count >= offset and (limit is None or len(rows) < limit):
+                    if citations:
+                        payload = line.removesuffix(b"\n").removesuffix(b"\r")
+                        row_hash = hashlib.sha256(payload).hexdigest()
+                        value = {"citation": f"{run_id}:{row_count - 1}:{row_hash}", "row": value}
                     rows.append(value)
                 matching_count += 1
     except OSError as exc:
@@ -773,7 +784,9 @@ def results_query(
     show_default=True,
     help="Maximum private rows to print (1-100; default 20).",
 )
+@click.option("--citations", is_flag=True, help="Pair each row with its verified citation.")
 def results_head(
+    citations: bool,
     run_id: str,
     limit: int,
 ) -> None:
@@ -787,7 +800,7 @@ def results_head(
     """
 
     meta_path = _find_meta(run_id)
-    meta, rows, total = _verified_result_rows(meta_path, limit=limit)
+    meta, rows, total = _verified_result_rows(meta_path, limit=limit, citations=citations)
     _emit(
         {
             "status": "success",
@@ -826,7 +839,9 @@ def results_head(
     show_default=True,
     help="Maximum private matching rows to print (1-1000; default 100).",
 )
+@click.option("--citations", is_flag=True, help="Pair each row with its verified citation.")
 def results_rows(
+    citations: bool,
     run_id: str,
     record_type: str | None,
     offset: int,
@@ -856,6 +871,7 @@ def results_rows(
         limit=limit,
         offset=offset,
         record_type=record_type,
+        citations=citations,
     )
     next_offset = offset + len(rows)
     _emit(
@@ -872,6 +888,7 @@ def results_rows(
                 "next_command": (
                     f"xdr results rows {meta.get('run_id')} "
                     + (f"--type {record_type} " if record_type else "")
+                    + ("--citations " if citations else "")
                     + f"--offset {next_offset} --limit {limit}"
                     if next_offset < total
                     else None
@@ -880,6 +897,24 @@ def results_rows(
             },
         }
     )
+
+
+@results_app.command("cite")
+@click.argument("run_id")
+@click.option("--line", type=click.IntRange(min=1), default=None, help="One-based JSONL line.")
+@click.option("--index", type=click.IntRange(min=0), default=None, help="Absolute row index.")
+def results_cite(run_id: str, line: int | None, index: int | None) -> None:
+    """Resolve an original JSONL position and inspect its private evidence row."""
+    if (line is None) == (index is None):
+        raise UsageError("Supply exactly one of --line and --index.")
+    offset = line - 1 if line is not None else index
+    assert offset is not None
+    meta, rows, _ = _verified_result_rows(
+        _find_meta(run_id), limit=1, offset=offset, citations=True
+    )
+    if not rows:
+        raise LocalNotFoundError("result row", str(offset))
+    _emit({"status": "success", "data": rows[0], "metadata": {"run_id": meta["run_id"]}})
 
 
 @results_app.command("shape")
@@ -1009,6 +1044,9 @@ def results_prune(
                         discovery_retired_before=cutoff.isoformat(),
                     )
         try:
+            from xdr_cli.inquiries import retire_sources_locked
+
+            retire_sources_locked([meta.name.removesuffix(".meta.json") for meta, _ in targets])
             for meta_path, data_path in targets:
                 for path in (data_path, meta_path):
                     if path is None or not path.exists():

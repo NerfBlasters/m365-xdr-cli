@@ -1,3 +1,7 @@
+---
+inquiry: {"version": 1, "titles": ["Ransomware"], "checks": [{"id": "endpoint-ransomware.1", "description": "Pull alert evidence"}, {"id": "endpoint-ransomware.2", "description": "Determine if encryption is active or was blocked"}, {"id": "endpoint-ransomware.3", "description": "Check for shadow copy deletion"}, {"id": "endpoint-ransomware.4", "description": "Build the attack chain"}, {"id": "endpoint-ransomware.5", "description": "Identify the ransomware binary"}, {"id": "endpoint-ransomware.6", "description": "Check for lateral movement"}, {"id": "endpoint-ransomware.7", "description": "Check the compromised account"}]}
+---
+
 # Alert Type: Ransomware indicators
 
 ## Overview

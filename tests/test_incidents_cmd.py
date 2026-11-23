@@ -60,7 +60,7 @@ def test_incidents_show_json(mock_client_cls, mock_auth_cls, tmp_path, monkeypat
 
     result = runner.invoke(app, ["incidents", "show", "42"])
     assert result.exit_code == 0
-    parsed, preview = [json.loads(line) for line in result.output.splitlines()]
+    parsed, preview = [json.loads(line) for line in result.stdout.splitlines()]
     assert parsed["incident_id"] == "42"
     assert preview["id"] == "42"
 

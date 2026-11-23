@@ -1,3 +1,7 @@
+---
+inquiry: {"version": 1, "titles": ["Anomalous Token", "Potential user account compromise"], "checks": [{"id": "identity-anomalous-token.1", "description": "Pull alert evidence"}, {"id": "identity-anomalous-token.2", "description": "Run the token theft replay library query"}, {"id": "identity-anomalous-token.3", "description": "Pull detailed sign-in history"}, {"id": "identity-anomalous-token.4", "description": "Separate the user's sessions from the attacker's"}, {"id": "identity-anomalous-token.5", "description": "Assess attacker activity"}, {"id": "identity-anomalous-token.6", "description": "Check for inbox rule manipulation and mail forwarding"}, {"id": "identity-anomalous-token.7", "description": "Determine the theft vector"}]}
+---
+
 # Alert Type: Anomalous token / token theft
 
 ## Overview

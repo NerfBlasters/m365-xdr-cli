@@ -1,3 +1,7 @@
+---
+inquiry: {"version": 1, "titles": ["Suspected brute-force attack", "Suspected Golden Ticket", "Suspected identity theft (pass-the-ticket)", "Security principal reconnaissance (LDAP)", "User and group membership reconnaissance (SAMR)"], "checks": [{"id": "mdi-identity-attack.1", "description": "Pull alert evidence"}, {"id": "mdi-identity-attack.2", "description": "Determine the attack type and respond accordingly"}, {"id": "mdi-identity-attack.3", "description": "Identify the source device"}, {"id": "mdi-identity-attack.4", "description": "Check for lateral movement"}, {"id": "mdi-identity-attack.5", "description": "Check for privilege escalation"}, {"id": "mdi-identity-attack.6", "description": "Correlate with cloud activity"}]}
+---
+
 # Alert Type: MDI identity attacks — Golden Ticket, pass-the-ticket, brute-force, reconnaissance
 
 ## Overview

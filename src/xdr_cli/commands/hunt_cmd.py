@@ -15,7 +15,8 @@ from xdr_cli.backends import create_client
 from xdr_cli.cli_params import optional_multiple
 from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
-from xdr_cli.exceptions import UsageError
+from xdr_cli.exceptions import PartialSuccessError, UsageError, XDRError
+from xdr_cli.inquiries import attach_run, bind_read
 from xdr_cli.queries import load_query, parse_frontmatter, query_source_hash
 from xdr_cli.results import emit_result, write_result
 from xdr_cli.schema_graph.ingest import infer_direct_table_lineage
@@ -64,6 +65,8 @@ hunt_app = click.Group(
         "tables — these can run 30-90s+ on Defender."
     ),
 )
+@click.option("--inquiry", default=None, help="Attach this read to the specified inquiry.")
+@click.option("--question", default=None, help="Question tested by this read.")
 @click.pass_context
 def hunt_run(
     ctx: click.Context,
@@ -71,10 +74,13 @@ def hunt_run(
     from_file: Path | None,
     from_stdin: bool,
     raw: bool,
+    inquiry: str | None,
+    question: str | None,
     timeout: int | None,
 ) -> None:
     """Run a KQL advanced hunting query."""
     app_ctx: AppContext = ctx.obj
+    bind_read(app_ctx, inquiry, question)
     asyncio.run(
         _hunt_run_with_source(app_ctx, kql, from_file, from_stdin, raw, timeout)
     )
@@ -173,6 +179,7 @@ async def _hunt_run(
     execution_time_ms = api_ms if api_ms is not None else recorded.wall_clock_ms
     artifact = write_result(
         expanded,
+        cite_previews=ctx.inquiry_binding is not None,
         command=ctx.invoked_command or "hunt run",
         execution_time_ms=execution_time_ms,
         server_truncation_state="unknown",
@@ -195,6 +202,19 @@ async def _hunt_run(
         tenant_id=ctx.config.tenant_id,
         physical_lineage_table=infer_direct_table_lineage(kql),
     )
+    if ctx.inquiry_binding:
+        inquiry, question = ctx.inquiry_binding
+        run = artifact.receipt.run_id
+        try:
+            bound = attach_run(ctx.config.tenant_id, inquiry, question, run, ctx.rationale)
+        except XDRError as exc:
+            emit_result(artifact)
+            raise PartialSuccessError(
+                f"Result saved; inquiry attachment failed: {exc.message}",
+                help_command=f"xdr inquiry attach {inquiry} {run} --question {question}",
+            ) from exc
+        assert artifact.receipt.context is not None
+        artifact.receipt.context["inquiry_command"] = bound["inquiry_command"]
     emit_result(artifact)
 
 

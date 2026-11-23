@@ -58,6 +58,10 @@ Follow a **triage-ladder** pattern. Each step informs the next; don't skip ahead
 5. **Determine impact.** Was the threat blocked or did it execute? Was data exfiltrated? Were credentials compromised? Distinguish prevented from delivered/executed explicitly — this is the most important determination for the analyst.
 6. **Present findings.** Deliver a structured summary: timeline table, blast radius, impact assessment. State the evidence clearly so the analyst can make the call.
 
+### Investigating the consequence of a lead
+
+For multi-step incidents and hypothesis hunts, open a tenant-local inquiry and bind subsequent hunts to the question they test. Use the inquiry commands and row citation conventions in [AGENTS.md](../AGENTS.md#question-led-investigations). A reported click establishes a timeline anchor. Check whether navigation succeeded, which identity and endpoint were involved, and which effects could be attributed to that event. Compare suspicious sign-ins with prior activity and process launches with file origin, parent process, user and device. Record a missing endpoint timeline as a visibility gap. The analyst's scope and the evidence determine how far to expand.
+
 ## Writing effective hunts
 
 When no library query fits, write scoped KQL. Unscoped queries produce unreadable wide tables, exhaust the 10-min-per-hour CPU quota, and return noise instead of signal.

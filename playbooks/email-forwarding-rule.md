@@ -1,3 +1,7 @@
+---
+inquiry: {"version": 1, "titles": ["Creation of forwarding/redirect rule", "Creation of email forwarding rule", "Suspicious inbox manipulation rule", "Suspicious Outlook rules"], "checks": [{"id": "email-forwarding-rule.1", "description": "Pull alert evidence"}]}
+---
+
 # Alert Type: Creation of email forwarding/redirect rule
 
 ## Overview

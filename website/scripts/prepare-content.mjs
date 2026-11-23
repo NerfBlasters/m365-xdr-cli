@@ -62,6 +62,8 @@ export function rewriteUrl(url, source, manifest = pages, assetPaths = assets) {
 }
 
 export function renderPage(markdown, page, manifest = pages, assetPaths = assets) {
+  // Inquiry metadata is consumed by the CLI. Keep the published playbook focused on its steps.
+  if (page.source.startsWith('playbooks/')) markdown = markdown.replace(/^---\ninquiry: [^\n]*\n---\n/, '');
   const tree = selectSections(parser.parse(markdown), page.sections);
   // Starlight provides the page heading.
   const first = tree.children[0];

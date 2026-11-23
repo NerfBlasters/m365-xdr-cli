@@ -1,3 +1,7 @@
+---
+inquiry: {"version": 1, "titles": ["Mass download", "Unusual amount of external file activity", "Data theft by departing users"], "checks": [{"id": "dlp-data-exfiltration.1", "description": "Pull alert evidence"}, {"id": "dlp-data-exfiltration.2", "description": "Quantify the activity"}, {"id": "dlp-data-exfiltration.3", "description": "Identify what was accessed"}, {"id": "dlp-data-exfiltration.4", "description": "Check the source IP and location"}, {"id": "dlp-data-exfiltration.5", "description": "Check for external sharing"}, {"id": "dlp-data-exfiltration.6", "description": "Check device-side evidence"}, {"id": "dlp-data-exfiltration.7", "description": "Assess user context"}]}
+---
+
 # Alert Type: Data exfiltration — mass download / unusual external file activity
 
 ## Overview

@@ -596,6 +596,8 @@ def create_session(
     )
     set_current_session(session)
     write_session_start_record(session)
+    print("Expanded incidents can contribute tenant-local entity memory; "
+          "set entity_memory=false to disable passive indexing and prior lookups.", file=sys.stderr)
     return session
 
 

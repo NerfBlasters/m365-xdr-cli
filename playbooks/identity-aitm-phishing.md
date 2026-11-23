@@ -1,3 +1,7 @@
+---
+inquiry: {"version": 1, "titles": ["adversary-in-the-middle", "AiTM"], "checks": [{"id": "identity-aitm-phishing.1", "description": "Pull alert evidence"}, {"id": "identity-aitm-phishing.2", "description": "Identify the phishing proxy"}, {"id": "identity-aitm-phishing.3", "description": "Check if the attacker obtained a session token"}, {"id": "identity-aitm-phishing.4", "description": "Check for token theft indicators"}, {"id": "identity-aitm-phishing.5", "description": "Assess post-compromise activity"}, {"id": "identity-aitm-phishing.6", "description": "Check for inbox rule manipulation"}, {"id": "identity-aitm-phishing.7", "description": "Check blast radius"}]}
+---
+
 # Alert Type: Adversary-in-the-middle (AiTM) phishing
 
 ## Overview

@@ -486,6 +486,7 @@ def write_result(
     extra_metadata: dict[str, Any] | None = None,
     receipt_context: dict[str, Any] | None = None,
     preview_rows: int = DEFAULT_PREVIEW_ROWS,
+    cite_previews: bool = False,
     preview_byte_cap: int = DEFAULT_PREVIEW_BYTE_CAP,
     now: datetime | None = None,
     tenant_id: str | None = None,
@@ -518,6 +519,7 @@ def write_result(
 
     shape: dict[_ShapePath, dict[str, Any]] = {}
     previews: list[dict[str, Any]] = []
+    preview_refs: list[str | None] = []
     row_count = 0
     max_row_bytes = 0
     data_hasher = hashlib.sha256()
@@ -546,7 +548,12 @@ def write_result(
                 if len(previews) < preview_rows:
                     if row_bytes <= preview_byte_cap:
                         previews.append(normalized)
+                        if cite_previews:
+                            row_hash = hashlib.sha256(encoded_bytes).hexdigest()
+                            preview_refs.append(f"{run_id}:{row_count - 1}:{row_hash}")
                     else:
+                        if cite_previews:
+                            preview_refs.append(None)
                         previews.append(
                             {
                                 "record_type": "preview_omitted",
@@ -616,6 +623,8 @@ def write_result(
         os.replace(meta_tmp, meta_path)
         promoted.append(meta_path)
 
+        if cite_previews:
+            receipt_context = {**(receipt_context or {}), "preview_citations": preview_refs}
         receipt = ResultReceipt(
             status="success",
             schema_version=RECEIPT_SCHEMA_VERSION,

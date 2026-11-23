@@ -26,6 +26,7 @@ from xdr_cli.commands.domains_cmd import domains_app
 from xdr_cli.commands.history_cmd import history_app
 from xdr_cli.commands.hunt_cmd import hunt_app
 from xdr_cli.commands.incidents_cmd import incidents_app
+from xdr_cli.commands.inquiry_cmd import inquiry_app
 from xdr_cli.commands.library_cmd import library_app
 from xdr_cli.commands.lists_cmd import lists_app
 from xdr_cli.commands.results_cmd import results_app
@@ -270,6 +271,8 @@ def _redact_argv(argv: list[str], chain: str | None = None) -> list[str]:
     """
     if chain is None:
         _, chain = _resolve_invocation(argv)
+    if chain and chain.split()[0] == "inquiry":
+        return chain.split()
     if _is_live_response(chain):
         return _redact_live_response_argv(argv, chain)
     if chain == "device":
@@ -300,6 +303,7 @@ def _redact_argv(argv: list[str], chain: str | None = None) -> list[str]:
 _LEARNING_GATE_BYPASS: frozenset[str] = frozenset(
     {
         "annotate",
+        "inquiry",
         "session",
         "history",
     }
@@ -559,6 +563,7 @@ app.add_command(domains_app)
 app.add_command(history_app)
 app.add_command(hunt_app)
 app.add_command(incidents_app)
+app.add_command(inquiry_app)
 app.add_command(lists_app)
 app.add_command(library_app)
 app.add_command(results_app)
@@ -611,6 +616,8 @@ def _capture_chain_from_leaf() -> None:
     _audit_dispatched_command(chain, list(sys.argv[1:]))
     if app_ctx.recorder is not None:
         app_ctx.recorder.invoked_command = chain
+        if chain and chain.startswith("inquiry "):
+            app_ctx.recorder.skip_record()
         if chain is not None and chain.startswith(_LIVE_RESPONSE_PREFIX):
             app_ctx.recorder.argv = _redact_argv(list(sys.argv[1:]), chain)
         # Annotate --rationale unconditionally on every recorded invocation.

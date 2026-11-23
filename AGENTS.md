@@ -101,6 +101,14 @@ Opt out with `--raw` when you need the original JSON-encoded string (e.g., pipin
 
 If a value in one of the listed columns fails to parse as JSON, the raw string is preserved (fail-soft). Inspect the raw value via `--raw` to see what the tenant actually returned.
 
+### Question-led investigations
+
+Open a local inquiry with `xdr inquiry open "OBJECTIVE" --source RUN` after inspecting the initial alert or incident. For a hypothesis-led hunt the source is optional. Use the returned inquiry and question IDs on `hunt run` or `library run` with `--inquiry I --question Q`. Follow the receipt's `context.inquiry_command` to inspect impact checks and attached results. If attachment failed after the tenant returned a result, use the local recovery command in the error.
+
+Use `xdr results rows RUN --citations` (also available on `head`) to copy a verified citation. With raw JSONL use `results cite RUN --line N` for one-based physical lines or `--index N` for original zero-based indices. Always inspect the returned row. Filtered page offsets and positions in a sorted array are not citation indices.
+
+Record a material observation with `xdr inquiry note I "OBSERVATION" --question Q --cite REF`. Use `--signal permitted-click` when evidence establishes navigation in a phishing investigation. Investigate account activity and endpoint download/execution, assess benign alternatives, and record material scope or visibility limits. The inquiry also recognizes clicks in physically attributed UrlClickEvents results. Use `inquiry question` for additional leads, `check` to disposition work, and `answer` with the latest revision. Run `inquiry finish I` before reporting the conclusion. Exit 15 identifies outstanding requests requiring analyst input.
+
 ## 2. Destructive actions — guidance only
 
 Device-state-changing commands must never be executed by the agent:
@@ -216,6 +224,7 @@ commands.
 | 12 | Artifact | Local result serialization or I/O failure |
 | 13 | Conflict | Existing state or failed precondition |
 | 14 | Partial success | Durable result exists but suboperations failed |
+| 15 | Analyst required | Inquiry awaits specific analyst input |
 | 130 | Cancelled | Interrupted with Ctrl-C/SIGINT (POSIX convention) |
 
 ## 5. Rate-limit behavior

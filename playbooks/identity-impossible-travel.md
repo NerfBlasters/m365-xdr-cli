@@ -1,3 +1,7 @@
+---
+inquiry: {"version": 1, "titles": ["Impossible travel activity", "Atypical travel"], "checks": [{"id": "identity-impossible-travel.1", "description": "Pull alert evidence"}, {"id": "identity-impossible-travel.2", "description": "Pull detailed sign-in context"}, {"id": "identity-impossible-travel.3", "description": "Determine if one IP is a VPN or proxy"}, {"id": "identity-impossible-travel.4", "description": "Check sign-in baseline — is this normal for the user?"}, {"id": "identity-impossible-travel.5", "description": "Check for token theft indicators"}, {"id": "identity-impossible-travel.6", "description": "Assess post-sign-in activity from the suspicious IP"}, {"id": "identity-impossible-travel.7", "description": "Check for lateral activity"}]}
+---
+
 # Alert Type: Impossible travel activity
 
 ## Overview

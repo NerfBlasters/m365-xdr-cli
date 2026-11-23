@@ -1,0 +1,596 @@
+{
+  "dlp-data-exfiltration": {
+    "version": 1,
+    "titles": [
+      "Mass download",
+      "Unusual amount of external file activity",
+      "Data theft by departing users"
+    ],
+    "checks": [
+      {
+        "id": "dlp-data-exfiltration.1",
+        "description": "Pull alert evidence"
+      },
+      {
+        "id": "dlp-data-exfiltration.2",
+        "description": "Quantify the activity"
+      },
+      {
+        "id": "dlp-data-exfiltration.3",
+        "description": "Identify what was accessed"
+      },
+      {
+        "id": "dlp-data-exfiltration.4",
+        "description": "Check the source IP and location"
+      },
+      {
+        "id": "dlp-data-exfiltration.5",
+        "description": "Check for external sharing"
+      },
+      {
+        "id": "dlp-data-exfiltration.6",
+        "description": "Check device-side evidence"
+      },
+      {
+        "id": "dlp-data-exfiltration.7",
+        "description": "Assess user context"
+      }
+    ]
+  },
+  "email-forwarding-rule": {
+    "version": 1,
+    "titles": [
+      "Creation of forwarding/redirect rule",
+      "Creation of email forwarding rule",
+      "Suspicious inbox manipulation rule",
+      "Suspicious Outlook rules"
+    ],
+    "checks": [
+      {
+        "id": "email-forwarding-rule.1",
+        "description": "Pull alert evidence"
+      }
+    ]
+  },
+  "email-malicious-delivery": {
+    "version": 1,
+    "titles": [
+      "Email messages containing malicious file removed after delivery",
+      "Email messages containing malicious URL removed after delivery",
+      "Email messages from a campaign removed after delivery",
+      "Email messages removed after delivery",
+      "Messages containing malicious entity not removed after delivery"
+    ],
+    "checks": [
+      {
+        "id": "email-malicious-delivery.1",
+        "description": "Pull alert evidence"
+      },
+      {
+        "id": "email-malicious-delivery.2",
+        "description": "Determine delivery status"
+      },
+      {
+        "id": "email-malicious-delivery.3",
+        "description": "Assess blast radius"
+      },
+      {
+        "id": "email-malicious-delivery.4",
+        "description": "Examine the malicious content"
+      },
+      {
+        "id": "email-malicious-delivery.5",
+        "description": "Check for user interaction"
+      },
+      {
+        "id": "email-malicious-delivery.6",
+        "description": "Scope the threat artifact"
+      },
+      {
+        "id": "email-malicious-delivery.7",
+        "description": "Check for post-compromise activity"
+      }
+    ]
+  },
+  "email-malicious-url-click": {
+    "version": 1,
+    "titles": [
+      "potentially malicious URL click",
+      "Device tried to access a phishing site",
+      "HTML attachment phishing attempt",
+      "Phishing document",
+      "User accessed a link in an email subsequently quarantined by ZAP"
+    ],
+    "checks": [
+      {
+        "id": "email-malicious-url-click.1",
+        "description": "Pull alert evidence"
+      },
+      {
+        "id": "email-malicious-url-click.2",
+        "description": "Determine if the user clicked through"
+      },
+      {
+        "id": "email-malicious-url-click.3",
+        "description": "Check the source email (if URL came from email)"
+      },
+      {
+        "id": "email-malicious-url-click.4",
+        "description": "Assess blast radius"
+      },
+      {
+        "id": "email-malicious-url-click.5",
+        "description": "Check endpoint activity"
+      },
+      {
+        "id": "email-malicious-url-click.6",
+        "description": "Check for credential compromise"
+      }
+    ]
+  },
+  "email-suspicious-sending": {
+    "version": 1,
+    "titles": [
+      "Suspicious email sending patterns",
+      "User restricted from sending email"
+    ],
+    "checks": [
+      {
+        "id": "email-suspicious-sending.1",
+        "description": "Pull alert evidence"
+      },
+      {
+        "id": "email-suspicious-sending.2",
+        "description": "Quantify the outbound email"
+      },
+      {
+        "id": "email-suspicious-sending.3",
+        "description": "Examine the content pattern"
+      },
+      {
+        "id": "email-suspicious-sending.4",
+        "description": "Check sign-in context"
+      },
+      {
+        "id": "email-suspicious-sending.5",
+        "description": "Check for inbox rules"
+      },
+      {
+        "id": "email-suspicious-sending.6",
+        "description": "Check for other compromise indicators"
+      }
+    ]
+  },
+  "endpoint-command-and-control": {
+    "version": 1,
+    "titles": [
+      "Command and Control behavior",
+      "Connection to a custom network indicator",
+      "Suspicious connection blocked by network protection",
+      "Horizontal port scan"
+    ],
+    "checks": [
+      {
+        "id": "endpoint-command-and-control.1",
+        "description": "Pull alert evidence"
+      },
+      {
+        "id": "endpoint-command-and-control.2",
+        "description": "Identify the initiating process"
+      },
+      {
+        "id": "endpoint-command-and-control.3",
+        "description": "Check for beaconing patterns"
+      },
+      {
+        "id": "endpoint-command-and-control.4",
+        "description": "Build the process tree"
+      },
+      {
+        "id": "endpoint-command-and-control.5",
+        "description": "Check for encoded commands"
+      },
+      {
+        "id": "endpoint-command-and-control.6",
+        "description": "Assess lateral movement"
+      },
+      {
+        "id": "endpoint-command-and-control.7",
+        "description": "Scope the C2 infrastructure"
+      }
+    ]
+  },
+  "endpoint-malware-generic": {
+    "version": 1,
+    "titles": [
+      "Rimecud",
+      "Gamarue",
+      "Jenxcus",
+      "Hamweq",
+      "Autorun",
+      "malware was detected",
+      "malware was prevented",
+      "detected on one endpoint",
+      "Malware incident",
+      "Malware detection",
+      "Multiple threat families",
+      "Suspicious files incident",
+      "Unwanted software incident",
+      "Endpoint attack notifications",
+      "hacktool was detected",
+      "unwanted software was detected",
+      "unwanted software was prevented",
+      "behavior was blocked"
+    ],
+    "checks": [
+      {
+        "id": "endpoint-malware-generic.1",
+        "description": "Pull alert evidence"
+      },
+      {
+        "id": "endpoint-malware-generic.2",
+        "description": "Determine the verdict: prevented or executed?"
+      },
+      {
+        "id": "endpoint-malware-generic.3",
+        "description": "Trace the delivery vector"
+      },
+      {
+        "id": "endpoint-malware-generic.4",
+        "description": "Build the process tree"
+      },
+      {
+        "id": "endpoint-malware-generic.5",
+        "description": "Scope the threat"
+      },
+      {
+        "id": "endpoint-malware-generic.6",
+        "description": "Check for persistence (if malware executed)"
+      },
+      {
+        "id": "endpoint-malware-generic.7",
+        "description": "Check for network indicators (if malware executed)"
+      }
+    ]
+  },
+  "endpoint-ransomware": {
+    "version": 1,
+    "titles": [
+      "Ransomware"
+    ],
+    "checks": [
+      {
+        "id": "endpoint-ransomware.1",
+        "description": "Pull alert evidence"
+      },
+      {
+        "id": "endpoint-ransomware.2",
+        "description": "Determine if encryption is active or was blocked"
+      },
+      {
+        "id": "endpoint-ransomware.3",
+        "description": "Check for shadow copy deletion"
+      },
+      {
+        "id": "endpoint-ransomware.4",
+        "description": "Build the attack chain"
+      },
+      {
+        "id": "endpoint-ransomware.5",
+        "description": "Identify the ransomware binary"
+      },
+      {
+        "id": "endpoint-ransomware.6",
+        "description": "Check for lateral movement"
+      },
+      {
+        "id": "endpoint-ransomware.7",
+        "description": "Check the compromised account"
+      }
+    ]
+  },
+  "identity-aitm-phishing": {
+    "version": 1,
+    "titles": [
+      "adversary-in-the-middle",
+      "AiTM"
+    ],
+    "checks": [
+      {
+        "id": "identity-aitm-phishing.1",
+        "description": "Pull alert evidence"
+      },
+      {
+        "id": "identity-aitm-phishing.2",
+        "description": "Identify the phishing proxy"
+      },
+      {
+        "id": "identity-aitm-phishing.3",
+        "description": "Check if the attacker obtained a session token"
+      },
+      {
+        "id": "identity-aitm-phishing.4",
+        "description": "Check for token theft indicators"
+      },
+      {
+        "id": "identity-aitm-phishing.5",
+        "description": "Assess post-compromise activity"
+      },
+      {
+        "id": "identity-aitm-phishing.6",
+        "description": "Check for inbox rule manipulation"
+      },
+      {
+        "id": "identity-aitm-phishing.7",
+        "description": "Check blast radius"
+      }
+    ]
+  },
+  "identity-anomalous-token": {
+    "version": 1,
+    "titles": [
+      "Anomalous Token",
+      "Potential user account compromise"
+    ],
+    "checks": [
+      {
+        "id": "identity-anomalous-token.1",
+        "description": "Pull alert evidence"
+      },
+      {
+        "id": "identity-anomalous-token.2",
+        "description": "Run the token theft replay library query"
+      },
+      {
+        "id": "identity-anomalous-token.3",
+        "description": "Pull detailed sign-in history"
+      },
+      {
+        "id": "identity-anomalous-token.4",
+        "description": "Separate the user's sessions from the attacker's"
+      },
+      {
+        "id": "identity-anomalous-token.5",
+        "description": "Assess attacker activity"
+      },
+      {
+        "id": "identity-anomalous-token.6",
+        "description": "Check for inbox rule manipulation and mail forwarding"
+      },
+      {
+        "id": "identity-anomalous-token.7",
+        "description": "Determine the theft vector"
+      }
+    ]
+  },
+  "identity-impossible-travel": {
+    "version": 1,
+    "titles": [
+      "Impossible travel activity",
+      "Atypical travel"
+    ],
+    "checks": [
+      {
+        "id": "identity-impossible-travel.1",
+        "description": "Pull alert evidence"
+      },
+      {
+        "id": "identity-impossible-travel.2",
+        "description": "Pull detailed sign-in context"
+      },
+      {
+        "id": "identity-impossible-travel.3",
+        "description": "Determine if one IP is a VPN or proxy"
+      },
+      {
+        "id": "identity-impossible-travel.4",
+        "description": "Check sign-in baseline — is this normal for the user?"
+      },
+      {
+        "id": "identity-impossible-travel.5",
+        "description": "Check for token theft indicators"
+      },
+      {
+        "id": "identity-impossible-travel.6",
+        "description": "Assess post-sign-in activity from the suspicious IP"
+      },
+      {
+        "id": "identity-impossible-travel.7",
+        "description": "Check for lateral activity"
+      }
+    ]
+  },
+  "identity-password-spray": {
+    "version": 1,
+    "titles": [
+      "Password Spray",
+      "Activity from a password-spray associated IP"
+    ],
+    "checks": [
+      {
+        "id": "identity-password-spray.1",
+        "description": "Pull alert evidence"
+      },
+      {
+        "id": "identity-password-spray.2",
+        "description": "Assess the spray scope"
+      },
+      {
+        "id": "identity-password-spray.3",
+        "description": "Identify compromised accounts"
+      },
+      {
+        "id": "identity-password-spray.4",
+        "description": "Check for post-compromise activity"
+      },
+      {
+        "id": "identity-password-spray.5",
+        "description": "Check for inbox rule manipulation on compromised accounts"
+      },
+      {
+        "id": "identity-password-spray.6",
+        "description": "Analyze the error codes for failed attempts"
+      },
+      {
+        "id": "identity-password-spray.7",
+        "description": "Check on-prem authentication"
+      }
+    ]
+  },
+  "identity-risky-sign-in": {
+    "version": 1,
+    "titles": [
+      "Activity from a TOR IP address",
+      "Activity from an anonymous proxy",
+      "Anonymous IP address",
+      "Unfamiliar sign-in properties",
+      "Malicious IP address",
+      "Suspicious impersonated activity"
+    ],
+    "checks": [
+      {
+        "id": "identity-risky-sign-in.1",
+        "description": "Pull alert evidence"
+      },
+      {
+        "id": "identity-risky-sign-in.2",
+        "description": "Pull the sign-in details"
+      },
+      {
+        "id": "identity-risky-sign-in.3",
+        "description": "Establish the user's baseline"
+      },
+      {
+        "id": "identity-risky-sign-in.4",
+        "description": "Check for TOR/proxy context"
+      },
+      {
+        "id": "identity-risky-sign-in.5",
+        "description": "Assess post-sign-in activity (if sign-in succeeded)"
+      },
+      {
+        "id": "identity-risky-sign-in.6",
+        "description": "Check for multi-signal correlation"
+      }
+    ]
+  },
+  "mdi-identity-attack": {
+    "version": 1,
+    "titles": [
+      "Suspected brute-force attack",
+      "Suspected Golden Ticket",
+      "Suspected identity theft (pass-the-ticket)",
+      "Security principal reconnaissance (LDAP)",
+      "User and group membership reconnaissance (SAMR)"
+    ],
+    "checks": [
+      {
+        "id": "mdi-identity-attack.1",
+        "description": "Pull alert evidence"
+      },
+      {
+        "id": "mdi-identity-attack.2",
+        "description": "Determine the attack type and respond accordingly"
+      },
+      {
+        "id": "mdi-identity-attack.3",
+        "description": "Identify the source device"
+      },
+      {
+        "id": "mdi-identity-attack.4",
+        "description": "Check for lateral movement"
+      },
+      {
+        "id": "mdi-identity-attack.5",
+        "description": "Check for privilege escalation"
+      },
+      {
+        "id": "mdi-identity-attack.6",
+        "description": "Correlate with cloud activity"
+      }
+    ]
+  },
+  "oauth-app-abuse": {
+    "version": 1,
+    "titles": [
+      "Suspicious OAuth app",
+      "Unusual addition of credentials to an OAuth app",
+      "Unusual ISP for an OAuth App",
+      "OAuth application activity from an unknown ISP",
+      "App is similar to previously flagged suspicious apps",
+      "App metadata associated with known phishing campaign",
+      "Increase in data usage by an overprivileged",
+      "Salesforce Connected Application activity"
+    ],
+    "checks": [
+      {
+        "id": "oauth-app-abuse.1",
+        "description": "Pull alert evidence"
+      },
+      {
+        "id": "oauth-app-abuse.2",
+        "description": "Identify the app"
+      },
+      {
+        "id": "oauth-app-abuse.3",
+        "description": "Check who consented and from where"
+      },
+      {
+        "id": "oauth-app-abuse.4",
+        "description": "Check for credential additions"
+      },
+      {
+        "id": "oauth-app-abuse.5",
+        "description": "Check the app's recent activity"
+      },
+      {
+        "id": "oauth-app-abuse.6",
+        "description": "Check for data access"
+      },
+      {
+        "id": "oauth-app-abuse.7",
+        "description": "Check the user who consented for compromise"
+      }
+    ]
+  },
+  "privilege-escalation": {
+    "version": 1,
+    "titles": [
+      "Addition to Exchange Organization Management",
+      "Suspicious additions to sensitive groups",
+      "Suspicious addition and removal of elevated privileges",
+      "Suspicious administrative activity",
+      "Administrative action submitted by an Administrator"
+    ],
+    "checks": [
+      {
+        "id": "privilege-escalation.1",
+        "description": "Pull alert evidence"
+      },
+      {
+        "id": "privilege-escalation.2",
+        "description": "Identify the change"
+      },
+      {
+        "id": "privilege-escalation.3",
+        "description": "Validate the admin account"
+      },
+      {
+        "id": "privilege-escalation.4",
+        "description": "Check for admin account compromise"
+      },
+      {
+        "id": "privilege-escalation.5",
+        "description": "Assess the impact of the privilege change"
+      },
+      {
+        "id": "privilege-escalation.6",
+        "description": "Check what the escalated account did after gaining privileges"
+      },
+      {
+        "id": "privilege-escalation.7",
+        "description": "Check for \"add and remove\" pattern"
+      }
+    ]
+  }
+}

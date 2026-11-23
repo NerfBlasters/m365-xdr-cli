@@ -1,3 +1,7 @@
+---
+inquiry: {"version": 1, "titles": ["potentially malicious URL click", "Device tried to access a phishing site", "HTML attachment phishing attempt", "Phishing document", "User accessed a link in an email subsequently quarantined by ZAP"], "checks": [{"id": "email-malicious-url-click.1", "description": "Pull alert evidence"}, {"id": "email-malicious-url-click.2", "description": "Determine if the user clicked through"}, {"id": "email-malicious-url-click.3", "description": "Check the source email (if URL came from email)"}, {"id": "email-malicious-url-click.4", "description": "Assess blast radius"}, {"id": "email-malicious-url-click.5", "description": "Check endpoint activity"}, {"id": "email-malicious-url-click.6", "description": "Check for credential compromise"}]}
+---
+
 # Alert Type: Malicious URL click / phishing site access
 
 ## Overview

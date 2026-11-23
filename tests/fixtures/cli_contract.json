@@ -1185,21 +1185,27 @@
     "hunt run:--from-stdin": {
       "from_file": null,
       "from_stdin": true,
+      "inquiry": null,
       "kql": null,
+      "question": null,
       "raw": false,
       "timeout": null
     },
     "hunt run:--raw": {
       "from_file": null,
       "from_stdin": false,
+      "inquiry": null,
       "kql": null,
+      "question": null,
       "raw": true,
       "timeout": null
     },
     "hunt run:required": {
       "from_file": null,
       "from_stdin": false,
+      "inquiry": null,
       "kql": null,
+      "question": null,
       "raw": false,
       "timeout": null
     },
@@ -1208,7 +1214,9 @@
         "path": "<output-path>"
       },
       "from_stdin": true,
+      "inquiry": "sample",
       "kql": "sample",
+      "question": "sample",
       "raw": true,
       "timeout": 7
     },
@@ -1279,6 +1287,152 @@
       "status": "sample",
       "yes": true
     },
+    "inquiry answer:required": {
+      "basis": {
+        "tuple": []
+      },
+      "inquiry_id": "sample",
+      "question": "sample",
+      "revision": 7,
+      "state": "open",
+      "text": "sample"
+    },
+    "inquiry answer:supplied": {
+      "basis": {
+        "tuple": [
+          "sample",
+          "sample"
+        ]
+      },
+      "inquiry_id": "sample",
+      "question": "sample",
+      "revision": 7,
+      "state": "open",
+      "text": "sample"
+    },
+    "inquiry attach:required": {
+      "inquiry_id": "sample",
+      "question": "sample",
+      "run_id": "sample"
+    },
+    "inquiry attach:supplied": {
+      "inquiry_id": "sample",
+      "question": "sample",
+      "run_id": "sample"
+    },
+    "inquiry check:required": {
+      "basis": null,
+      "check_id": "sample",
+      "inquiry_id": "sample",
+      "skip_reason": null
+    },
+    "inquiry check:supplied": {
+      "basis": "sample",
+      "check_id": "sample",
+      "inquiry_id": "sample",
+      "skip_reason": "sample"
+    },
+    "inquiry delete:--yes": {
+      "inquiry_id": "sample",
+      "yes": true
+    },
+    "inquiry delete:required": {
+      "inquiry_id": "sample",
+      "yes": false
+    },
+    "inquiry delete:supplied": {
+      "inquiry_id": "sample",
+      "yes": true
+    },
+    "inquiry finish:required": {
+      "inquiry_id": "sample"
+    },
+    "inquiry finish:supplied": {
+      "inquiry_id": "sample"
+    },
+    "inquiry index:required": {
+      "run_id": "sample"
+    },
+    "inquiry index:supplied": {
+      "run_id": "sample"
+    },
+    "inquiry list:required": {},
+    "inquiry list:supplied": {},
+    "inquiry note:required": {
+      "cite": {
+        "tuple": [
+          "sample",
+          "sample"
+        ]
+      },
+      "entity": {
+        "tuple": []
+      },
+      "inquiry_id": "sample",
+      "question": "sample",
+      "scope": "",
+      "signal": null,
+      "text": "sample"
+    },
+    "inquiry note:supplied": {
+      "cite": {
+        "tuple": [
+          "sample",
+          "sample"
+        ]
+      },
+      "entity": {
+        "tuple": [
+          "sample",
+          "sample"
+        ]
+      },
+      "inquiry_id": "sample",
+      "question": "sample",
+      "scope": "sample",
+      "signal": "permitted-click",
+      "text": "sample"
+    },
+    "inquiry open:required": {
+      "objective": "sample",
+      "source": null
+    },
+    "inquiry open:supplied": {
+      "objective": "sample",
+      "source": "sample"
+    },
+    "inquiry question:required": {
+      "entity": null,
+      "inquiry_id": "sample",
+      "parent": "sample",
+      "text": "sample",
+      "trigger": null
+    },
+    "inquiry question:supplied": {
+      "entity": "sample",
+      "inquiry_id": "sample",
+      "parent": "sample",
+      "text": "sample",
+      "trigger": "sample"
+    },
+    "inquiry view:--prior": {
+      "entity": null,
+      "inquiry_id": "sample",
+      "prior": true,
+      "question": null
+    },
+    "inquiry view:required": {
+      "entity": null,
+      "inquiry_id": "sample",
+      "prior": false,
+      "question": null
+    },
+    "inquiry view:supplied": {
+      "entity": "sample",
+      "inquiry_id": "sample",
+      "prior": true,
+      "question": "sample"
+    },
     "library list:required": {
       "search": null,
       "tier": null
@@ -1288,23 +1442,29 @@
       "tier": "sample"
     },
     "library run:--raw": {
+      "inquiry": null,
       "name": "sample",
       "param": null,
+      "question": null,
       "raw": true,
       "timeout": null
     },
     "library run:required": {
+      "inquiry": null,
       "name": "sample",
       "param": null,
+      "question": null,
       "raw": false,
       "timeout": null
     },
     "library run:supplied": {
+      "inquiry": "sample",
       "name": "sample",
       "param": [
         "sample",
         "sample"
       ],
+      "question": "sample",
       "raw": true,
       "timeout": 7
     },
@@ -1330,11 +1490,28 @@
       "force": true,
       "yes": true
     },
+    "results cite:required": {
+      "index": null,
+      "line": null,
+      "run_id": "sample"
+    },
+    "results cite:supplied": {
+      "index": 1,
+      "line": 1,
+      "run_id": "sample"
+    },
+    "results head:--citations": {
+      "citations": true,
+      "limit": 20,
+      "run_id": "sample"
+    },
     "results head:required": {
+      "citations": false,
       "limit": 20,
       "run_id": "sample"
     },
     "results head:supplied": {
+      "citations": true,
       "limit": 1,
       "run_id": "sample"
     },
@@ -1362,13 +1539,22 @@
     "results query:supplied": {
       "run_id": "sample"
     },
+    "results rows:--citations": {
+      "citations": true,
+      "limit": 100,
+      "offset": 0,
+      "record_type": null,
+      "run_id": "sample"
+    },
     "results rows:required": {
+      "citations": false,
       "limit": 100,
       "offset": 0,
       "record_type": null,
       "run_id": "sample"
     },
     "results rows:supplied": {
+      "citations": true,
       "limit": 1,
       "offset": 1,
       "record_type": "sample",
@@ -7604,6 +7790,48 @@
           "type": {
             "name": "integer"
           }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Attach this read to the specified inquiry.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "inquiry",
+          "nargs": 1,
+          "opts": [
+            "--inquiry"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Question tested by this read.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "question",
+          "nargs": 1,
+          "opts": [
+            "--question"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
         }
       ]
     },
@@ -7936,6 +8164,855 @@
         }
       ]
     },
+    "inquiry": {
+      "help": "Track a local investigation and its evidence.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": true,
+      "params": []
+    },
+    "inquiry answer": {
+      "help": "Save an assessment at the indicated inquiry revision.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "inquiry_id",
+          "nargs": 1,
+          "opts": [
+            "inquiry_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "text",
+          "nargs": 1,
+          "opts": [
+            "text"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "question",
+          "nargs": 1,
+          "opts": [
+            "--question"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "state",
+          "nargs": 1,
+          "opts": [
+            "--state"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": true,
+            "choices": [
+              "open",
+              "answered",
+              "inconclusive",
+              "set-aside",
+              "needs-analyst"
+            ],
+            "name": "choice"
+          }
+        },
+        {
+          "count": false,
+          "default": {
+            "tuple": []
+          },
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "basis",
+          "nargs": 1,
+          "opts": [
+            "--basis"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "revision",
+          "nargs": 1,
+          "opts": [
+            "--revision"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "integer"
+          }
+        }
+      ]
+    },
+    "inquiry attach": {
+      "help": "Attach an existing verified tenant read without running it again.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "inquiry_id",
+          "nargs": 1,
+          "opts": [
+            "inquiry_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "run_id",
+          "nargs": 1,
+          "opts": [
+            "run_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Question in this inquiry.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "question",
+          "nargs": 1,
+          "opts": [
+            "--question"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "inquiry check": {
+      "help": "Record the disposition of an impact check.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "inquiry_id",
+          "nargs": 1,
+          "opts": [
+            "inquiry_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "check_id",
+          "nargs": 1,
+          "opts": [
+            "check_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "basis",
+          "nargs": 1,
+          "opts": [
+            "--basis"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "skip_reason",
+          "nargs": 1,
+          "opts": [
+            "--skip-reason"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "inquiry delete": {
+      "help": "Preview or delete an inquiry and its private rendered copies.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "inquiry_id",
+          "nargs": 1,
+          "opts": [
+            "inquiry_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Delete the inquiry and its derived views.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "yes",
+          "nargs": 1,
+          "opts": [
+            "--yes"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
+    "inquiry finish": {
+      "help": "Verify disposition and evidence for the current conclusion.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "inquiry_id",
+          "nargs": 1,
+          "opts": [
+            "inquiry_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "inquiry index": {
+      "help": "Index typed evidence from a saved expanded incident.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "run_id",
+          "nargs": 1,
+          "opts": [
+            "run_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "inquiry list": {
+      "help": "List current-tenant inquiries and their assessment states.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": []
+    },
+    "inquiry note": {
+      "help": "Record a cited observation and surface downstream impact checks.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "inquiry_id",
+          "nargs": 1,
+          "opts": [
+            "inquiry_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "text",
+          "nargs": 1,
+          "opts": [
+            "text"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "question",
+          "nargs": 1,
+          "opts": [
+            "--question"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "cite",
+          "nargs": 1,
+          "opts": [
+            "--cite"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": {
+            "tuple": []
+          },
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "entity",
+          "nargs": 1,
+          "opts": [
+            "--entity"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": "",
+          "envvar": null,
+          "help": "Agent-declared search scope and limitations.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "scope",
+          "nargs": 1,
+          "opts": [
+            "--scope"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "signal",
+          "nargs": 1,
+          "opts": [
+            "--signal"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": true,
+            "choices": [
+              "permitted-click",
+              "ambiguous-click",
+              "linked-download",
+              "suspicious-execution",
+              "unauthorized-account-use"
+            ],
+            "name": "choice"
+          }
+        }
+      ]
+    },
+    "inquiry open": {
+      "help": "Open an inquiry with a root question and impact check.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "objective",
+          "nargs": 1,
+          "opts": [
+            "objective"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Verified evidence run to attach to the root.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "source",
+          "nargs": 1,
+          "opts": [
+            "--source"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "inquiry question": {
+      "help": "Open a material child question.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "inquiry_id",
+          "nargs": 1,
+          "opts": [
+            "inquiry_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "text",
+          "nargs": 1,
+          "opts": [
+            "text"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "parent",
+          "nargs": 1,
+          "opts": [
+            "--parent"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Originating observation ID.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "trigger",
+          "nargs": 1,
+          "opts": [
+            "--from"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Inquiry-local entity key.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "entity",
+          "nargs": 1,
+          "opts": [
+            "--entity"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        }
+      ]
+    },
+    "inquiry view": {
+      "help": "Inspect the inquiry objective, pending checks and attached evidence.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "inquiry_id",
+          "nargs": 1,
+          "opts": [
+            "inquiry_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Focus on one question.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "question",
+          "nargs": 1,
+          "opts": [
+            "--question"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Namespace-qualified entity value.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "entity",
+          "nargs": 1,
+          "opts": [
+            "--entity"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Include verified earlier same-tenant sightings.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "prior",
+          "nargs": 1,
+          "opts": [
+            "--prior"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ]
+    },
     "library": {
       "help": "Discover and run the built-in KQL library.",
       "hidden": false,
@@ -8083,6 +9160,48 @@
           "type": {
             "name": "integer"
           }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Attach this read to the specified inquiry.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "inquiry",
+          "nargs": 1,
+          "opts": [
+            "--inquiry"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Question tested by this read.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "question",
+          "nargs": 1,
+          "opts": [
+            "--question"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
         }
       ]
     },
@@ -8179,6 +9298,87 @@
       "no_args_is_help": true,
       "params": []
     },
+    "results cite": {
+      "help": "Resolve an original JSONL position and inspect its private evidence row.",
+      "hidden": false,
+      "invoke_without_command": false,
+      "no_args_is_help": false,
+      "params": [
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "argument",
+          "multiple": false,
+          "name": "run_id",
+          "nargs": 1,
+          "opts": [
+            "run_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "One-based JSONL line.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "line",
+          "nargs": 1,
+          "opts": [
+            "--line"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 1,
+            "min_open": false,
+            "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": null,
+          "envvar": null,
+          "help": "Absolute row index.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "index",
+          "nargs": 1,
+          "opts": [
+            "--index"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "clamp": false,
+            "max": null,
+            "max_open": false,
+            "min": 0,
+            "min_open": false,
+            "name": "integer range"
+          }
+        }
+      ]
+    },
     "results head": {
       "help": "Print a bounded preview of private saved rows; never contacts the tenant. Example: `xdr results head 20260801T084128011506Z-a01d707cfd37 --limit 20` Output may contain investigation values. Do not paste it into public issues or documentation. Use `xdr results show RUN_ID` for value-free provenance.",
       "hidden": false,
@@ -8230,6 +9430,27 @@
             "min": 1,
             "min_open": false,
             "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Pair each row with its verified citation.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "citations",
+          "nargs": 1,
+          "opts": [
+            "--citations"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
           }
         }
       ]
@@ -8451,6 +9672,27 @@
             "min": 1,
             "min_open": false,
             "name": "integer range"
+          }
+        },
+        {
+          "count": false,
+          "default": false,
+          "envvar": null,
+          "help": "Pair each row with its verified citation.",
+          "hidden": false,
+          "is_eager": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "citations",
+          "nargs": 1,
+          "opts": [
+            "--citations"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
           }
         }
       ]

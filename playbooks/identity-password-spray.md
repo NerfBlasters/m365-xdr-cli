@@ -1,3 +1,7 @@
+---
+inquiry: {"version": 1, "titles": ["Password Spray", "Activity from a password-spray associated IP"], "checks": [{"id": "identity-password-spray.1", "description": "Pull alert evidence"}, {"id": "identity-password-spray.2", "description": "Assess the spray scope"}, {"id": "identity-password-spray.3", "description": "Identify compromised accounts"}, {"id": "identity-password-spray.4", "description": "Check for post-compromise activity"}, {"id": "identity-password-spray.5", "description": "Check for inbox rule manipulation on compromised accounts"}, {"id": "identity-password-spray.6", "description": "Analyze the error codes for failed attempts"}, {"id": "identity-password-spray.7", "description": "Check on-prem authentication"}]}
+---
+
 # Alert Type: Password spray
 
 ## Overview

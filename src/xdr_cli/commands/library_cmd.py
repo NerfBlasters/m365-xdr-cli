@@ -14,6 +14,7 @@ from xdr_cli.cli_params import optional_multiple
 from xdr_cli.commands.hunt_cmd import _hunt_run
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import QueryError, UsageError
+from xdr_cli.inquiries import bind_read
 from xdr_cli.kql_parse import extract_tables
 from xdr_cli.queries import _validate_parameter_value, list_queries, load_query
 from xdr_cli.results import emit_result, write_result
@@ -297,16 +298,21 @@ def library_show(
 @click.option("--param", "-p", default=None, multiple=True, callback=optional_multiple)
 @click.option("--raw", is_flag=True)
 @click.option("--timeout", type=int, default=None)
+@click.option("--inquiry", default=None, help="Attach this read to the specified inquiry.")
+@click.option("--question", default=None, help="Question tested by this read.")
 @click.pass_context
 def library_run(
     ctx: click.Context,
     name: str,
     param: list[str] | None,
     raw: bool,
+    inquiry: str | None,
+    question: str | None,
     timeout: int | None,
 ) -> None:
     """Run a named KQL query through the artifact-first execution path."""
     app_ctx: AppContext = ctx.obj
+    bind_read(app_ctx, inquiry, question)
     params = _parse_params(name, param)
     kql = load_query(name, **params)
     asyncio.run(

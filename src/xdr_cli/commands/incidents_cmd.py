@@ -22,6 +22,7 @@ from xdr_cli.client import XDRClient
 from xdr_cli.context import AppContext
 from xdr_cli.exceptions import ConflictError, PartialSuccessError, UsageError, XDRError
 from xdr_cli.helpers import build_odata_filter, split_csv, validate_filter_choices
+from xdr_cli.inquiries import index_incident
 from xdr_cli.output import OutputFormatter, err_console
 from xdr_cli.results import emit_result, write_result
 from xdr_cli.sessions import set_session_anchor_incident
@@ -264,6 +265,14 @@ async def _show(
             tenant_id=ctx.config.tenant_id,
         )
         emit_result(artifact)
+        if expand and "alerts" in expand and ctx.config.tenant_id and ctx.config.entity_memory:
+            try:
+                index_incident(ctx, artifact.receipt.run_id)
+            except XDRError as exc:
+                raise PartialSuccessError(
+                    f"Expanded incident saved; entity indexing failed: {exc.message}",
+                    help_command=f"xdr inquiry index {artifact.receipt.run_id}",
+                ) from exc
     finally:
         await client.close()
 

@@ -372,7 +372,7 @@ def test_rationale_silently_dropped_on_non_invocation(tmp_path, monkeypatch):
     result = runner.invoke(app, ["--rationale", "starting fresh", "session", "start"])
     assert result.exit_code == 0, result.output
 
-    sid = result.output.strip().splitlines()[-1]
+    sid = result.stdout.strip()
     records = (tmp_path / ".xdr-cli" / "sessions" / f"{sid}.jsonl").read_text().splitlines()
     # Only the session_started record — no invocation, no rationale stored.
     assert len(records) == 1

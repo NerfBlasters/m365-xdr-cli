@@ -1,3 +1,7 @@
+---
+inquiry: {"version": 1, "titles": ["Addition to Exchange Organization Management", "Suspicious additions to sensitive groups", "Suspicious addition and removal of elevated privileges", "Suspicious administrative activity", "Administrative action submitted by an Administrator"], "checks": [{"id": "privilege-escalation.1", "description": "Pull alert evidence"}, {"id": "privilege-escalation.2", "description": "Identify the change"}, {"id": "privilege-escalation.3", "description": "Validate the admin account"}, {"id": "privilege-escalation.4", "description": "Check for admin account compromise"}, {"id": "privilege-escalation.5", "description": "Assess the impact of the privilege change"}, {"id": "privilege-escalation.6", "description": "Check what the escalated account did after gaining privileges"}, {"id": "privilege-escalation.7", "description": "Check for \"add and remove\" pattern"}]}
+---
+
 # Alert Type: Privilege escalation — role changes, sensitive groups, suspicious admin activity
 
 ## Overview

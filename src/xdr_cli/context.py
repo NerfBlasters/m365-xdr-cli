@@ -26,6 +26,7 @@ class AppContext:
     recorder: Recorder | None = None
     # Pre-run intent captured via --rationale (Task 7); empty when not provided.
     rationale: str = ""
+    inquiry_binding: tuple[str, str] | None = None
     # Subcommand chain captured by leaf-callback wrapping (see
     # main.py._install_leaf_hook). E.g. "hunt run".
     invoked_command: str | None = None

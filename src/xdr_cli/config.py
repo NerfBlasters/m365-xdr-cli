@@ -28,6 +28,7 @@ class Config:
     client_id: str = ""
     auth_mode: str = "device_code"  # "device_code" or "client_credentials"
     client_secret: str = ""
+    entity_memory: bool = True
     default_limit: int = 25
     # 120s default tuned for library hunts: r1/r2 queries with joins +
     # aggregations routinely run 30-90s against Defender. The previous 30s
@@ -179,6 +180,9 @@ def load_config(*, validate_maintenance: bool = False) -> Config:
             markup=False,
         )
     known = {k: v for k, v in data.items() if k in _CONFIG_FIELDS}
+    if "entity_memory" in known and type(known["entity_memory"]) is not bool:
+        known["entity_memory"] = False
+        err_console.print("Invalid entity_memory value; passive indexing disabled.")
     invalid_backend = known.get("api_backend", "auto") not in ("auto", "official", "portal-cookie")
     if invalid_backend:
         err_console.print(

@@ -10,6 +10,13 @@ issues or pull requests are not part of this repository. Historical CI entries
 may describe tooling that has since been replaced; see [CI security](docs/ci.md)
 for the current checks.
 
+## [0.19.0] - 2026-11-22
+
+### Added
+
+- Local question-led inquiries with tenant-bound evidence, impact checks, prior entity sightings, playbook checks and verifiable conclusions.
+- Row citations for saved results and optional inquiry binding for hunt and library reads.
+
 ## [0.18.1] - 2026-10-26
 - Updated website link to talk on youtube from live cvent url.
 

@@ -645,3 +645,29 @@ def test_results_prune_fails_closed_when_overlay_manifest_is_missing(
     error = json.loads(pruned.stdout)["error"]
     assert error["help_command"] == "xdr schema repair-overlay --all-local --yes"
     assert Path(artifact.receipt.data_path).exists()
+
+
+def test_result_citations_preserve_original_position_and_row_bytes(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDR_CLI_HOME", str(tmp_path))
+    duplicate = {"record_type": "evidence", "citation": "provider value", "value": "café"}
+    artifact = write_result([{"record_type": "incident"}, duplicate, duplicate], command="hunt run")
+    run = artifact.receipt.run_id
+    lines = Path(artifact.receipt.data_path).read_bytes().splitlines()
+    expected = {"citation": f"{run}:2:{hashlib.sha256(lines[2]).hexdigest()}", "row": duplicate}
+
+    filtered = runner.invoke(app, ["results", "rows", run, "--citations", "--type", "evidence",
+                                   "--limit", "1"])
+    page = json.loads(filtered.stdout)
+    assert page["data"][0]["citation"] == f"{run}:1:{hashlib.sha256(lines[1]).hexdigest()}"
+    next_page = runner.invoke(app, page["metadata"]["next_command"].split()[1:])
+    assert json.loads(next_page.stdout)["data"] == [expected]
+    for args in (["--line", "3"], ["--index", "2"]):
+        cited = runner.invoke(app, ["results", "cite", run, *args])
+        assert json.loads(cited.stdout)["data"] == expected
+    assert json.loads(runner.invoke(app, ["results", "head", run, "--citations"]).stdout
+                      )["data"][-1] == expected
+    for args in ([], ["--index", "0", "--line", "1"]):
+        assert runner.invoke(app, ["results", "cite", run, *args]).exit_code == 6
+    assert runner.invoke(app, ["results", "cite", run, "--index", "3"]).exit_code == 8
+    Path(artifact.receipt.data_path).write_bytes(b'{}\n' + b'\n'.join(lines[1:]) + b'\n')
+    assert runner.invoke(app, ["results", "cite", run, "--line", "3"]).exit_code == 12

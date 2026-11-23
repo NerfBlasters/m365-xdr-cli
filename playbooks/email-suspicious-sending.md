@@ -1,3 +1,7 @@
+---
+inquiry: {"version": 1, "titles": ["Suspicious email sending patterns", "User restricted from sending email"], "checks": [{"id": "email-suspicious-sending.1", "description": "Pull alert evidence"}, {"id": "email-suspicious-sending.2", "description": "Quantify the outbound email"}, {"id": "email-suspicious-sending.3", "description": "Examine the content pattern"}, {"id": "email-suspicious-sending.4", "description": "Check sign-in context"}, {"id": "email-suspicious-sending.5", "description": "Check for inbox rules"}, {"id": "email-suspicious-sending.6", "description": "Check for other compromise indicators"}]}
+---
+
 # Alert Type: Suspicious email sending patterns / user restricted from sending
 
 ## Overview

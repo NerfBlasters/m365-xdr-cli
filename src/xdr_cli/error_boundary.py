@@ -10,7 +10,7 @@ from typing import Any
 
 import click
 
-from xdr_cli.exceptions import UsageError, XDRError, format_error_json
+from xdr_cli.exceptions import ExitCode, UsageError, XDRError, format_error_json
 
 
 def _command_path(ctx: click.Context | None) -> str:
@@ -180,7 +180,7 @@ class StructuredGroup(click.Group):
         # standalone_mode=False. Restore normal standalone process semantics.
         if standalone_mode:
             exit_code = result if isinstance(result, int) else 0
-            if exit_code:
+            if exit_code and exit_code != ExitCode.ANALYST_REQUIRED:
                 error = XDRError(
                     "Command failed before producing a structured domain error; "
                     "see stderr for legacy context.",

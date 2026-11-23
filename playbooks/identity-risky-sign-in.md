@@ -1,3 +1,7 @@
+---
+inquiry: {"version": 1, "titles": ["Activity from a TOR IP address", "Activity from an anonymous proxy", "Anonymous IP address", "Unfamiliar sign-in properties", "Malicious IP address", "Suspicious impersonated activity"], "checks": [{"id": "identity-risky-sign-in.1", "description": "Pull alert evidence"}, {"id": "identity-risky-sign-in.2", "description": "Pull the sign-in details"}, {"id": "identity-risky-sign-in.3", "description": "Establish the user's baseline"}, {"id": "identity-risky-sign-in.4", "description": "Check for TOR/proxy context"}, {"id": "identity-risky-sign-in.5", "description": "Assess post-sign-in activity (if sign-in succeeded)"}, {"id": "identity-risky-sign-in.6", "description": "Check for multi-signal correlation"}]}
+---
+
 # Alert Type: Risky sign-in — TOR, anonymous proxy, unfamiliar properties, malicious IP
 
 ## Overview

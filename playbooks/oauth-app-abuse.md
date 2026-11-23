@@ -1,3 +1,7 @@
+---
+inquiry: {"version": 1, "titles": ["Suspicious OAuth app", "Unusual addition of credentials to an OAuth app", "Unusual ISP for an OAuth App", "OAuth application activity from an unknown ISP", "App is similar to previously flagged suspicious apps", "App metadata associated with known phishing campaign", "Increase in data usage by an overprivileged", "Salesforce Connected Application activity"], "checks": [{"id": "oauth-app-abuse.1", "description": "Pull alert evidence"}, {"id": "oauth-app-abuse.2", "description": "Identify the app"}, {"id": "oauth-app-abuse.3", "description": "Check who consented and from where"}, {"id": "oauth-app-abuse.4", "description": "Check for credential additions"}, {"id": "oauth-app-abuse.5", "description": "Check the app's recent activity"}, {"id": "oauth-app-abuse.6", "description": "Check for data access"}, {"id": "oauth-app-abuse.7", "description": "Check the user who consented for compromise"}]}
+---
+
 # Alert Type: OAuth app abuse — suspicious apps, credential additions, unknown ISP
 
 ## Overview
