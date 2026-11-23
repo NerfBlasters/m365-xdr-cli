@@ -8,6 +8,8 @@ from typing import Any
 
 import httpx
 
+from xdr_cli.cloud import cloud_profile
+from xdr_cli.continuation import validate_continuation
 from xdr_cli.exceptions import (
     APIError,
     AuthError,
@@ -25,19 +27,9 @@ from xdr_cli.exceptions import (
 class APISurface(Enum):
     """API base URL targets."""
 
-    GRAPH = "https://graph.microsoft.com/v1.0/security/"
-    GRAPH_CORE = "https://graph.microsoft.com/v1.0/"
-    MDE = "https://api.security.microsoft.com/api/"
-
-
-# Token audience per surface. Must match the scopes defined in auth.py.
-_SURFACE_SCOPES: dict[APISurface, list[str]] = {
-    APISurface.GRAPH: ["https://graph.microsoft.com/.default"],
-    APISurface.GRAPH_CORE: ["https://graph.microsoft.com/.default"],
-    # Tokens for the MDE endpoints at api.security.microsoft.com must use the
-    # api.securitycenter.microsoft.com audience — Microsoft's current guidance.
-    APISurface.MDE: ["https://api.securitycenter.microsoft.com/.default"],
-}
+    GRAPH = "graph-security"
+    GRAPH_CORE = "graph-core"
+    MDE = "mde"
 
 
 def _required_permission(response: httpx.Response) -> str:
@@ -85,21 +77,33 @@ class XDRClient:
         self,
         get_token: callable,
         timeout: int = 30,
+        cloud: str = "commercial",
     ) -> None:
+        self.cloud_profile = cloud_profile(cloud)
         self._get_token = get_token
         self._timeout = timeout
         self._clients: dict[APISurface, httpx.AsyncClient] = {}
 
+    def base_url(self, surface: APISurface) -> str:
+        if surface == APISurface.MDE:
+            return self.cloud_profile.mde + "/api/"
+        return self.cloud_profile.graph + (
+            "/v1.0/security/" if surface == APISurface.GRAPH else "/v1.0/"
+        )
+
     def _get_client(self, surface: APISurface) -> httpx.AsyncClient:
         if surface not in self._clients:
             self._clients[surface] = httpx.AsyncClient(
-                base_url=surface.value,
+                base_url=self.base_url(surface),
                 timeout=self._timeout,
             )
         return self._clients[surface]
 
     def _auth_headers(self, surface: APISurface) -> dict[str, str]:
-        token = self._get_token(_SURFACE_SCOPES[surface])
+        token = self._get_token(
+            self.cloud_profile.mde_scopes if surface == APISurface.MDE
+            else self.cloud_profile.graph_scopes
+        )
         return {"Authorization": f"Bearer {token}"}
 
     @staticmethod
@@ -215,6 +219,12 @@ class XDRClient:
         return value
 
     async def _request(self, method: str, client: httpx.AsyncClient, url: str, **kwargs):
+        target = client.build_request(method, url).url
+        base = client.base_url
+        if (target.scheme != "https" or target.host != base.host
+                or target.port not in (None, 443) or target.username or target.password
+                or target.fragment or not target.path.startswith(base.path)):
+            raise APIError("Refusing an API request outside the selected cloud service.")
         try:
             return await client.request(method, url, **kwargs)
         except httpx.TimeoutException as exc:
@@ -304,6 +314,8 @@ class XDRClient:
         client = self._get_client(surface)
         url = path
         is_absolute = False
+        collection = client.build_request("GET", path).url
+        seen_links: set[str] = set()
 
         while True:
             if is_absolute:
@@ -331,7 +343,10 @@ class XDRClient:
                 return
 
             # nextLink is always an absolute URL
-            url = next_link
+            url = str(validate_continuation(
+                next_link, routes=frozenset({(collection.host, collection.path)}),
+                seen=seen_links,
+            ))
             is_absolute = True
             params = None  # params are baked into the nextLink URL
 

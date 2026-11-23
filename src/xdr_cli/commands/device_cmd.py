@@ -547,9 +547,9 @@ def _select_portal_auth_strategy(
     if ctx.config.backend_profile.cookie_auth and refresh_token:
         raise ConfigError("--refresh-token cannot be combined with --backend portal-cookie.")
     if refresh_token:
-        return RefreshTokenAuth(ctx.config.tenant_id, refresh_token)
+        return RefreshTokenAuth(ctx.config.tenant_id, refresh_token, cloud=ctx.config.cloud)
 
-    stored_cookies = load_portal_cookies(ctx.config.tenant_id)
+    stored_cookies = load_portal_cookies(ctx.config.tenant_id, ctx.config.cloud)
     if stored_cookies is not None:
         return CookieAuth(
             sccauth=stored_cookies.get("sccauth"),
@@ -937,7 +937,7 @@ async def _device_timeline(
     finally:
         await client.close()
 
-    portal_client = PortalClient(auth=strategy)
+    portal_client = PortalClient(auth=strategy, cloud=ctx.config.cloud)
     count = 0
     started = monotonic()
     artifact = None

@@ -627,3 +627,55 @@ not in public issues.
 ## License
 
 [MIT](LICENSE)
+
+## GCC High setup
+
+The CLI supports `commercial` (default) and `gcc-high` cloud profiles. Select a
+profile with global `--cloud`, before the command. `auth login` saves that choice
+as `cloud` in the configuration; later commands use the saved profile. A global
+`--cloud` overrides it for one invocation. GCC and DoD are not included.
+
+Create a local editable installation (Python 3.11 or newer):
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+xdr --help
+```
+
+If your home directory is read-only, set `export XDR_CLI_HOME="$PWD/.xdr-cli"`
+before running the CLI. This ignored directory holds private local configuration
+and results.
+
+On Windows, activate with `.venv\Scripts\Activate.ps1` in PowerShell.
+Register your app in Azure Government (`https://portal.azure.us`), enable public
+client/device-code authentication, and grant the delegated Graph and
+WindowsDefenderATP permissions described in the setup instructions above.
+Use that registration's identifiers:
+
+```bash
+xdr --cloud gcc-high --backend official auth login --tenant-id <tenant-id> --client-id <client-id>
+xdr --backend official auth status
+xdr --backend official domains list --source entra
+xdr --backend official incidents list --limit 1
+```
+
+Login is interactive; complete the sign-in instructions in your browser. Conditional
+Access or tenant policy may require an administrator to enable a supported flow.
+Successful reads emit an artifact receipt with `data_path`; `auth status` reports
+`cloud` under `main` for the official backend. Review saved results locally.
+
+GCC High uses `login.microsoftonline.us`, `graph.microsoft.us`,
+`api-gov.securitycenter.microsoft.us` (including its token audience), and
+`security.microsoft.us`. Endpoints and scopes resolve together; the CLI does not
+fall back to commercial services. See Microsoft's [Graph cloud reference](https://learn.microsoft.com/en-us/graph/deployments)
+and [Defender government reference](https://learn.microsoft.com/en-us/defender-endpoint/gov).
+
+GCC High tokens use `token_cache_gcc-high.json` under the CLI configuration
+home; commercial tokens retain `token_cache.json`. Imported portal cookies are
+bound to tenant and cloud. Older cookie stores without a cloud binding are
+commercial-only; import a GCC High browser session using the selected cloud.
+Portal-cookie requests use the government portal, but its unofficial APIs and
+refresh-token audience require live validation and may differ from commercial.
+Cloud selection does not guarantee every service feature is available.

@@ -29,24 +29,6 @@ from xdr_cli.exceptions import TimeoutError as XDRTimeoutError
 from xdr_cli.output import err_console
 from xdr_cli.secret_files import atomic_write_secret
 
-# Default scopes — /.default defers to app registration permissions
-SCOPES = ["https://graph.microsoft.com/.default"]
-
-# Per-resource scopes. Graph (incidents/alerts) and MDE (hunting/device
-# actions) have separate audiences; MSAL issues a refresh token on login
-# and silently exchanges it for whichever resource's access token is needed.
-# Note: MDE endpoints live under api.security.microsoft.com but tokens must
-# be issued for the api.securitycenter.microsoft.com audience — this matches
-# Microsoft's current guidance (see the WindowsDefenderATP footnote in the
-# README permissions table).
-SCOPES_GRAPH = ["https://graph.microsoft.com/.default"]
-SCOPES_MDE = ["https://api.securitycenter.microsoft.com/.default"]
-
-# Scopes pre-warmed at login so silent acquisition later doesn't pop a WAM
-# prompt mid-command. Graph covers incidents/alerts/hunting; MDE covers
-# device actions and the legacy hunting endpoint used as a fallback.
-_ALL_LOGIN_SCOPES = [SCOPES_GRAPH, SCOPES_MDE]
-
 _TOKEN_BUDGET: ContextVar[tuple[float, Callable[[], int]] | None] = ContextVar(
     "xdr_token_budget", default=None,
 )
@@ -206,7 +188,7 @@ class AuthManager:
             raise ConfigError(
                 "Not configured. Run `xdr auth login --tenant-id <ID> --client-id <ID>`."
             )
-        authority = f"https://login.microsoftonline.com/{self._config.tenant_id}"
+        authority = f"{self._config.cloud_profile.authority}/{self._config.tenant_id}"
         if self._is_confidential:
             self._app = msal.ConfidentialClientApplication(
                 client_id=self._config.client_id,
@@ -231,7 +213,7 @@ class AuthManager:
         return self._app
 
     def _cache_path(self) -> Path:
-        return get_config_home() / "token_cache.json"
+        return get_config_home() / self._config.cloud_profile.token_cache_filename
 
     def _load_cache(self) -> None:
         """Load token cache from disk, tolerating corruption.
@@ -297,7 +279,7 @@ class AuthManager:
 
     def _get_token_locked(self, scopes: list[str] | None = None) -> str:
         """Acquire one token while the cross-process cache lock is held."""
-        scopes = scopes or SCOPES_GRAPH
+        scopes = scopes or self._config.cloud_profile.graph_scopes
         app = self._get_app()
         if self._is_confidential:
             result = app.acquire_token_for_client(scopes=scopes)
@@ -365,7 +347,7 @@ class AuthManager:
         # Falls back to device code when no display is available (headless/CI).
         try:
             result = app.acquire_token_interactive(
-                scopes=SCOPES,
+                scopes=self._config.cloud_profile.graph_scopes,
                 prompt="select_account",
                 parent_window_handle=app.CONSOLE_WINDOW_HANDLE,
             )
@@ -381,8 +363,8 @@ class AuthManager:
                 # invalidate the primary login.
                 accounts = app.get_accounts()
                 if accounts:
-                    for extra_scopes in _ALL_LOGIN_SCOPES:
-                        if extra_scopes == SCOPES:
+                    for extra_scopes in [self._config.cloud_profile.mde_scopes]:
+                        if extra_scopes == self._config.cloud_profile.graph_scopes:
                             continue
                         try:
                             warm = app.acquire_token_silent(
@@ -422,7 +404,7 @@ class AuthManager:
             )
 
         # Device code fallback (headless environments or non-Windows)
-        flow = app.initiate_device_flow(scopes=SCOPES)
+        flow = app.initiate_device_flow(scopes=self._config.cloud_profile.graph_scopes)
         if "user_code" not in flow:
             raise AuthError(f"Device code flow failed: {flow.get('error_description', 'unknown')}")
 

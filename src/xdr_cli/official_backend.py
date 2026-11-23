@@ -96,7 +96,9 @@ class OfficialBackend(
             if not link:
                 return
             path = str(validate_continuation(
-                link, routes=frozenset({("graph.microsoft.com", "/v1.0/domains")}),
+                link, routes=frozenset({
+                    (self.transport.cloud_profile.graph.removeprefix("https://"), "/v1.0/domains"),
+                }),
                 seen=seen_links,
             ))
         raise APIError("Graph domain pagination exceeded its page bound.")

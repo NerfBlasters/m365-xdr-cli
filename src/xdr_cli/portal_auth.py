@@ -57,7 +57,7 @@ def save_portal_cookies(data: dict) -> None:
     atomic_write_secret(_portal_cookie_path(), json.dumps(data))
 
 
-def load_portal_cookies(tenant_id: str) -> dict | None:
+def load_portal_cookies(tenant_id: str, cloud: str = "commercial") -> dict | None:
     """Load stored portal cookies only when bound to ``tenant_id``.
 
     Tolerates malformed JSON the same way the official token cache loader
@@ -80,6 +80,10 @@ def load_portal_cookies(tenant_id: str) -> dict | None:
             "Re-run `xdr auth portal-cookie` to reconfigure."
         )
         return None
+    if isinstance(data, dict) and data.get("cloud", "commercial") != cloud:
+        raise ConfigError(
+            "Stored portal cookies belong to another cloud. Re-import cookies for this cloud."
+        )
     expected = tenant_fingerprint(tenant_id)
     actual = data.get("tenant_fingerprint") if isinstance(data, dict) else None
     if expected is None or actual != expected:

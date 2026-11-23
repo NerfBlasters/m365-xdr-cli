@@ -775,6 +775,10 @@ def test_malformed_success_body_is_an_upstream_api_error():
 async def test_transport_and_timeout_are_distinct(monkeypatch):
     client = XDRClient(get_token=lambda scopes: "token", timeout=7)
     transport = AsyncMock()
+    transport.base_url = httpx.URL("https://graph.microsoft.com/")
+    transport.build_request = lambda method, url: httpx.Request(
+        method, transport.base_url.join(url),
+    )
     transport.request.side_effect = httpx.ConnectError("dns failed")
     try:
         await client._request("GET", transport, "/")

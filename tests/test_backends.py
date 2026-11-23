@@ -326,7 +326,7 @@ def test_cookie_automatic_session_and_rotation_avoid_msal_identity(config, monke
 
 def test_cookie_manual_session_requires_stored_cookie(config, monkeypatch):
     monkeypatch.setattr("xdr_cli.main.load_config", lambda: config)
-    monkeypatch.setattr("xdr_cli.portal_auth.load_portal_cookies", lambda tenant: None)
+    monkeypatch.setattr("xdr_cli.portal_auth.load_portal_cookies", lambda tenant, cloud: None)
     result = CliRunner().invoke(app, ["session", "start"])
     assert result.exit_code == 2
     assert "portal-cookie" in result.stdout

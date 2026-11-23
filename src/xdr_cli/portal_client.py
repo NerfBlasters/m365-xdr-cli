@@ -20,6 +20,7 @@ from typing import Any, Protocol
 import httpx
 
 from xdr_cli import __version__
+from xdr_cli.cloud import cloud_profile
 from xdr_cli.exceptions import (
     APIError,
     AuthError,
@@ -30,8 +31,6 @@ from xdr_cli.exceptions import (
     parse_retry_after,
 )
 from xdr_cli.portal_auth import PORTAL_CLIENT_ID, PORTAL_SCOPES
-
-BASE_URL = "https://security.microsoft.com/apiproxy/mtp/"
 
 # Headers every portal request carries. The apiproxy backend expects a JSON
 # client (Accept/Accept-Language); the proven cookie-auth reference
@@ -60,8 +59,6 @@ _APIPROXY_PREFIX = "/apiproxy/mtp/"
 # further would just hammer the server. Mirrors
 # timeline-downloader/internal/api/client.go:125-152.
 MAX_AUTH_RETRIES = 1
-
-_TOKEN_URL_TEMPLATE = "https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
 
 
 class PortalAuthStrategy(Protocol):
@@ -148,14 +145,16 @@ class RefreshTokenAuth:
         tenant_id: str,
         refresh_token: str,
         client_id: str = PORTAL_CLIENT_ID,
+        cloud: str = "commercial",
     ) -> None:
+        self.cloud_profile = cloud_profile(cloud)
         self._tenant_id = tenant_id
         self._refresh_token = refresh_token
         self._client_id = client_id
         self._access_token: str | None = None
 
     async def _redeem(self) -> str:
-        token_url = _TOKEN_URL_TEMPLATE.format(tenant_id=self._tenant_id)
+        token_url = f"{self.cloud_profile.authority}/{self._tenant_id}/oauth2/v2.0/token"
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 token_url,
@@ -286,11 +285,14 @@ def _strip_apiproxy_prefix(next_url: str) -> str:
 class PortalClient:
     """Async HTTP client for the unofficial Defender portal apiproxy API."""
 
-    def __init__(self, auth: PortalAuthStrategy, timeout: int = 30) -> None:
+    def __init__(self, auth: PortalAuthStrategy, timeout: int = 30,
+                 cloud: str = "commercial") -> None:
+        self.cloud_profile = cloud_profile(cloud)
         self._auth = auth
         self._timeout = timeout
         self._client = httpx.AsyncClient(
-            base_url=BASE_URL, timeout=timeout, headers=dict(_DEFAULT_HEADERS)
+            base_url=self.cloud_profile.portal + "/apiproxy/mtp/", timeout=timeout,
+            headers={**_DEFAULT_HEADERS, "Origin": self.cloud_profile.portal}
         )
 
     async def _send(self, path: str, params: dict[str, Any] | None) -> httpx.Response:
@@ -299,7 +301,7 @@ class PortalClient:
             request = self._client.build_request("GET", path, params=params)
             url = request.url
             if (
-                url.scheme != "https" or url.host != "security.microsoft.com"
+                url.scheme != "https" or url.host != httpx.URL(self.cloud_profile.portal).host
                 or url.port not in (None, 443) or url.username or url.password
                 or not url.path.startswith("/apiproxy/mtp/")
             ):

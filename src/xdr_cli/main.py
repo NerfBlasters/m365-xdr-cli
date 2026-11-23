@@ -490,6 +490,8 @@ _active_app_ctx: contextvars.ContextVar[AppContext | None] = contextvars.Context
     default=None,
     help="API backend: auto (default), official, or portal-cookie.",
 )
+@click.option("--cloud", type=click.Choice(["commercial", "gcc-high"]), default=None,
+              help="Microsoft cloud; overrides config. Saved by auth login.")
 @click.option("--no-interactive", is_flag=True, help="Disable all interactive prompts.")
 @click.option("--debug", is_flag=True, help="Enable debug output to stderr.")
 @click.option(
@@ -512,6 +514,7 @@ def app(
     ctx: click.Context,
     version: bool,
     backend: APIBackend | None,
+    cloud: str | None,
     no_interactive: bool,
     debug: bool,
     quiet: bool | None,
@@ -521,6 +524,8 @@ def app(
     from copy import copy
 
     config = copy(load_config())
+    if cloud is not None:
+        config.cloud = cloud
     config._api_backend_preference = config.api_backend
     config._api_backend_requested = backend.value if backend is not None else config.api_backend
     config._api_backend_explicit = backend is not None
