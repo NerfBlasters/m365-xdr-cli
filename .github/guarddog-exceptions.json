@@ -16,13 +16,15 @@
     {
       "package": "pywin32-ctypes",
       "version": "0.2.3",
-      "findings_sha256": "a64fb12ff0399cef549e8fd89ab310f65d34ae317464b7f928d6235e66e2b089",
-      "reviewed_on": "2026-09-23",
+      "findings_sha256": "5c31b6bd084b797984f5fa1a31f67d39c7adab14f96e2dba05fb324c94d322e9",
+      "reviewed_on": "2026-11-23",
       "expires": "2026-12-22",
-      "reason": "The upstream v0.2.3 setup.cfg contains author_email=info@enthough.com. This is a typo in public author metadata, not evidence of the private recovery email for either PyPI maintainer account; the domain warning is accepted only for this exact release/report. Source hits are test cleanup/reads and ffi.dlopen incorrectly matched as executable writing. This exception does not assert that maintainer account recovery has been audited.",
+      "reason": "The public author_email in upstream v0.2.3 setup.cfg contains the typo info@enthough.com. RDAP now returns registered rather than absent, changing the native domain rule and score. PyPI recovery details and domain ownership are unverified. Verified the wheel and sdist against uv.lock and the three flagged files against the upstream tag (line endings normalized): test fixture cleanup, test version-file read, and ffi.dlopen loading a DLL. Accept only this pinned release and exact report through the original expiry.",
       "evidence": [
         "https://github.com/enthought/pywin32-ctypes/blob/v0.2.3/setup.cfg",
-        "https://pypi.org/project/pywin32-ctypes/0.2.3/"
+        "https://pypi.org/project/pywin32-ctypes/0.2.3/",
+        "https://github.com/NerfBlasters/m365-xdr-cli/actions/runs/45104347549",
+        "https://github.com/NerfBlasters/m365-xdr-cli/actions/runs/43818517253"
       ]
     },
     {
